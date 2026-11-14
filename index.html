@@ -34,11 +34,10 @@
           <h1 class="text-xl sm:text-2xl font-extrabold tracking-tight text-[#0F172A] uppercase mt-2">TIKARIYA'S SCHOOL OF <span class="text-[#B91C1C]">M</span>USIC</h1>
         </div>
 
-        <!-- Unified Smart Login Form (Auto-detects Admin PIN or Student Roll+PIN) -->
         <form id="unifiedLoginForm" onsubmit="handleUnifiedLogin(event)" class="space-y-4">
           <div>
-            <label class="block text-xs font-semibold text-slate-700 mb-1">Roll Number <span class="text-slate-400 font-normal">(Leave blank for Admin)</span></label>
-            <input type="text" id="loginRollInput" autocomplete="off" class="w-full px-3.5 py-2.5 text-sm border border-slate-300 rounded-lg uppercase focus:outline-none focus:border-[#0F172A]" />
+            <label class="block text-xs font-semibold text-slate-700 mb-1">Roll Number</label>
+            <input type="text" id="loginRollInput" autocomplete="off" class="w-full px-3.5 py-2.5 text-sm border border-slate-300 rounded-lg uppercase focus:outline-none focus:border-[#0F172A]" required />
           </div>
           <div>
             <label class="block text-xs font-semibold text-slate-700 mb-1">Access PIN</label>
@@ -119,6 +118,7 @@ const COURSES = [
 ];
 
 const DEFAULT_STATE = {
+  adminRollNo: 'MUSICSNSOUNDS',
   adminPin: '1995',
   students: [
     {
@@ -218,7 +218,10 @@ function loadState() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (parsed && parsed.students) return parsed;
+      if (parsed && parsed.students) {
+        if (!parsed.adminRollNo) parsed.adminRollNo = 'MUSICSNSOUNDS';
+        return parsed;
+      }
     }
   } catch (e) {}
   return JSON.parse(JSON.stringify(DEFAULT_STATE));
@@ -256,6 +259,7 @@ async function initFirebaseAuto() {
       if (doc.exists) {
         const remote = doc.data();
         if (remote && remote.students) {
+          if (!remote.adminRollNo) remote.adminRollNo = 'MUSICSNSOUNDS';
           appState = remote;
           localStorage.setItem(STORAGE_KEY, JSON.stringify(appState));
           if (currentUser) renderCurrentTab();
@@ -293,22 +297,20 @@ function drawStyledAcademyTitlePdf(page, x, y, size, fontBold) {
 }
 
 // ==========================================
-// 2. UNIFIED LOGIN & SIGN OUT CONFIRMATION
+// 2. UNIFIED LOGIN (BOTH ADMIN & STUDENTS REQUIRE ROLL + PIN)
 // ==========================================
 function handleUnifiedLogin(e) {
   e.preventDefault();
   const roll = document.getElementById('loginRollInput').value.trim().toUpperCase();
   const pin = document.getElementById('loginPinInput').value.trim();
-  const expectedAdminPin = String(appState.adminPin || '1995');
 
-  if (!roll) {
-    if (pin === expectedAdminPin) {
-      currentUser = { role: 'admin' };
-      activeTab = 'dashboard';
-      enterApp();
-    } else {
-      showLoginError('Invalid Access PIN.');
-    }
+  const expectedAdminRoll = String(appState.adminRollNo || 'MUSICSNSOUNDS').trim().toUpperCase();
+  const expectedAdminPin = String(appState.adminPin || '1995').trim();
+
+  if (roll === expectedAdminRoll && pin === expectedAdminPin) {
+    currentUser = { role: 'admin' };
+    activeTab = 'dashboard';
+    enterApp();
     return;
   }
 
@@ -359,6 +361,7 @@ function confirmLogout() {
 function executeLogout() {
   closeModal();
   currentUser = null;
+  document.getElementById('loginRollInput').value = '';
   document.getElementById('loginPinInput').value = '';
   document.getElementById('appShell').classList.add('hidden');
   document.getElementById('loginView').classList.remove('hidden');
@@ -1369,7 +1372,7 @@ function addCampaignPrompt() {
 }
 
 // ==========================================
-// 10. CLOUD SYNC & SETTINGS (STATUS KEPT HERE ONLY)
+// 10. CLOUD SYNC & SETTINGS
 // ==========================================
 function renderSettingsTab(el) {
   const savedCfg = localStorage.getItem(CONFIG_KEY) || JSON.stringify(DEFAULT_FIREBASE_CONFIG, null, 2);
@@ -1389,11 +1392,18 @@ function renderSettingsTab(el) {
       </div>
 
       <div class="bg-white p-5 rounded-xl border border-slate-200 space-y-3">
-        <h3 class="text-sm font-bold text-[#0F172A]">Admin Access PIN</h3>
-        <div class="flex gap-2 max-w-xs">
-          <input id="newAdminPinInput" type="password" value="${appState.adminPin}" class="px-3 py-2 text-xs font-mono border border-slate-300 rounded-lg" />
-          <button onclick="updateAdminPin()" class="px-4 py-2 bg-[#0F172A] text-white text-xs font-semibold rounded-lg">Update PIN</button>
+        <h3 class="text-sm font-bold text-[#0F172A]">Admin Credentials</h3>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-md">
+          <div>
+            <label class="block text-[11px] font-semibold text-slate-600 mb-1">Admin Roll Number</label>
+            <input id="newAdminRollInput" type="text" value="${appState.adminRollNo || 'MUSICSNSOUNDS'}" class="w-full px-3 py-2 text-xs font-mono uppercase border border-slate-300 rounded-lg" />
+          </div>
+          <div>
+            <label class="block text-[11px] font-semibold text-slate-600 mb-1">Admin Access PIN</label>
+            <input id="newAdminPinInput" type="password" value="${appState.adminPin}" class="w-full px-3 py-2 text-xs font-mono border border-slate-300 rounded-lg" />
+          </div>
         </div>
+        <button onclick="updateAdminCredentials()" class="px-4 py-2 bg-[#0F172A] text-white text-xs font-semibold rounded-lg">Save Credentials</button>
       </div>
     </div>
   `;
@@ -1411,12 +1421,16 @@ function saveFirebaseConfig() {
   }
 }
 
-function updateAdminPin() {
-  const val = document.getElementById('newAdminPinInput').value.trim();
-  if (val.length >= 4) {
-    appState.adminPin = val;
+function updateAdminCredentials() {
+  const rollVal = document.getElementById('newAdminRollInput').value.trim().toUpperCase();
+  const pinVal = document.getElementById('newAdminPinInput').value.trim();
+  if (rollVal.length >= 3 && pinVal.length >= 4) {
+    appState.adminRollNo = rollVal;
+    appState.adminPin = pinVal;
     saveState();
-    showToast('PIN updated');
+    showToast('Admin credentials updated');
+  } else {
+    showToast('Enter valid Roll Number and PIN');
   }
 }
 
