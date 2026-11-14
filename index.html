@@ -1,0 +1,1695 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#0F172A" />
+  <title>Tikariya's School of Music — Management System</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/opentype.js@1.3.4/dist/opentype.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <!-- Firebase Compat SDKs for Instant Cloud Sync & Anonymous Session Auth -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    body { font-family: 'Inter', sans-serif; background-color: #F8FAFC; color: #0F172A; }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    .tabular-nums { font-variant-numeric: tabular-nums; }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+  <!-- LOGIN SCREEN -->
+  <div id="loginView" class="min-h-screen flex items-center justify-center p-4 bg-slate-50">
+    <div class="w-full max-w-md bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+      <div class="h-1.5 bg-indigo-700 w-full"></div>
+      <div class="p-6 sm:p-8">
+        <div class="text-center border-b border-slate-200 pb-5 mb-6">
+          <p class="text-[11px] font-bold tracking-widest uppercase text-slate-600">B. S. TIKARIYA CULTURAL FOUNDATION</p>
+          <p class="text-[10px] text-slate-500 mt-0.5">CIN: U88900MH2025NPL454435</p>
+          <h1 class="text-2xl font-bold text-slate-900 mt-2">Tikariya's School of Music</h1>
+          <p class="text-xs text-indigo-700 font-medium mt-1">Unified Academy &amp; Student Portal</p>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2 p-1 bg-slate-100 rounded-lg mb-5">
+          <button type="button" id="tabAdminLogin" onclick="switchLoginRole('admin')" class="py-2 text-xs font-semibold rounded-md bg-white text-slate-900 shadow-sm transition">Admin Login</button>
+          <button type="button" id="tabStudentLogin" onclick="switchLoginRole('student')" class="py-2 text-xs font-semibold rounded-md text-slate-600 hover:text-slate-900 transition">Student Login</button>
+        </div>
+
+        <!-- Admin Login Form -->
+        <form id="adminLoginForm" onsubmit="handleAdminLogin(event)" class="space-y-4">
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">Admin Access PIN</label>
+            <input type="password" id="adminPinInput" value="1995" placeholder="Enter PIN (Default: 1995)" class="w-full px-3.5 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:border-indigo-700" required />
+            <p class="text-[11px] text-slate-500 mt-1">Default PIN: <span class="font-mono font-semibold">1995</span> (Changeable in Settings)</p>
+          </div>
+          <button type="submit" class="w-full py-2.5 bg-indigo-700 hover:bg-indigo-800 text-white text-sm font-semibold rounded-lg transition">Enter Admin Workspace</button>
+        </form>
+
+        <!-- Student Login Form -->
+        <form id="studentLoginForm" onsubmit="handleStudentLogin(event)" class="space-y-4 hidden">
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">Student Roll Number</label>
+            <input type="text" id="studentRollInput" value="TSM-2026-014" placeholder="e.g., TSM-2026-014" class="w-full px-3.5 py-2.5 text-sm border border-slate-300 rounded-lg uppercase focus:outline-none focus:border-indigo-700" required />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">Student PIN</label>
+            <input type="password" id="studentPinInput" value="1234" placeholder="Default: 1234" class="w-full px-3.5 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:border-indigo-700" required />
+            <p class="text-[11px] text-slate-500 mt-1">Demo Student: <span class="font-mono font-semibold">TSM-2026-014</span> / PIN <span class="font-mono font-semibold">1234</span></p>
+          </div>
+          <button type="submit" class="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold rounded-lg transition">Open Student Portal</button>
+        </form>
+
+        <div id="loginError" class="hidden mt-3 p-2.5 bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg text-center"></div>
+        <div class="mt-4 pt-3 border-t border-slate-100 flex items-center justify-center gap-2">
+          <span id="loginCloudPill" class="px-2.5 py-0.5 text-[10px] font-semibold rounded-full bg-amber-50 text-amber-700 border border-amber-200">Connecting Cloud...</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MAIN APPLICATION SHELL -->
+  <div id="appShell" class="hidden flex-1 flex flex-col">
+    <!-- Top Header -->
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-30">
+      <div class="max-w-7xl mx-auto px-3 sm:px-6 h-14 flex items-center justify-between gap-2">
+        <div class="flex items-center gap-3 min-w-0">
+          <div class="w-8 h-8 rounded-lg bg-slate-900 text-white flex items-center justify-center font-bold text-xs tracking-tight shrink-0">TSM</div>
+          <div class="truncate">
+            <div class="flex items-center gap-2">
+              <span class="font-bold text-sm sm:text-base text-slate-900 truncate">Tikariya's School of Music</span>
+              <span id="roleBadge" class="hidden sm:inline-block px-2 py-0.5 text-[10px] font-semibold uppercase rounded bg-indigo-50 text-indigo-700 border border-indigo-200">Admin</span>
+            </div>
+            <p class="text-[10px] text-slate-500 truncate">B. S. Tikariya Cultural Foundation &bull; CIN: U88900MH2025NPL454435</p>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-2 shrink-0">
+          <span id="cloudStatusBadge" class="px-2 py-1 text-[10px] font-semibold rounded bg-amber-50 text-amber-700 border border-amber-200">Connecting...</span>
+          <button onclick="logout()" class="px-3 py-1.5 text-xs font-semibold text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-lg transition">Sign Out</button>
+        </div>
+      </div>
+
+      <!-- Navigation Bar -->
+      <nav id="mainNav" class="bg-slate-50 border-t border-slate-200 overflow-x-auto no-scrollbar">
+        <div id="navTabsContainer" class="max-w-7xl mx-auto px-3 sm:px-6 flex items-center gap-1 h-10"></div>
+      </nav>
+    </header>
+
+    <!-- Dynamic Main Content -->
+    <main id="mainContent" class="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 py-5"></main>
+  </div>
+
+  <!-- MODAL CONTAINER -->
+  <div id="modalBackdrop" class="hidden fixed inset-0 bg-slate-900/50 z-50 flex items-center justify-center p-3 sm:p-4">
+    <div id="modalBox" class="bg-white border border-slate-200 rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-5 sm:p-6"></div>
+  </div>
+
+  <!-- TOAST NOTIFICATION -->
+  <div id="toast" class="hidden fixed bottom-4 right-4 z-50 bg-slate-900 text-white text-xs font-medium px-4 py-2.5 rounded-lg shadow-lg"></div>
+
+<script>
+// ==========================================
+// 1. PRE-WIRED FIREBASE CONFIG & STORAGE
+// ==========================================
+const STORAGE_KEY = 'tsm_pwa_state_v1';
+const CONFIG_KEY = 'tsm_firebase_config_v1';
+
+const DEFAULT_FIREBASE_CONFIG = {
+  apiKey: "AIzaSyD6UUHQL7hcWxvnOIFIzVxOPPU0wrSojFQ",
+  authDomain: "tikariya-music---foundation.firebaseapp.com",
+  projectId: "tikariya-music---foundation",
+  storageBucket: "tikariya-music---foundation.firebasestorage.app",
+  messagingSenderId: "869254236044",
+  appId: "1:869254236044:web:fb6f5fccca9129cc4d78a9",
+  measurementId: "G-0HC5PTKZQ3"
+};
+
+const GRADES = [
+  'Elementary Grade 1', 'Elementary Grade 2', 'Elementary Grade 3',
+  'Advanced Grade 1', 'Advanced Grade 2', 'Advanced Grade 3',
+  'Pro Grade 1', 'Pro Grade 2'
+];
+
+const COURSES = [
+  'Piano (Keyboard)', 'Guitar', 'Violin', 'Flute', 'Harmonium', 'Tabla', 'Vocal', 'Singing',
+  'Special: Sound Recordist', 'Special: Karaoke Singing', 'Workshop: Music Sense', 'Workshop: Karaoke'
+];
+
+const DEFAULT_STATE = {
+  adminPin: '1995',
+  students: [
+    {
+      id: 'stu_1',
+      rollNo: 'TSM-2026-014',
+      pin: '1234',
+      name: 'Aarav Sharma',
+      course: 'Guitar',
+      grade: 'Elementary Grade 2',
+      batch: 'Mon/Wed/Fri • 6:30 PM',
+      phone: '9823011223',
+      guardian: 'Rajesh Sharma (7:30 PM Pickup)',
+      admissionDate: '2026-07-14',
+      attendedDays: 45,
+      bonusCredits: 1,
+      monthlyFee: 1500,
+      concession: 0,
+      idCardFee: 150,
+      certFee: 300,
+      feeStatus: 'Paid',
+      lastPaymentMode: 'UPI',
+      lastPaymentDate: '2026-11-10',
+      photoDataUrl: ''
+    },
+    {
+      id: 'stu_2',
+      rollNo: 'TSM-2026-019',
+      pin: '1234',
+      name: 'Ananya Kulkarni',
+      course: 'Piano (Keyboard)',
+      grade: 'Elementary Grade 1',
+      batch: 'Tue/Thu/Sat • 5:00 PM',
+      phone: '9823044556',
+      guardian: 'Sneha Kulkarni',
+      admissionDate: '2026-08-05',
+      attendedDays: 34,
+      bonusCredits: 2,
+      monthlyFee: 1500,
+      concession: 200,
+      idCardFee: 150,
+      certFee: 0,
+      feeStatus: 'Unpaid',
+      lastPaymentMode: 'Cash',
+      lastPaymentDate: '2026-10-05',
+      photoDataUrl: ''
+    },
+    {
+      id: 'stu_3',
+      rollNo: 'TSM-2026-022',
+      pin: '1234',
+      name: 'Siddharth Nair',
+      course: 'Vocal',
+      grade: 'Advanced Grade 1',
+      batch: 'Mon/Wed/Fri • 7:15 PM',
+      phone: '9823077889',
+      guardian: 'Meera Nair (Evening Cutoff Alert)',
+      admissionDate: '2025-11-12',
+      attendedDays: 144,
+      bonusCredits: 0,
+      monthlyFee: 2000,
+      concession: 0,
+      idCardFee: 150,
+      certFee: 300,
+      feeStatus: 'Paid',
+      lastPaymentMode: 'UPI',
+      lastPaymentDate: '2026-11-12',
+      photoDataUrl: ''
+    }
+  ],
+  attendance: {},
+  messages: [
+    { id: 'm1', rollNo: 'TSM-2026-014', sender: 'Student', text: 'Sir, will we practice Raag Bhupaali Alankaar 6 today?', time: '10:30 AM' },
+    { id: 'm2', rollNo: 'TSM-2026-014', sender: 'Admin', text: 'Yes Aarav, bring your KB Notes Part 1 workbook.', time: '10:45 AM' }
+  ],
+  campaigns: [
+    { id: 'c1', title: 'Winter Vocal & Keyboard Batch Reel', type: 'Unpaid / Organic', platform: 'Instagram Reels', status: 'Active', budget: '0', notes: 'Student performance clip @tikariyas' },
+    { id: 'c2', title: 'Sound Recordist & Karaoke Workshop Ad', type: 'Paid Promotion', platform: 'Instagram Sponsored', status: 'Scheduled', budget: '1500', notes: 'Target Jalna & surrounding music learners' }
+  ],
+  vaultItems: [
+    { id: 'v1', title: 'KB NOTES — PART 1 (Alankaars 1–20 & Raags)', course: 'Piano (Keyboard)', grade: 'Elementary Grade 1', pages: 35, date: '2026-11-01' },
+    { id: 'v2', title: 'Raag Bhupaali & Raag Des Sargam Sheet', course: 'Vocal', grade: 'Elementary Grade 2', pages: 4, date: '2026-11-10' }
+  ]
+};
+
+let appState = loadState();
+let currentUser = null;
+let activeTab = 'dashboard';
+let selectedDate = new Date().toISOString().split('T')[0];
+let db = null;
+let loadedCustomFont = null;
+let loadedFontName = '';
+let attachedDiagrams = [];
+
+function loadState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && parsed.students) return parsed;
+    }
+  } catch (e) {}
+  return JSON.parse(JSON.stringify(DEFAULT_STATE));
+}
+
+function saveState() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(appState));
+  if (db) {
+    db.collection('tsm_system').doc('master_state').set({
+      ...appState,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    }).catch(err => console.warn('Cloud sync error:', err));
+  }
+}
+
+function setCloudIndicators(connected, labelText) {
+  const badge = document.getElementById('cloudStatusBadge');
+  const pill = document.getElementById('loginCloudPill');
+  if (badge) {
+    badge.textContent = labelText;
+    badge.className = connected
+      ? 'px-2 py-1 text-[10px] font-semibold rounded bg-emerald-50 text-emerald-700 border border-emerald-200'
+      : 'px-2 py-1 text-[10px] font-semibold rounded bg-amber-50 text-amber-700 border border-amber-200';
+  }
+  if (pill) {
+    pill.textContent = labelText;
+    pill.className = connected
+      ? 'px-2.5 py-0.5 text-[10px] font-semibold rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200'
+      : 'px-2.5 py-0.5 text-[10px] font-semibold rounded-full bg-amber-50 text-amber-700 border border-amber-200';
+  }
+}
+
+async function initFirebaseAuto() {
+  try {
+    let cfg = DEFAULT_FIREBASE_CONFIG;
+    const cfgRaw = localStorage.getItem(CONFIG_KEY);
+    if (cfgRaw) {
+      const parsed = JSON.parse(cfgRaw);
+      if (parsed && parsed.apiKey && parsed.projectId) cfg = parsed;
+    } else {
+      localStorage.setItem(CONFIG_KEY, JSON.stringify(DEFAULT_FIREBASE_CONFIG));
+    }
+
+    if (!firebase.apps.length) firebase.initializeApp(cfg);
+
+    // Silent Anonymous Auth if enabled in Firebase Console
+    if (firebase.auth) {
+      try {
+        await firebase.auth().signInAnonymously();
+      } catch (authErr) {
+        console.log('Anonymous auth optional/skipped:', authErr.code);
+      }
+    }
+
+    db = firebase.firestore();
+
+    db.collection('tsm_system').doc('master_state').onSnapshot(doc => {
+      setCloudIndicators(true, 'Cloud Synced (tikariya-music---foundation)');
+      if (doc.exists) {
+        const remote = doc.data();
+        if (remote && remote.students) {
+          appState = remote;
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(appState));
+          if (currentUser) renderCurrentTab();
+        }
+      } else {
+        // Seed initial state to Firestore automatically
+        saveState();
+      }
+    }, err => {
+      console.warn('Firestore listener error:', err);
+      setCloudIndicators(false, 'Local Cache (Check Firestore Rules)');
+    });
+  } catch (e) {
+    console.warn('Firebase init fallback to local:', e);
+    setCloudIndicators(false, 'Local Cache Mode');
+  }
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.remove('hidden');
+  setTimeout(() => t.classList.add('hidden'), 2800);
+}
+
+// ==========================================
+// 2. AUTHENTICATION & NAVIGATION
+// ==========================================
+function switchLoginRole(role) {
+  const isAdmin = role === 'admin';
+  document.getElementById('adminLoginForm').classList.toggle('hidden', !isAdmin);
+  document.getElementById('studentLoginForm').classList.toggle('hidden', isAdmin);
+  document.getElementById('tabAdminLogin').className = isAdmin
+    ? 'py-2 text-xs font-semibold rounded-md bg-white text-slate-900 shadow-sm transition'
+    : 'py-2 text-xs font-semibold rounded-md text-slate-600 hover:text-slate-900 transition';
+  document.getElementById('tabStudentLogin').className = !isAdmin
+    ? 'py-2 text-xs font-semibold rounded-md bg-white text-slate-900 shadow-sm transition'
+    : 'py-2 text-xs font-semibold rounded-md text-slate-600 hover:text-slate-900 transition';
+  document.getElementById('loginError').classList.add('hidden');
+}
+
+function handleAdminLogin(e) {
+  e.preventDefault();
+  const pin = document.getElementById('adminPinInput').value.trim();
+  const expectedPin = String(appState.adminPin || '1995');
+  if (pin === expectedPin) {
+    currentUser = { role: 'admin' };
+    activeTab = 'dashboard';
+    enterApp();
+  } else {
+    showLoginError('Invalid Admin PIN.');
+  }
+}
+
+function handleStudentLogin(e) {
+  e.preventDefault();
+  const roll = document.getElementById('studentRollInput').value.trim().toUpperCase();
+  const pin = document.getElementById('studentPinInput').value.trim();
+  const stu = appState.students.find(s => s.rollNo.toUpperCase() === roll && String(s.pin) === pin);
+  if (stu) {
+    currentUser = { role: 'student', studentId: stu.id };
+    activeTab = 'student_home';
+    enterApp();
+  } else {
+    showLoginError('Invalid Roll Number or Student PIN.');
+  }
+}
+
+function showLoginError(msg) {
+  const err = document.getElementById('loginError');
+  err.textContent = msg;
+  err.classList.remove('hidden');
+}
+
+function enterApp() {
+  document.getElementById('loginView').classList.add('hidden');
+  document.getElementById('appShell').classList.remove('hidden');
+  const badge = document.getElementById('roleBadge');
+  if (currentUser.role === 'admin') {
+    badge.textContent = 'Admin Portal';
+    badge.className = 'hidden sm:inline-block px-2 py-0.5 text-[10px] font-semibold uppercase rounded bg-indigo-50 text-indigo-700 border border-indigo-200';
+  } else {
+    const stu = appState.students.find(s => s.id === currentUser.studentId);
+    badge.textContent = stu ? stu.rollNo : 'Student';
+    badge.className = 'hidden sm:inline-block px-2 py-0.5 text-[10px] font-semibold uppercase rounded bg-slate-100 text-slate-800 border border-slate-300';
+  }
+  renderNavTabs();
+  renderCurrentTab();
+}
+
+function logout() {
+  currentUser = null;
+  document.getElementById('appShell').classList.add('hidden');
+  document.getElementById('loginView').classList.remove('hidden');
+}
+
+function renderNavTabs() {
+  const container = document.getElementById('navTabsContainer');
+  const adminTabs = [
+    { id: 'dashboard', label: 'Overview' },
+    { id: 'attendance', label: 'Attendance Register' },
+    { id: 'students', label: 'Students & ID/Certs' },
+    { id: 'fees', label: 'Fees & Receipts' },
+    { id: 'vault', label: 'Study Vault & Sargam Studio' },
+    { id: 'messages', label: 'Messages & WhatsApp' },
+    { id: 'marketing', label: 'Instagram Promotions' },
+    { id: 'settings', label: 'Cloud Sync & Settings' }
+  ];
+  const studentTabs = [
+    { id: 'student_home', label: 'My Profile & ID Card' },
+    { id: 'student_attendance', label: 'My Attendance' },
+    { id: 'student_fees', label: 'Fees & Receipts' },
+    { id: 'student_vault', label: 'Study Material' },
+    { id: 'student_messages', label: 'Message Teacher' }
+  ];
+  const tabs = currentUser.role === 'admin' ? adminTabs : studentTabs;
+  container.innerHTML = tabs.map(t => `
+    <button onclick="switchTab('${t.id}')"
+      class="px-3 py-2 text-xs font-semibold whitespace-nowrap border-b-2 transition ${
+        activeTab === t.id
+          ? 'border-indigo-700 text-indigo-700'
+          : 'border-transparent text-slate-600 hover:text-slate-900'
+      }">
+      ${t.label}
+    </button>
+  `).join('');
+}
+
+function switchTab(id) {
+  activeTab = id;
+  renderNavTabs();
+  renderCurrentTab();
+}
+
+function renderCurrentTab() {
+  const main = document.getElementById('mainContent');
+  if (currentUser.role === 'admin') {
+    if (activeTab === 'dashboard') renderAdminDashboard(main);
+    else if (activeTab === 'attendance') renderAttendanceTab(main);
+    else if (activeTab === 'students') renderStudentsTab(main);
+    else if (activeTab === 'fees') renderFeesTab(main);
+    else if (activeTab === 'vault') renderVaultTab(main);
+    else if (activeTab === 'messages') renderMessagesTab(main);
+    else if (activeTab === 'marketing') renderMarketingTab(main);
+    else if (activeTab === 'settings') renderSettingsTab(main);
+  } else {
+    renderStudentPortal(main, activeTab);
+  }
+}
+
+// ==========================================
+// 3. ADMIN OVERVIEW DASHBOARD
+// ==========================================
+function renderAdminDashboard(el) {
+  const totalStu = appState.students.length;
+  const unpaidCount = appState.students.filter(s => s.feeStatus === 'Unpaid').length;
+  const certEligible = appState.students.filter(s => s.attendedDays >= 48 && s.attendedDays % 48 <= 3).length;
+  const todayRecords = appState.students.map(s => getAttendanceRecord(selectedDate, s.id));
+  const presentToday = todayRecords.filter(r => r.status === 'present' || r.status === 'bonus_used').length;
+
+  el.innerHTML = `
+    <div class="space-y-5">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 rounded-xl border border-slate-200">
+        <div>
+          <h2 class="text-base font-bold text-slate-900">Academy Operations Summary</h2>
+          <p class="text-xs text-slate-500">3+3 Weekly Quota &bull; 48-Day Automated Grade Ladder &bull; Private Saregama Vault</p>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <button onclick="switchTab('attendance')" class="px-3 py-1.5 bg-indigo-700 text-white text-xs font-semibold rounded-lg hover:bg-indigo-800">Mark Today's Attendance</button>
+          <button onclick="openAddStudentModal()" class="px-3 py-1.5 bg-slate-900 text-white text-xs font-semibold rounded-lg hover:bg-slate-800">+ New Admission</button>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div class="bg-white p-4 rounded-xl border border-slate-200">
+          <p class="text-xs text-slate-500 font-medium">Active Students</p>
+          <p class="text-2xl font-bold text-slate-900 mt-1 tabular-nums">${totalStu}</p>
+          <p class="text-[11px] text-slate-500 mt-1">Across 12 Courses &amp; Workshops</p>
+        </div>
+        <div class="bg-white p-4 rounded-xl border border-slate-200">
+          <p class="text-xs text-slate-500 font-medium">Present (${selectedDate})</p>
+          <p class="text-2xl font-bold text-emerald-700 mt-1 tabular-nums">${presentToday} / ${totalStu}</p>
+          <p class="text-[11px] text-slate-500 mt-1">Individual 5-State Editable</p>
+        </div>
+        <div class="bg-white p-4 rounded-xl border border-slate-200">
+          <p class="text-xs text-slate-500 font-medium">Unpaid Fee Alerts</p>
+          <p class="text-2xl font-bold text-amber-600 mt-1 tabular-nums">${unpaidCount}</p>
+          <p class="text-[11px] text-slate-500 mt-1">Admission-Cycle Billing</p>
+        </div>
+        <div class="bg-white p-4 rounded-xl border border-slate-200">
+          <p class="text-xs text-slate-500 font-medium">48-Day Cert Milestones</p>
+          <p class="text-2xl font-bold text-indigo-700 mt-1 tabular-nums">${certEligible}</p>
+          <p class="text-[11px] text-slate-500 mt-1">Auto-Grade Progression</p>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div class="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
+          <h3 class="text-sm font-bold text-slate-900">Active Student Standing &amp; Alerts</h3>
+          <span class="text-[11px] text-slate-500">* Indicates Short Weekly Attendance (&lt;3 days)</span>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-left border-collapse">
+            <thead>
+              <tr class="bg-slate-50 border-b border-slate-200 text-[11px] font-semibold text-slate-600 uppercase">
+                <th class="py-2.5 px-3">Roll No</th>
+                <th class="py-2.5 px-3">Student &amp; Course</th>
+                <th class="py-2.5 px-3">48-Day Cert Progress</th>
+                <th class="py-2.5 px-3">Fee Status</th>
+                <th class="py-2.5 px-3 text-right">Quick Actions</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-200 text-xs">
+              ${appState.students.map(s => {
+                const mod = s.attendedDays % 48;
+                const certNum = Math.floor(s.attendedDays / 48);
+                return `
+                  <tr class="hover:bg-slate-50">
+                    <td class="py-2.5 px-3 font-mono font-semibold text-slate-700">${s.rollNo}</td>
+                    <td class="py-2.5 px-3">
+                      <div class="font-semibold text-slate-900">${s.name}</div>
+                      <div class="text-[11px] text-indigo-700">${s.grade} &mdash; ${s.course}</div>
+                    </td>
+                    <td class="py-2.5 px-3 tabular-nums">
+                      <span class="font-semibold text-slate-900">${mod}/48 days</span>
+                      <span class="text-[11px] text-slate-500 ml-1">(${certNum} Certs Earned)</span>
+                    </td>
+                    <td class="py-2.5 px-3">
+                      <span class="px-2 py-0.5 rounded text-[11px] font-semibold ${s.feeStatus === 'Paid' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-amber-50 text-amber-700 border border-amber-200'}">
+                        ${s.feeStatus}
+                      </span>
+                    </td>
+                    <td class="py-2.5 px-3 text-right space-x-1">
+                      <button onclick="openIdCardModal('${s.id}')" class="px-2 py-1 text-[11px] font-semibold border border-slate-300 rounded hover:bg-slate-100">ID Card</button>
+                      <button onclick="openCertificateModal('${s.id}')" class="px-2 py-1 text-[11px] font-semibold border border-indigo-200 text-indigo-700 bg-indigo-50 rounded hover:bg-indigo-100">Certificate</button>
+                    </td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// ==========================================
+// 4. COMPACT SINGLE-LINE ATTENDANCE REGISTER
+// ==========================================
+function getAttendanceRecord(dateStr, studentId) {
+  const key = `${dateStr}_${studentId}`;
+  return appState.attendance[key] || {
+    status: 'present',
+    time: '06:30 PM',
+    note: ''
+  };
+}
+
+function setStudentAttendanceStatus(studentId, newStatus) {
+  const key = `${selectedDate}_${studentId}`;
+  const prev = getAttendanceRecord(selectedDate, studentId);
+  const stu = appState.students.find(s => s.id === studentId);
+
+  if (stu) {
+    if (prev.status === 'present' || prev.status === 'bonus_used') stu.attendedDays = Math.max(0, stu.attendedDays - 1);
+    if (prev.status === 'teacher_leave') stu.bonusCredits = Math.max(0, stu.bonusCredits - 1);
+    if (prev.status === 'bonus_used') stu.bonusCredits += 1;
+
+    if (newStatus === 'present' || newStatus === 'bonus_used') stu.attendedDays += 1;
+    if (newStatus === 'teacher_leave') stu.bonusCredits += 1;
+    if (newStatus === 'bonus_used') stu.bonusCredits = Math.max(0, stu.bonusCredits - 1);
+
+    const gradeIdx = Math.min(GRADES.length - 1, Math.floor(stu.attendedDays / 48));
+    stu.grade = GRADES[gradeIdx];
+  }
+
+  appState.attendance[key] = {
+    ...prev,
+    status: newStatus,
+    updatedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  };
+  saveState();
+  renderCurrentTab();
+  showToast(`Updated ${stu ? stu.name : 'Student'} to ${newStatus.replace('_', ' ').toUpperCase()}`);
+}
+
+function updateAttendanceField(studentId, field, value) {
+  const key = `${selectedDate}_${studentId}`;
+  const prev = getAttendanceRecord(selectedDate, studentId);
+  appState.attendance[key] = { ...prev, [field]: value };
+  saveState();
+}
+
+function applyBatchStatus(status) {
+  appState.students.forEach(s => setStudentAttendanceStatus(s.id, status));
+}
+
+function renderAttendanceTab(el) {
+  const statuses = [
+    { id: 'present', label: 'Present', activeClass: 'bg-emerald-700 text-white border-emerald-700' },
+    { id: 'absent', label: 'Absent', activeClass: 'bg-red-600 text-white border-red-600' },
+    { id: 'teacher_leave', label: 'Teacher Leave', activeClass: 'bg-amber-600 text-white border-amber-600' },
+    { id: 'bonus_used', label: 'Bonus Used', activeClass: 'bg-indigo-700 text-white border-indigo-700' },
+    { id: 'excused_leave', label: 'Excused Leave', activeClass: 'bg-slate-700 text-white border-slate-700' }
+  ];
+
+  el.innerHTML = `
+    <div class="space-y-4">
+      <div class="bg-white p-3.5 rounded-xl border border-slate-200 flex flex-wrap items-center justify-between gap-3">
+        <div class="flex flex-wrap items-center gap-2.5">
+          <div>
+            <label class="block text-[10px] font-bold uppercase text-slate-500">Register Date</label>
+            <input type="date" value="${selectedDate}" onchange="selectedDate=this.value; renderCurrentTab();" class="px-2.5 py-1 text-xs font-semibold border border-slate-300 rounded-lg" />
+          </div>
+          <div class="h-7 w-px bg-slate-200 hidden sm:block"></div>
+          <div class="flex flex-wrap gap-1.5">
+            <button onclick="applyBatchStatus('present')" class="px-2.5 py-1.5 text-[11px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-lg hover:bg-emerald-100">All Present</button>
+            <button onclick="applyBatchStatus('teacher_leave')" class="px-2.5 py-1.5 text-[11px] font-semibold bg-amber-50 text-amber-800 border border-amber-200 rounded-lg hover:bg-amber-100">Batch Teacher Leave (+1 Bonus)</button>
+          </div>
+        </div>
+        <button onclick="exportDailyAttendancePdf()" class="px-3 py-1.5 bg-slate-900 text-white text-xs font-semibold rounded-lg hover:bg-slate-800">Download Register PDF</button>
+      </div>
+
+      <div class="bg-white rounded-xl border border-slate-200 divide-y divide-slate-200 overflow-x-auto">
+        ${appState.students.map(s => {
+          const rec = getAttendanceRecord(selectedDate, s.id);
+          const isShort = rec.status === 'absent';
+          const mod48 = s.attendedDays % 48;
+          return `
+            <div class="px-3 py-2 flex items-center justify-between gap-3 min-w-[940px] hover:bg-slate-50/80 transition">
+              <div class="flex items-center gap-2.5 w-56 shrink-0">
+                <span class="px-1.5 py-0.5 text-[10px] font-mono font-semibold bg-slate-100 border border-slate-200 rounded text-slate-700">${s.rollNo}</span>
+                <div class="truncate">
+                  <div class="text-xs font-bold text-slate-900 truncate">${s.name} ${isShort ? '<span class="text-red-600 font-bold" title="Short Attendance Flag">*</span>' : ''}</div>
+                  <div class="text-[10px] text-indigo-700 truncate">${s.grade} &mdash; ${s.course}</div>
+                </div>
+              </div>
+
+              <div class="w-40 shrink-0">
+                <div class="text-[11px] font-medium text-slate-700 truncate">${s.batch}</div>
+                <div class="text-[10px] text-slate-500 truncate">${s.guardian}</div>
+              </div>
+
+              <div class="flex items-center gap-1 shrink-0">
+                ${statuses.map(st => `
+                  <button onclick="setStudentAttendanceStatus('${s.id}', '${st.id}')"
+                    class="px-2 py-1 text-[10px] font-semibold rounded border transition ${
+                      rec.status === st.id
+                        ? st.activeClass
+                        : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
+                    }">
+                    ${st.label}
+                  </button>
+                `).join('')}
+              </div>
+
+              <input type="text" value="${rec.time}" onchange="updateAttendanceField('${s.id}', 'time', this.value)"
+                class="w-20 px-2 py-1 text-[11px] font-mono border border-slate-200 rounded text-center shrink-0" />
+
+              <div class="w-28 shrink-0 text-right tabular-nums">
+                <span class="inline-block px-1.5 py-0.5 text-[10px] font-semibold rounded ${isShort ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}">
+                  ${isShort ? '2/3 Short *' : '3/3 Valid'}
+                </span>
+                <div class="text-[10px] text-slate-600 mt-0.5">48d: <b>${mod48}/48</b> &bull; B:<b>${s.bonusCredits}</b></div>
+              </div>
+
+              <input type="text" value="${rec.note || ''}" placeholder="Remark..." onchange="updateAttendanceField('${s.id}', 'note', this.value)"
+                class="w-32 px-2 py-1 text-[11px] border border-slate-200 rounded shrink-0" />
+            </div>
+          `;
+        }).join('')}
+      </div>
+    </div>
+  `;
+}
+
+// ==========================================
+// 5. STUDENTS, ID CARDS & 48-DAY CERTIFICATES
+// ==========================================
+function renderStudentsTab(el) {
+  el.innerHTML = `
+    <div class="space-y-4">
+      <div class="flex flex-wrap items-center justify-between gap-2 bg-white p-4 rounded-xl border border-slate-200">
+        <div>
+          <h2 class="text-sm font-bold text-slate-900">Student Directory, Photo ID Cards &amp; Verification Certificates</h2>
+          <p class="text-xs text-slate-500">Auto-generates 8 grades every 48 attended days &bull; Shared Student ID &amp; Verification QR Codes</p>
+        </div>
+        <button onclick="openAddStudentModal()" class="px-3 py-1.5 bg-indigo-700 text-white text-xs font-semibold rounded-lg hover:bg-indigo-800">+ Register Student</button>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        ${appState.students.map(s => {
+          const certsEarned = Math.floor(s.attendedDays / 48);
+          return `
+            <div class="bg-white border border-slate-200 rounded-xl p-4 flex flex-col justify-between space-y-3">
+              <div>
+                <div class="flex items-start justify-between gap-2">
+                  <div>
+                    <span class="px-2 py-0.5 text-[10px] font-mono font-bold bg-slate-100 text-slate-800 rounded border border-slate-200">${s.rollNo}</span>
+                    <h3 class="text-sm font-bold text-slate-900 mt-1.5">${s.name}</h3>
+                    <p class="text-xs font-semibold text-indigo-700">${s.grade} &mdash; ${s.course}</p>
+                  </div>
+                  <div class="w-11 h-11 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center text-xs font-bold text-slate-500 overflow-hidden shrink-0">
+                    ${s.photoDataUrl ? `<img src="${s.photoDataUrl}" class="w-full h-full object-cover" />` : s.name.slice(0,2).toUpperCase()}
+                  </div>
+                </div>
+                <div class="mt-3 pt-3 border-t border-slate-100 text-[11px] text-slate-600 space-y-1">
+                  <div><b>Batch:</b> ${s.batch}</div>
+                  <div><b>Admission:</b> ${s.admissionDate} &bull; <b>Attended:</b> ${s.attendedDays} days</div>
+                  <div><b>Certificates:</b> ${certsEarned} Issued &bull; <b>Guardian:</b> ${s.guardian}</div>
+                </div>
+              </div>
+              <div class="pt-2 flex flex-wrap gap-1.5">
+                <button onclick="openIdCardModal('${s.id}')" class="flex-1 py-1.5 text-[11px] font-semibold bg-slate-900 text-white rounded-lg hover:bg-slate-800">ID Card + QR</button>
+                <button onclick="openCertificateModal('${s.id}')" class="flex-1 py-1.5 text-[11px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg hover:bg-indigo-100">Certificate</button>
+                <button onclick="openEditStudentModal('${s.id}')" class="px-2.5 py-1.5 text-[11px] font-semibold border border-slate-300 rounded-lg hover:bg-slate-50">Edit</button>
+              </div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    </div>
+  `;
+}
+
+function openAddStudentModal() {
+  const nextNum = 23 + appState.students.length;
+  const roll = `TSM-2026-0${nextNum}`;
+  showModal(`
+    <h3 class="text-base font-bold text-slate-900 mb-1">New Student Admission</h3>
+    <p class="text-xs text-slate-500 mb-4">Monthly billing cycle starts automatically from the Date of Admission.</p>
+    <form onsubmit="saveNewStudent(event)" class="space-y-3 text-xs">
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Roll Number</label>
+          <input name="rollNo" value="${roll}" class="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono" required />
+        </div>
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Student Login PIN</label>
+          <input name="pin" value="1234" class="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono" required />
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Student Full Name</label>
+          <input name="name" placeholder="Full Name" class="w-full px-3 py-2 border border-slate-300 rounded-lg" required />
+        </div>
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">WhatsApp Number</label>
+          <input name="phone" placeholder="10-digit mobile" class="w-full px-3 py-2 border border-slate-300 rounded-lg" required />
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Instrument / Course</label>
+          <select name="course" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+            ${COURSES.map(c => `<option value="${c}">${c}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Starting Grade</label>
+          <select name="grade" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+            ${GRADES.map(g => `<option value="${g}">${g}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Batch Timing</label>
+          <input name="batch" value="Mon/Wed/Fri • 5:00 PM" class="w-full px-3 py-2 border border-slate-300 rounded-lg" required />
+        </div>
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Admission Date</label>
+          <input type="date" name="admissionDate" value="${selectedDate}" class="w-full px-3 py-2 border border-slate-300 rounded-lg" required />
+        </div>
+      </div>
+      <div class="grid grid-cols-4 gap-2">
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Monthly Fee</label>
+          <input type="number" name="monthlyFee" value="1500" class="w-full px-2.5 py-2 border border-slate-300 rounded-lg" />
+        </div>
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Concession</label>
+          <input type="number" name="concession" value="0" class="w-full px-2.5 py-2 border border-slate-300 rounded-lg" />
+        </div>
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">ID Card Fee</label>
+          <input type="number" name="idCardFee" value="150" class="w-full px-2.5 py-2 border border-slate-300 rounded-lg" />
+        </div>
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Cert Fee</label>
+          <input type="number" name="certFee" value="300" class="w-full px-2.5 py-2 border border-slate-300 rounded-lg" />
+        </div>
+      </div>
+      <div>
+        <label class="block font-semibold text-slate-700 mb-1">Guardian / Safety Pickup Note</label>
+        <input name="guardian" placeholder="Parent name & evening pickup rule" class="w-full px-3 py-2 border border-slate-300 rounded-lg" />
+      </div>
+      <div class="flex justify-end gap-2 pt-3">
+        <button type="button" onclick="closeModal()" class="px-4 py-2 border border-slate-300 rounded-lg font-semibold">Cancel</button>
+        <button type="submit" class="px-4 py-2 bg-indigo-700 text-white rounded-lg font-semibold">Complete Admission</button>
+      </div>
+    </form>
+  `);
+}
+
+function saveNewStudent(e) {
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const newStu = {
+    id: 'stu_' + Date.now(),
+    rollNo: fd.get('rollNo').toUpperCase(),
+    pin: fd.get('pin'),
+    name: fd.get('name'),
+    phone: fd.get('phone'),
+    course: fd.get('course'),
+    grade: fd.get('grade'),
+    batch: fd.get('batch'),
+    admissionDate: fd.get('admissionDate'),
+    attendedDays: 0,
+    bonusCredits: 0,
+    monthlyFee: Number(fd.get('monthlyFee') || 0),
+    concession: Number(fd.get('concession') || 0),
+    idCardFee: Number(fd.get('idCardFee') || 0),
+    certFee: Number(fd.get('certFee') || 0),
+    feeStatus: 'Unpaid',
+    lastPaymentMode: 'UPI',
+    lastPaymentDate: '-',
+    guardian: fd.get('guardian') || 'Self / Guardian Verified',
+    photoDataUrl: ''
+  };
+  appState.students.push(newStu);
+  saveState();
+  closeModal();
+  renderCurrentTab();
+  showToast(`Admitted ${newStu.name} (${newStu.rollNo})`);
+}
+
+function openEditStudentModal(stuId) {
+  const s = appState.students.find(x => x.id === stuId);
+  if (!s) return;
+  showModal(`
+    <h3 class="text-base font-bold text-slate-900 mb-3">Edit Student Profile &amp; Fees (${s.rollNo})</h3>
+    <form onsubmit="saveEditedStudent(event, '${s.id}')" class="space-y-3 text-xs">
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Full Name</label>
+          <input name="name" value="${s.name}" class="w-full px-3 py-2 border border-slate-300 rounded-lg" required />
+        </div>
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">WhatsApp Mobile</label>
+          <input name="phone" value="${s.phone}" class="w-full px-3 py-2 border border-slate-300 rounded-lg" required />
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Grade Level</label>
+          <select name="grade" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+            ${GRADES.map(g => `<option value="${g}" ${s.grade===g?'selected':''}>${g}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Total Attended Days</label>
+          <input type="number" name="attendedDays" value="${s.attendedDays}" class="w-full px-3 py-2 border border-slate-300 rounded-lg" />
+        </div>
+      </div>
+      <div class="grid grid-cols-4 gap-2">
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Monthly Fee</label>
+          <input type="number" name="monthlyFee" value="${s.monthlyFee}" class="w-full px-2.5 py-2 border border-slate-300 rounded-lg" />
+        </div>
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Concession</label>
+          <input type="number" name="concession" value="${s.concession}" class="w-full px-2.5 py-2 border border-slate-300 rounded-lg" />
+        </div>
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">ID Card Fee</label>
+          <input type="number" name="idCardFee" value="${s.idCardFee}" class="w-full px-2.5 py-2 border border-slate-300 rounded-lg" />
+        </div>
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Cert Fee</label>
+          <input type="number" name="certFee" value="${s.certFee}" class="w-full px-2.5 py-2 border border-slate-300 rounded-lg" />
+        </div>
+      </div>
+      <div class="flex justify-end gap-2 pt-3">
+        <button type="button" onclick="closeModal()" class="px-4 py-2 border border-slate-300 rounded-lg font-semibold">Cancel</button>
+        <button type="submit" class="px-4 py-2 bg-indigo-700 text-white rounded-lg font-semibold">Save Changes</button>
+      </div>
+    </form>
+  `);
+}
+
+function saveEditedStudent(e, stuId) {
+  e.preventDefault();
+  const s = appState.students.find(x => x.id === stuId);
+  const fd = new FormData(e.target);
+  s.name = fd.get('name');
+  s.phone = fd.get('phone');
+  s.grade = fd.get('grade');
+  s.attendedDays = Number(fd.get('attendedDays') || 0);
+  s.monthlyFee = Number(fd.get('monthlyFee') || 0);
+  s.concession = Number(fd.get('concession') || 0);
+  s.idCardFee = Number(fd.get('idCardFee') || 0);
+  s.certFee = Number(fd.get('certFee') || 0);
+  saveState();
+  closeModal();
+  renderCurrentTab();
+  showToast('Student record updated');
+}
+
+function openIdCardModal(stuId) {
+  const s = appState.students.find(x => x.id === stuId);
+  if (!s) return;
+  showModal(`
+    <div class="flex items-center justify-between mb-4">
+      <h3 class="text-base font-bold text-slate-900">Official Student ID Card</h3>
+      <button onclick="closeModal()" class="text-xs font-semibold text-slate-500 hover:text-slate-900">Close</button>
+    </div>
+    <div class="max-w-sm mx-auto bg-white border-2 border-slate-300 rounded-xl overflow-hidden shadow-sm">
+      <div class="h-2 bg-indigo-700"></div>
+      <div class="p-5 text-center border-b border-slate-200">
+        <p class="text-[9px] font-bold tracking-widest uppercase text-slate-600">B. S. TIKARIYA CULTURAL FOUNDATION</p>
+        <p class="text-[8px] text-slate-500">CIN: U88900MH2025NPL454435</p>
+        <h4 class="text-lg font-bold text-slate-900 mt-1">Tikariya's School of Music</h4>
+      </div>
+      <div class="p-5 flex items-center gap-4">
+        <div class="w-20 h-24 rounded-lg bg-slate-100 border border-slate-300 flex items-center justify-center text-sm font-bold text-slate-500 overflow-hidden shrink-0">
+          ${s.photoDataUrl ? `<img src="${s.photoDataUrl}" class="w-full h-full object-cover" />` : 'PHOTO'}
+        </div>
+        <div class="text-left text-xs space-y-1">
+          <div class="font-mono font-bold text-indigo-700">${s.rollNo}</div>
+          <div class="text-sm font-bold text-slate-900">${s.name}</div>
+          <div class="font-semibold text-slate-700">${s.grade} &mdash; ${s.course}</div>
+          <div class="text-[11px] text-slate-500">Batch: ${s.batch}</div>
+          <div class="text-[11px] text-slate-500">Admission: ${s.admissionDate}</div>
+        </div>
+      </div>
+      <div class="px-5 py-3 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
+        <div class="text-[10px] text-slate-600">
+          <div class="font-bold text-slate-900">SHARED ATTENDANCE &amp; VERIFY QR</div>
+          <div>Scan for check-in or credential check</div>
+        </div>
+        <div id="modalQrBox" class="p-1 bg-white border border-slate-300 rounded"></div>
+      </div>
+    </div>
+    <div class="mt-4 flex justify-center">
+      <button onclick="window.print()" class="px-4 py-2 bg-indigo-700 text-white text-xs font-semibold rounded-lg">Print ID Card</button>
+    </div>
+  `);
+  setTimeout(() => {
+    const box = document.getElementById('modalQrBox');
+    if (box) new QRCode(box, { text: `https://tikariya-music---foundation.web.app/verify/${s.rollNo}`, width: 64, height: 64 });
+  }, 50);
+}
+
+function openCertificateModal(stuId) {
+  const s = appState.students.find(x => x.id === stuId);
+  if (!s) return;
+  const certSerial = `TSM-CERT-${s.rollNo.split('-').pop()}-${Math.max(1, Math.floor(s.attendedDays/48))}`;
+  showModal(`
+    <div class="flex items-center justify-between mb-3">
+      <h3 class="text-base font-bold text-slate-900">48-Day Grade Certificate Preview</h3>
+      <button onclick="closeModal()" class="text-xs font-semibold text-slate-500 hover:text-slate-900">Close</button>
+    </div>
+    <div class="bg-white border-2 border-slate-300 rounded-xl p-6 text-center relative">
+      <div class="h-1.5 bg-indigo-700 -mx-6 -mt-6 mb-5"></div>
+      <p class="text-[10px] font-bold tracking-widest uppercase text-slate-600">B. S. TIKARIYA CULTURAL FOUNDATION</p>
+      <p class="text-[9px] text-slate-500">CIN: U88900MH2025NPL454435</p>
+      <h4 class="text-xl font-bold text-slate-900 mt-1">Tikariya's School of Music</h4>
+      <div class="my-4 inline-block px-3 py-1 bg-indigo-50 border border-indigo-200 text-indigo-800 text-[10px] font-bold uppercase rounded">Certificate of Musical Achievement</div>
+      <p class="text-xs text-slate-600">This is to certify that</p>
+      <h2 class="text-2xl font-bold text-slate-900 my-1">${s.name}</h2>
+      <p class="text-xs text-slate-600">Roll No: <span class="font-mono font-semibold">${s.rollNo}</span></p>
+      <p class="text-xs text-slate-700 mt-3 max-w-md mx-auto">has successfully completed the mandatory 48-day curriculum and practical assessment for</p>
+      <p class="text-base font-bold text-indigo-700 mt-1">${s.grade} &mdash; ${s.course}</p>
+      <div class="mt-6 pt-4 border-t border-slate-200 flex items-center justify-between text-left">
+        <div class="text-[10px] text-slate-600 space-y-0.5">
+          <div><b>Certificate Serial:</b> ${certSerial}</div>
+          <div><b>Verified Attendance:</b> ${s.attendedDays} Days</div>
+          <div><b>Authorized Signatory:</b> Director, Tikariya's School of Music</div>
+        </div>
+        <div id="certQrBox" class="p-1 bg-white border border-slate-300 rounded"></div>
+      </div>
+    </div>
+    <div class="mt-4 flex justify-center">
+      <button onclick="window.print()" class="px-4 py-2 bg-indigo-700 text-white text-xs font-semibold rounded-lg">Print Official Certificate</button>
+    </div>
+  `);
+  setTimeout(() => {
+    const box = document.getElementById('certQrBox');
+    if (box) new QRCode(box, { text: `https://tikariya-music---foundation.web.app/cert/${certSerial}`, width: 64, height: 64 });
+  }, 50);
+}
+
+// ==========================================
+// 6. FEES, CONCESSIONS & 2-PAGE PDF RECEIPTS
+// ==========================================
+function renderFeesTab(el) {
+  el.innerHTML = `
+    <div class="space-y-4">
+      <div class="bg-white p-4 rounded-xl border border-slate-200 flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h2 class="text-sm font-bold text-slate-900">Fees, Custom Concessions &amp; 2-Page PDF Receipts</h2>
+          <p class="text-xs text-slate-500">UPI / Cash Tracking Only &bull; Billing calculated from Day of Admission &bull; Includes ID &amp; Certificate Charges</p>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-xl border border-slate-200 overflow-x-auto">
+        <table class="w-full text-left border-collapse text-xs">
+          <thead>
+            <tr class="bg-slate-50 border-b border-slate-200 text-[11px] font-semibold text-slate-600 uppercase">
+              <th class="py-2.5 px-3">Student</th>
+              <th class="py-2.5 px-3">Admission Cycle</th>
+              <th class="py-2.5 px-3">Tuition - Conc. + ID/Cert</th>
+              <th class="py-2.5 px-3">Net Payable</th>
+              <th class="py-2.5 px-3">Mode &amp; Status</th>
+              <th class="py-2.5 px-3 text-right">Receipt &amp; Alerts</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-200">
+            ${appState.students.map(s => {
+              const net = Math.max(0, s.monthlyFee - s.concession + s.idCardFee + s.certFee);
+              return `
+                <tr class="hover:bg-slate-50">
+                  <td class="py-2.5 px-3">
+                    <div class="font-bold text-slate-900">${s.name}</div>
+                    <div class="text-[10px] font-mono text-slate-500">${s.rollNo}</div>
+                  </td>
+                  <td class="py-2.5 px-3 text-slate-600">From ${s.admissionDate}</td>
+                  <td class="py-2.5 px-3 tabular-nums text-slate-600">₹${s.monthlyFee} - ₹${s.concession} + ₹${s.idCardFee + s.certFee}</td>
+                  <td class="py-2.5 px-3 font-bold text-slate-900 tabular-nums">₹${net}</td>
+                  <td class="py-2.5 px-3">
+                    <select onchange="updateFeeStatus('${s.id}', this.value)" class="px-2 py-1 text-[11px] font-semibold border border-slate-300 rounded">
+                      <option value="Paid|UPI" ${s.feeStatus==='Paid'&&s.lastPaymentMode==='UPI'?'selected':''}>Paid (UPI)</option>
+                      <option value="Paid|Cash" ${s.feeStatus==='Paid'&&s.lastPaymentMode==='Cash'?'selected':''}>Paid (Cash)</option>
+                      <option value="Unpaid|Pending" ${s.feeStatus==='Unpaid'?'selected':''}>Unpaid</option>
+                    </select>
+                  </td>
+                  <td class="py-2.5 px-3 text-right space-x-1">
+                    <button onclick="downloadTwoPageReceiptPdf('${s.id}')" class="px-2.5 py-1 bg-indigo-700 text-white text-[11px] font-semibold rounded hover:bg-indigo-800">2-Page PDF Receipt</button>
+                    <button onclick="sendWhatsAppFeeAlert('${s.id}')" class="px-2.5 py-1 bg-emerald-50 text-emerald-800 border border-emerald-200 text-[11px] font-semibold rounded hover:bg-emerald-100">WhatsApp</button>
+                  </td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+function updateFeeStatus(stuId, val) {
+  const s = appState.students.find(x => x.id === stuId);
+  const [status, mode] = val.split('|');
+  s.feeStatus = status;
+  s.lastPaymentMode = mode;
+  if (status === 'Paid') s.lastPaymentDate = selectedDate;
+  saveState();
+  renderCurrentTab();
+  showToast(`Fee status updated for ${s.name}`);
+}
+
+async function downloadTwoPageReceiptPdf(stuId) {
+  const s = appState.students.find(x => x.id === stuId);
+  if (!s) return;
+  const { PDFDocument, StandardFonts, rgb } = PDFLib;
+  const pdfDoc = await PDFDocument.create();
+  const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  const fontReg = await pdfDoc.embedFont(StandardFonts.Helvetica);
+
+  const p1 = pdfDoc.addPage([595.28, 841.89]);
+  p1.drawRectangle({ x: 36, y: 36, width: 523.28, height: 769.89, borderColor: rgb(0.8, 0.83, 0.88), borderWidth: 1 });
+  p1.drawRectangle({ x: 36, y: 799.89, width: 523.28, height: 6, color: rgb(0.26, 0.22, 0.79) });
+
+  p1.drawText('B. S. TIKARIYA CULTURAL FOUNDATION', { x: 185, y: 765, size: 10, font: fontBold, color: rgb(0.28, 0.33, 0.41) });
+  p1.drawText('CIN: U88900MH2025NPL454435', { x: 225, y: 750, size: 8.5, font: fontReg, color: rgb(0.39, 0.45, 0.55) });
+  p1.drawText("Tikariya's School of Music", { x: 170, y: 724, size: 20, font: fontBold, color: rgb(0.06, 0.09, 0.16) });
+  p1.drawText('OFFICIAL FEE RECEIPT (PAGE 1 OF 2)', { x: 205, y: 695, size: 9, font: fontBold, color: rgb(0.26, 0.22, 0.79) });
+
+  const net = Math.max(0, s.monthlyFee - s.concession + s.idCardFee + s.certFee);
+  const rows = [
+    ['Student Name:', s.name],
+    ['Roll Number:', s.rollNo],
+    ['Course & Grade:', `${s.grade} - ${s.course}`],
+    ['Admission Billing Cycle:', `From ${s.admissionDate}`],
+    ['Payment Mode & Status:', `${s.feeStatus} via ${s.lastPaymentMode} (${s.lastPaymentDate})`],
+    ['Monthly Tuition Fee:', `INR ${s.monthlyFee}`],
+    ['Custom Concession:', `- INR ${s.concession}`],
+    ['ID Card & Certificate Charges:', `INR ${s.idCardFee + s.certFee}`],
+    ['TOTAL AMOUNT:', `INR ${net}`]
+  ];
+  let y = 650;
+  rows.forEach(([k, v]) => {
+    p1.drawText(k, { x: 64, y, size: 10, font: fontBold, color: rgb(0.28, 0.33, 0.41) });
+    p1.drawText(String(v), { x: 260, y, size: 10, font: fontReg, color: rgb(0.06, 0.09, 0.16) });
+    y -= 24;
+  });
+
+  const p2 = pdfDoc.addPage([595.28, 841.89]);
+  p2.drawRectangle({ x: 36, y: 36, width: 523.28, height: 769.89, borderColor: rgb(0.8, 0.83, 0.88), borderWidth: 1 });
+  p2.drawText("Tikariya's School of Music — Monthly Attendance Log (Page 2 of 2)", { x: 64, y: 765, size: 13, font: fontBold, color: rgb(0.06, 0.09, 0.16) });
+  p2.drawText(`Student: ${s.name} (${s.rollNo}) | Total Cumulative Days: ${s.attendedDays} | Bonus Credits: ${s.bonusCredits}`, { x: 64, y: 742, size: 9.5, font: fontReg, color: rgb(0.28, 0.33, 0.41) });
+  p2.drawText('3+3 Weekly Quota Compliance: Verified for billing cycle.', { x: 64, y: 715, size: 10, font: fontBold, color: rgb(0.08, 0.5, 0.24) });
+
+  const bytes = await pdfDoc.save();
+  const blob = new Blob([bytes], { type: 'application/pdf' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = `TSM_Receipt_${s.rollNo}.pdf`;
+  link.click();
+  showToast(`Downloaded 2-Page Receipt for ${s.name}`);
+}
+
+function sendWhatsAppFeeAlert(stuId) {
+  const s = appState.students.find(x => x.id === stuId);
+  const net = Math.max(0, s.monthlyFee - s.concession + s.idCardFee + s.certFee);
+  const msg = s.feeStatus === 'Paid'
+    ? `B. S. TIKARIYA CULTURAL FOUNDATION - Tikariya's School of Music. Fee Receipt Confirmation for ${s.name} (${s.rollNo}): INR ${net} received via ${s.lastPaymentMode}. Thank you.`
+    : `B. S. TIKARIYA CULTURAL FOUNDATION - Tikariya's School of Music. Gentle Fee Reminder for ${s.name} (${s.rollNo}): Monthly fee of INR ${net} is due as per your admission cycle (${s.admissionDate}). Kindly pay via UPI or Cash.`;
+  window.open(`https://wa.me/91${s.phone}?text=${encodeURIComponent(msg)}`, '_blank');
+}
+
+// ==========================================
+// 7. STUDY VAULT & PRIVATE SAREGAMA STUDIO
+// ==========================================
+function renderVaultTab(el) {
+  el.innerHTML = `
+    <div class="space-y-5">
+      <div class="bg-white p-4 sm:p-5 rounded-xl border border-slate-200 space-y-4">
+        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3">
+          <div>
+            <h2 class="text-sm font-bold text-slate-900">Protected Saregama Notation Studio (ATMS-Regular-1.ttf)</h2>
+            <p class="text-xs text-slate-500">Font stays strictly in local memory &bull; Exported as non-copyable vector outlines with personalized Student QR Cover</p>
+          </div>
+          <label class="px-3 py-1.5 bg-slate-900 text-white text-xs font-semibold rounded-lg cursor-pointer hover:bg-slate-800">
+            Load Local ATMS-Regular-1.ttf
+            <input type="file" accept=".ttf,.otf" onchange="handleLocalFontUpload(event)" class="hidden" />
+          </label>
+        </div>
+
+        <div id="fontStatusBanner" class="px-3 py-2 rounded-lg text-xs ${loadedCustomFont ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-amber-50 text-amber-800 border border-amber-200'}">
+          ${loadedCustomFont ? `Private Font Loaded in Local Memory: <b>${loadedFontName}</b> (Zero web distribution)` : 'Select your local <b>ATMS-Regular-1.ttf</b> file above to render your exact Saregama glyphs live.'}
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div class="space-y-3">
+            <div class="grid grid-cols-2 gap-2">
+              <input id="sheetTitleInput" value="Raag Bhupaali — Alankaar & Bandish" class="px-3 py-1.5 text-xs border border-slate-300 rounded-lg font-semibold" />
+              <select id="sheetStudentSelect" class="px-3 py-1.5 text-xs border border-slate-300 rounded-lg">
+                ${appState.students.map(s => `<option value="${s.id}">Cover For: ${s.name} (${s.rollNo})</option>`).join('')}
+              </select>
+            </div>
+            <textarea id="sargamTextArea" rows="6" oninput="renderSargamCanvasPreview()" class="w-full p-3 text-sm font-mono border border-slate-300 rounded-lg focus:outline-none focus:border-indigo-700" placeholder="Type Saregama font keys here...">S R G P D S' | S' D P G R S
+G P D S' R' S' D P | G R S</textarea>
+            <div class="flex flex-wrap gap-2">
+              <button onclick="addVectorKeyboardBlock()" class="px-2.5 py-1.5 text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg hover:bg-indigo-100">+ Insert Vector Keyboard Diagram</button>
+              <button onclick="exportProtectedNotationPdf()" class="px-3.5 py-1.5 text-xs font-semibold bg-indigo-700 text-white rounded-lg hover:bg-indigo-800">Generate Wrapped Vector PDF</button>
+            </div>
+          </div>
+
+          <div class="bg-slate-50 border border-slate-200 rounded-lg p-3 flex flex-col items-center justify-center">
+            <p class="text-[10px] font-semibold uppercase text-slate-500 mb-2">Live Non-Copyable Vector Canvas Preview</p>
+            <canvas id="sargamPreviewCanvas" width="440" height="240" class="bg-white border border-slate-300 rounded shadow-sm max-w-full"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-white p-4 rounded-xl border border-slate-200">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="text-sm font-bold text-slate-900">Published Study Workbooks &amp; Sheets</h3>
+          <button onclick="addVaultEntryPrompt()" class="px-3 py-1 text-xs font-semibold bg-slate-100 hover:bg-slate-200 rounded-lg">+ Register Workbook</button>
+        </div>
+        <div class="divide-y divide-slate-200 text-xs">
+          ${appState.vaultItems.map(v => `
+            <div class="py-2.5 flex items-center justify-between gap-2">
+              <div>
+                <div class="font-bold text-slate-900">${v.title}</div>
+                <div class="text-[11px] text-slate-500">${v.course} &bull; ${v.grade} &bull; ${v.pages} Pages</div>
+              </div>
+              <button onclick="exportProtectedNotationPdf()" class="px-3 py-1.5 bg-indigo-700 text-white text-[11px] font-semibold rounded-lg">Download Wrapped PDF</button>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    </div>
+  `;
+  setTimeout(renderSargamCanvasPreview, 40);
+}
+
+function handleLocalFontUpload(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  loadedFontName = file.name;
+  const reader = new FileReader();
+  reader.onload = function(ev) {
+    try {
+      loadedCustomFont = opentype.parse(ev.target.result);
+      showToast(`Loaded ${file.name} securely in local memory`);
+      renderCurrentTab();
+    } catch (err) {
+      showToast('Could not parse font file');
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function addVectorKeyboardBlock() {
+  attachedDiagrams.push({ type: 'keyboard', label: '2-Octave Keyboard Scale Reference' });
+  renderSargamCanvasPreview();
+  showToast('Added Vector Keyboard Diagram');
+}
+
+function renderSargamCanvasPreview() {
+  const canvas = document.getElementById('sargamPreviewCanvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.fillStyle = '#0F172A';
+  ctx.font = 'bold 11px Inter, sans-serif';
+  ctx.fillText("Tikariya's School of Music — Study Sheet", 16, 22);
+  ctx.strokeStyle = '#CBD5E1';
+  ctx.beginPath();
+  ctx.moveTo(16, 30);
+  ctx.lineTo(424, 30);
+  ctx.stroke();
+
+  const text = (document.getElementById('sargamTextArea')?.value || '').split('\n');
+  let y = 62;
+  text.forEach(line => {
+    if (loadedCustomFont) {
+      const path = loadedCustomFont.getPath(line, 18, y, 22);
+      path.fill = '#0F172A';
+      path.draw(ctx);
+    } else {
+      ctx.fillStyle = '#0F172A';
+      ctx.font = '16px monospace';
+      ctx.fillText(line, 18, y);
+    }
+    y += 32;
+  });
+
+  if (attachedDiagrams.length > 0) {
+    const kx = 18, ky = y + 4, kw = 18, kh = 54;
+    for (let i = 0; i < 14; i++) {
+      ctx.strokeStyle = '#0F172A';
+      ctx.strokeRect(kx + i * kw, ky, kw, kh);
+    }
+    const blackOffsets = [0, 1, 3, 4, 5, 7, 8, 10, 11, 12];
+    blackOffsets.forEach(idx => {
+      ctx.fillStyle = '#0F172A';
+      ctx.fillRect(kx + idx * kw + 12, ky, 11, 32);
+    });
+  }
+}
+
+async function exportProtectedNotationPdf() {
+  const { PDFDocument, StandardFonts, rgb } = PDFLib;
+  const pdfDoc = await PDFDocument.create();
+  const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  const fontReg = await pdfDoc.embedFont(StandardFonts.Helvetica);
+
+  const stuId = document.getElementById('sheetStudentSelect')?.value || appState.students[0].id;
+  const s = appState.students.find(x => x.id === stuId) || appState.students[0];
+  const title = document.getElementById('sheetTitleInput')?.value || 'Sargam Notation Sheet';
+
+  const p1 = pdfDoc.addPage([595.28, 841.89]);
+  p1.drawRectangle({ x: 36, y: 36, width: 523.28, height: 769.89, borderColor: rgb(0.8, 0.83, 0.88), borderWidth: 1 });
+  p1.drawRectangle({ x: 36, y: 799.89, width: 523.28, height: 6, color: rgb(0.26, 0.22, 0.79) });
+  p1.drawText('B. S. TIKARIYA CULTURAL FOUNDATION', { x: 185, y: 765, size: 10, font: fontBold, color: rgb(0.28, 0.33, 0.41) });
+  p1.drawText('CIN: U88900MH2025NPL454435', { x: 225, y: 750, size: 8.5, font: fontReg, color: rgb(0.39, 0.45, 0.55) });
+  p1.drawText("Tikariya's School of Music", { x: 170, y: 724, size: 20, font: fontBold, color: rgb(0.06, 0.09, 0.16) });
+  p1.drawText('OFFICIAL STUDY MATERIAL', { x: 220, y: 690, size: 9, font: fontBold, color: rgb(0.26, 0.22, 0.79) });
+  p1.drawText(title, { x: 64, y: 640, size: 16, font: fontBold, color: rgb(0.06, 0.09, 0.16) });
+  p1.drawText(`Issued To: ${s.name} (${s.rollNo})`, { x: 64, y: 600, size: 12, font: fontBold, color: rgb(0.06, 0.09, 0.16) });
+  p1.drawText(`${s.grade} - ${s.course}`, { x: 64, y: 580, size: 10.5, font: fontReg, color: rgb(0.26, 0.22, 0.79) });
+
+  const p2 = pdfDoc.addPage([595.28, 841.89]);
+  const canvas = document.getElementById('sargamPreviewCanvas');
+  if (canvas) {
+    const pngDataUrl = canvas.toDataURL('image/png');
+    const pngImage = await pdfDoc.embedPng(pngDataUrl);
+    p2.drawImage(pngImage, { x: 48, y: 450, width: 500, height: 272 });
+  }
+  p2.drawText(`Personal Copy for ${s.name} (${s.rollNo}) — Protected Non-Copyable Vector Notation`, { x: 64, y: 50, size: 8.5, font: fontReg, color: rgb(0.4, 0.45, 0.55) });
+
+  const bytes = await pdfDoc.save();
+  const blob = new Blob([bytes], { type: 'application/pdf' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = `TSM_StudyMaterial_${s.rollNo}.pdf`;
+  link.click();
+  showToast('Exported Protected Multi-Page Study PDF');
+}
+
+function addVaultEntryPrompt() {
+  const title = prompt('Enter Workbook / Sheet Title:');
+  if (!title) return;
+  appState.vaultItems.push({ id: 'v_' + Date.now(), title, course: 'Piano (Keyboard)', grade: 'Elementary Grade 1', pages: 12, date: selectedDate });
+  saveState();
+  renderCurrentTab();
+}
+
+// ==========================================
+// 8. MESSAGING & WHATSAPP TEMPLATES
+// ==========================================
+function renderMessagesTab(el) {
+  el.innerHTML = `
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div class="bg-white p-4 rounded-xl border border-slate-200 flex flex-col justify-between">
+        <div>
+          <h3 class="text-sm font-bold text-slate-900 mb-3">Direct Student-Admin Messaging</h3>
+          <div class="space-y-2 max-h-72 overflow-y-auto p-2 bg-slate-50 rounded-lg border border-slate-200">
+            ${appState.messages.map(m => `
+              <div class="p-2.5 rounded-lg text-xs ${m.sender === 'Admin' ? 'bg-indigo-700 text-white ml-8' : 'bg-white border border-slate-200 mr-8'}">
+                <div class="text-[10px] opacity-75 font-semibold mb-0.5">${m.sender} (${m.rollNo}) &bull; ${m.time}</div>
+                <div>${m.text}</div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+        <form onsubmit="sendAdminMessage(event)" class="mt-3 flex gap-2">
+          <input id="adminMsgInput" placeholder="Reply to student..." class="flex-1 px-3 py-2 text-xs border border-slate-300 rounded-lg" required />
+          <button type="submit" class="px-4 py-2 bg-indigo-700 text-white text-xs font-semibold rounded-lg">Send</button>
+        </form>
+      </div>
+
+      <div class="bg-white p-4 rounded-xl border border-slate-200 space-y-3">
+        <h3 class="text-sm font-bold text-slate-900">Emoji-Free Official WhatsApp Templates</h3>
+        <p class="text-xs text-slate-500">Select a student and launch pre-formatted official messages directly on WhatsApp.</p>
+        <select id="waStudentSelect" class="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg">
+          ${appState.students.map(s => `<option value="${s.id}">${s.name} (${s.rollNo}) — +91 ${s.phone}</option>`).join('')}
+        </select>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+          <button onclick="launchWaTemplate('welcome')" class="p-2.5 text-left text-xs font-semibold border border-slate-200 rounded-lg hover:bg-slate-50">1. Admission Welcome Message</button>
+          <button onclick="launchWaTemplate('fee_due')" class="p-2.5 text-left text-xs font-semibold border border-slate-200 rounded-lg hover:bg-slate-50">2. Monthly Fee Due Reminder</button>
+          <button onclick="launchWaTemplate('fee_paid')" class="p-2.5 text-left text-xs font-semibold border border-slate-200 rounded-lg hover:bg-slate-50">3. Fee Paid Confirmation</button>
+          <button onclick="launchWaTemplate('short_att')" class="p-2.5 text-left text-xs font-semibold border border-slate-200 rounded-lg hover:bg-slate-50">4. Short Attendance (*) Notice</button>
+          <button onclick="launchWaTemplate('cert_ready')" class="p-2.5 text-left text-xs font-semibold border border-slate-200 rounded-lg hover:bg-slate-50">5. 48-Day Certificate Ready</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function sendAdminMessage(e) {
+  e.preventDefault();
+  const inp = document.getElementById('adminMsgInput');
+  appState.messages.push({
+    id: 'm_' + Date.now(),
+    rollNo: 'TSM-2026-014',
+    sender: 'Admin',
+    text: inp.value.trim(),
+    time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  });
+  inp.value = '';
+  saveState();
+  renderCurrentTab();
+}
+
+function launchWaTemplate(type) {
+  const s = appState.students.find(x => x.id === document.getElementById('waStudentSelect').value);
+  if (!s) return;
+  const templates = {
+    welcome: `B. S. TIKARIYA CULTURAL FOUNDATION - Tikariya's School of Music. Welcome ${s.name} (Roll No: ${s.rollNo}) to ${s.grade} - ${s.course}. Batch: ${s.batch}.`,
+    fee_due: `Tikariya's School of Music: Reminder that monthly tuition fee for ${s.name} (${s.rollNo}) is due as per admission date ${s.admissionDate}. Payment accepted via UPI or Cash.`,
+    fee_paid: `Tikariya's School of Music: Payment received for ${s.name} (${s.rollNo}). Your official 2-page PDF receipt is ready in your Student Portal.`,
+    short_att: `Tikariya's School of Music: Attendance Notice for ${s.name} (${s.rollNo}). Weekly attendance is below the 3-day requirement (*). Please coordinate for make-up classes.`,
+    cert_ready: `Tikariya's School of Music: Congratulations ${s.name} (${s.rollNo})! You have completed 48 attended days and qualified for your ${s.grade} Certificate.`
+  };
+  window.open(`https://wa.me/91${s.phone}?text=${encodeURIComponent(templates[type])}`, '_blank');
+}
+
+// ==========================================
+// 9. INSTAGRAM PROMOTIONS TRACKER
+// ==========================================
+function renderMarketingTab(el) {
+  el.innerHTML = `
+    <div class="space-y-4">
+      <div class="bg-white p-4 rounded-xl border border-slate-200 flex items-center justify-between">
+        <div>
+          <h2 class="text-sm font-bold text-slate-900">Regular Instagram Promotions (Paid &amp; Unpaid)</h2>
+          <p class="text-xs text-slate-500">Manage organic reels (@tikariyas) and sponsored admission campaigns</p>
+        </div>
+        <button onclick="addCampaignPrompt()" class="px-3 py-1.5 bg-indigo-700 text-white text-xs font-semibold rounded-lg">+ New Campaign</button>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        ${appState.campaigns.map(c => `
+          <div class="bg-white p-4 rounded-xl border border-slate-200 space-y-2">
+            <div class="flex items-center justify-between">
+              <span class="px-2 py-0.5 text-[10px] font-bold uppercase rounded ${c.type.includes('Paid') ? 'bg-indigo-50 text-indigo-700 border border-indigo-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}">${c.type}</span>
+              <span class="text-xs font-semibold text-slate-600">${c.status}</span>
+            </div>
+            <h3 class="text-sm font-bold text-slate-900">${c.title}</h3>
+            <p class="text-xs text-slate-600">${c.notes}</p>
+            <div class="text-[11px] text-slate-500 pt-1">Budget: <b>INR ${c.budget}</b> &bull; Channel: ${c.platform}</div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `;
+}
+
+function addCampaignPrompt() {
+  const title = prompt('Campaign Title:');
+  if (!title) return;
+  const isPaid = confirm('Click OK for Paid Promotion, or Cancel for Unpaid / Organic Post');
+  appState.campaigns.push({
+    id: 'c_' + Date.now(),
+    title,
+    type: isPaid ? 'Paid Promotion' : 'Unpaid / Organic',
+    platform: 'Instagram',
+    status: 'Active',
+    budget: isPaid ? '1000' : '0',
+    notes: "Tikariya's School of Music outreach"
+  });
+  saveState();
+  renderCurrentTab();
+}
+
+// ==========================================
+// 10. CLOUD SYNC & SETTINGS
+// ==========================================
+function renderSettingsTab(el) {
+  const savedCfg = localStorage.getItem(CONFIG_KEY) || JSON.stringify(DEFAULT_FIREBASE_CONFIG, null, 2);
+  el.innerHTML = `
+    <div class="max-w-2xl space-y-5">
+      <div class="bg-white p-5 rounded-xl border border-slate-200 space-y-3">
+        <div class="flex items-center justify-between">
+          <h2 class="text-sm font-bold text-slate-900">Firebase Real-Time Cloud Sync (Pre-Wired)</h2>
+          <span class="px-2 py-0.5 text-[10px] font-mono bg-emerald-50 text-emerald-700 border border-emerald-200 rounded">tikariya-music---foundation</span>
+        </div>
+        <p class="text-xs text-slate-600">Your Firebase credentials are pre-configured so all Admin and Student devices synchronize automatically.</p>
+        <textarea id="firebaseConfigInput" rows="7" class="w-full p-3 text-xs font-mono border border-slate-300 rounded-lg">${savedCfg}</textarea>
+        <div class="flex gap-2">
+          <button onclick="saveFirebaseConfig()" class="px-4 py-2 bg-indigo-700 text-white text-xs font-semibold rounded-lg hover:bg-indigo-800">Reconnect Cloud</button>
+          <button onclick="resetDemoData()" class="px-4 py-2 border border-red-200 text-red-700 text-xs font-semibold rounded-lg hover:bg-red-50">Flush &amp; Reset Clean Data</button>
+        </div>
+      </div>
+
+      <div class="bg-white p-5 rounded-xl border border-slate-200 space-y-3">
+        <h3 class="text-sm font-bold text-slate-900">Admin Security PIN</h3>
+        <div class="flex gap-2 max-w-xs">
+          <input id="newAdminPinInput" value="${appState.adminPin}" class="px-3 py-2 text-xs font-mono border border-slate-300 rounded-lg" />
+          <button onclick="updateAdminPin()" class="px-4 py-2 bg-slate-900 text-white text-xs font-semibold rounded-lg">Update PIN</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function saveFirebaseConfig() {
+  const raw = document.getElementById('firebaseConfigInput').value.trim();
+  try {
+    const parsed = JSON.parse(raw);
+    localStorage.setItem(CONFIG_KEY, JSON.stringify(parsed));
+    initFirebaseAuto();
+    showToast('Firebase configuration reconnected');
+  } catch (e) {
+    showToast('Invalid JSON format. Paste valid JSON keys.');
+  }
+}
+
+function updateAdminPin() {
+  const val = document.getElementById('newAdminPinInput').value.trim();
+  if (val.length >= 4) {
+    appState.adminPin = val;
+    saveState();
+    showToast('Admin PIN updated');
+  }
+}
+
+function resetDemoData() {
+  if (confirm('Flush old data and reset to a clean lightweight state?')) {
+    localStorage.removeItem(STORAGE_KEY);
+    appState = JSON.parse(JSON.stringify(DEFAULT_STATE));
+    saveState();
+    renderCurrentTab();
+    showToast('Old data flushed cleanly');
+  }
+}
+
+// ==========================================
+// 11. STUDENT PORTAL (MOBILE & DESKTOP READY)
+// ==========================================
+function renderStudentPortal(el, tab) {
+  const s = appState.students.find(x => x.id === currentUser.studentId);
+  if (!s) return;
+  const mod48 = s.attendedDays % 48;
+  const netFee = Math.max(0, s.monthlyFee - s.concession + s.idCardFee + s.certFee);
+
+  if (tab === 'student_home') {
+    el.innerHTML = `
+      <div class="max-w-xl mx-auto space-y-4">
+        <div class="bg-white border-2 border-slate-300 rounded-xl overflow-hidden shadow-sm">
+          <div class="h-1.5 bg-indigo-700"></div>
+          <div class="p-4 text-center border-b border-slate-200">
+            <p class="text-[10px] font-bold tracking-widest uppercase text-slate-600">B. S. TIKARIYA CULTURAL FOUNDATION</p>
+            <p class="text-[9px] text-slate-500">CIN: U88900MH2025NPL454435</p>
+            <h2 class="text-lg font-bold text-slate-900 mt-1">Tikariya's School of Music</h2>
+          </div>
+          <div class="p-5 flex flex-col sm:flex-row items-center gap-4">
+            <div class="w-20 h-24 rounded-lg bg-slate-100 border border-slate-300 flex items-center justify-center text-xs font-bold text-slate-500 overflow-hidden shrink-0">
+              ${s.photoDataUrl ? `<img src="${s.photoDataUrl}" class="w-full h-full object-cover" />` : 'PHOTO'}
+            </div>
+            <div class="flex-1 text-center sm:text-left text-xs space-y-1">
+              <div class="font-mono font-bold text-indigo-700">${s.rollNo}</div>
+              <div class="text-base font-bold text-slate-900">${s.name}</div>
+              <div class="font-semibold text-slate-700">${s.grade} &mdash; ${s.course}</div>
+              <div class="text-slate-500">Batch: ${s.batch}</div>
+              <div class="text-slate-500">48-Day Progress: <b>${mod48}/48 Days</b></div>
+            </div>
+            <div id="stuPortalQr" class="p-1.5 bg-white border border-slate-300 rounded shrink-0"></div>
+          </div>
+        </div>
+
+        <div class="bg-white p-4 rounded-xl border border-slate-200 space-y-3">
+          <h3 class="text-sm font-bold text-slate-900">Customize My Profile</h3>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+            <div>
+              <label class="block font-semibold text-slate-700 mb-1">Update My Photo</label>
+              <input type="file" accept="image/*" onchange="uploadStudentPhoto(event, '${s.id}')" class="w-full text-xs" />
+            </div>
+            <div>
+              <label class="block font-semibold text-slate-700 mb-1">Change Login PIN</label>
+              <input type="text" value="${s.pin}" onchange="updateStudentPin('${s.id}', this.value)" class="w-full px-3 py-1.5 border border-slate-300 rounded-lg font-mono" />
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+    setTimeout(() => {
+      const box = document.getElementById('stuPortalQr');
+      if (box) new QRCode(box, { text: `https://tikariya-music---foundation.web.app/verify/${s.rollNo}`, width: 72, height: 72 });
+    }, 50);
+  } else if (tab === 'student_attendance') {
+    el.innerHTML = `
+      <div class="max-w-xl mx-auto bg-white p-5 rounded-xl border border-slate-200 space-y-3">
+        <h3 class="text-sm font-bold text-slate-900">My Attendance &amp; 48-Day Certificate Tracker</h3>
+        <div class="grid grid-cols-3 gap-3 text-center">
+          <div class="p-3 bg-slate-50 rounded-lg border border-slate-200">
+            <div class="text-[11px] text-slate-500">Total Attended</div>
+            <div class="text-xl font-bold text-slate-900 mt-1">${s.attendedDays}</div>
+          </div>
+          <div class="p-3 bg-indigo-50 rounded-lg border border-indigo-200">
+            <div class="text-[11px] text-indigo-700">Next Cert</div>
+            <div class="text-xl font-bold text-indigo-800 mt-1">${mod48}/48</div>
+          </div>
+          <div class="p-3 bg-amber-50 rounded-lg border border-amber-200">
+            <div class="text-[11px] text-amber-700">Bonus Credits</div>
+            <div class="text-xl font-bold text-amber-800 mt-1">${s.bonusCredits}</div>
+          </div>
+        </div>
+        <p class="text-xs text-slate-600 pt-2">3 compulsory core classes per week + 3 bonus replacement classes unlocked on teacher leave days.</p>
+      </div>
+    `;
+  } else if (tab === 'student_fees') {
+    el.innerHTML = `
+      <div class="max-w-xl mx-auto bg-white p-5 rounded-xl border border-slate-200 space-y-3 text-xs">
+        <h3 class="text-sm font-bold text-slate-900">My Fee Status &amp; 2-Page PDF Receipt</h3>
+        <div class="p-3 bg-slate-50 rounded-lg border border-slate-200 flex items-center justify-between">
+          <div>
+            <div class="font-bold text-slate-900">Monthly Payable: INR ${netFee}</div>
+            <div class="text-slate-500">Billing Cycle From: ${s.admissionDate} &bull; Status: <b>${s.feeStatus}</b></div>
+          </div>
+          <button onclick="downloadTwoPageReceiptPdf('${s.id}')" class="px-3 py-2 bg-indigo-700 text-white font-semibold rounded-lg">Download Receipt PDF</button>
+        </div>
+      </div>
+    `;
+  } else if (tab === 'student_vault') {
+    el.innerHTML = `
+      <div class="max-w-xl mx-auto bg-white p-5 rounded-xl border border-slate-200 space-y-3 text-xs">
+        <h3 class="text-sm font-bold text-slate-900">My Course Study Material</h3>
+        ${appState.vaultItems.map(v => `
+          <div class="p-3 border border-slate-200 rounded-lg flex items-center justify-between">
+            <div>
+              <div class="font-bold text-slate-900">${v.title}</div>
+              <div class="text-slate-500">${v.course} &bull; ${v.pages} Pages</div>
+            </div>
+            <button onclick="exportProtectedNotationPdf()" class="px-3 py-1.5 bg-slate-900 text-white font-semibold rounded-lg">Download PDF</button>
+          </div>
+        `).join('')}
+      </div>
+    `;
+  } else if (tab === 'student_messages') {
+    const myMsgs = appState.messages.filter(m => m.rollNo === s.rollNo);
+    el.innerHTML = `
+      <div class="max-w-xl mx-auto bg-white p-4 rounded-xl border border-slate-200 space-y-3">
+        <h3 class="text-sm font-bold text-slate-900">Message Tikariya's School of Music</h3>
+        <div class="space-y-2 max-h-64 overflow-y-auto p-2 bg-slate-50 rounded-lg border border-slate-200">
+          ${myMsgs.map(m => `
+            <div class="p-2.5 rounded-lg text-xs ${m.sender === 'Student' ? 'bg-indigo-700 text-white ml-8' : 'bg-white border border-slate-200 mr-8'}">
+              <div class="text-[10px] opacity-75 font-semibold">${m.sender} &bull; ${m.time}</div>
+              <div>${m.text}</div>
+            </div>
+          `).join('')}
+        </div>
+        <form onsubmit="sendStudentMessage(event, '${s.rollNo}')" class="flex gap-2">
+          <input id="stuMsgInput" placeholder="Write a message to teacher..." class="flex-1 px-3 py-2 text-xs border border-slate-300 rounded-lg" required />
+          <button type="submit" class="px-4 py-2 bg-indigo-700 text-white text-xs font-semibold rounded-lg">Send</button>
+        </form>
+      </div>
+    `;
+  }
+}
+
+function uploadStudentPhoto(e, stuId) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(ev) {
+    const s = appState.students.find(x => x.id === stuId);
+    s.photoDataUrl = ev.target.result;
+    saveState();
+    renderCurrentTab();
+    showToast('Profile photo updated');
+  };
+  reader.readAsDataURL(file);
+}
+
+function updateStudentPin(stuId, newPin) {
+  const s = appState.students.find(x => x.id === stuId);
+  if (s && newPin.trim().length >= 4) {
+    s.pin = newPin.trim();
+    saveState();
+    showToast('Login PIN updated');
+  }
+}
+
+function sendStudentMessage(e, rollNo) {
+  e.preventDefault();
+  const inp = document.getElementById('stuMsgInput');
+  appState.messages.push({
+    id: 'm_' + Date.now(),
+    rollNo,
+    sender: 'Student',
+    text: inp.value.trim(),
+    time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  });
+  inp.value = '';
+  saveState();
+  renderCurrentTab();
+}
+
+async function exportDailyAttendancePdf() {
+  const { PDFDocument, StandardFonts, rgb } = PDFLib;
+  const pdfDoc = await PDFDocument.create();
+  const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  const fontReg = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const page = pdfDoc.addPage([595.28, 841.89]);
+
+  page.drawText('B. S. TIKARIYA CULTURAL FOUNDATION (CIN: U88900MH2025NPL454435)', { x: 50, y: 790, size: 9, font: fontBold, color: rgb(0.3, 0.35, 0.45) });
+  page.drawText(`Tikariya's School of Music — Daily Attendance Register (${selectedDate})`, { x: 50, y: 768, size: 15, font: fontBold, color: rgb(0.06, 0.09, 0.16) });
+
+  let y = 730;
+  appState.students.forEach(s => {
+    const rec = getAttendanceRecord(selectedDate, s.id);
+    page.drawText(`${s.rollNo} | ${s.name} | ${s.course} | ${rec.status.toUpperCase()} | ${rec.time} | 48d: ${s.attendedDays % 48}/48`, {
+      x: 50, y, size: 9.5, font: fontReg, color: rgb(0.1, 0.12, 0.18)
+    });
+    y -= 20;
+  });
+
+  const bytes = await pdfDoc.save();
+  const blob = new Blob([bytes], { type: 'application/pdf' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = `TSM_Attendance_${selectedDate}.pdf`;
+  link.click();
+  showToast('Downloaded Daily Attendance Register PDF');
+}
+
+// ==========================================
+// 12. MODAL HELPERS & INIT
+// ==========================================
+function showModal(html) {
+  document.getElementById('modalBox').innerHTML = html;
+  document.getElementById('modalBackdrop').classList.remove('hidden');
+}
+
+function closeModal() {
+  document.getElementById('modalBackdrop').classList.add('hidden');
+}
+
+initFirebaseAuto();
+</script>
+</body>
+</html>
