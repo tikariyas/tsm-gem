@@ -98,8 +98,8 @@
 // ==========================================
 // 1. CONFIG, PERSISTENT SESSION & STATE
 // ==========================================
-const STORAGE_KEY = 'tsm_pwa_state_v3';
-const SESSION_KEY = 'tsm_active_session_v3';
+const STORAGE_KEY = 'tsm_pwa_state_v5';
+const SESSION_KEY = 'tsm_active_session_v5';
 const CONFIG_KEY = 'tsm_firebase_config_v1';
 
 const DEFAULT_FIREBASE_CONFIG = {
@@ -158,17 +158,20 @@ const DEFAULT_STATE = {
       rollNo: 'TSM-2026-014',
       pin: '1234',
       name: 'Aarav Sharma',
-      course: 'Guitar',
+      courses: ['Guitar', 'Vocal'],
+      course: 'Guitar, Vocal',
       grade: 'Elementary Grade 2',
       batch: 'Mon/Wed/Fri • 6:30 PM - 7:30 PM',
       phone: '9823011223',
+      parentPhone: '9823011223',
       isMinor: true,
-      guardian: 'Rajesh Sharma (7:30 PM Pickup)',
+      guardian: 'Rajesh Sharma',
+      pickupNote: '7:30 PM Pickup',
       admissionDate: '2026-07-14',
       genuineDays: 48,
       bonusCredits: 1,
-      monthlyFee: 1500,
-      concession: 0,
+      monthlyFee: 3000,
+      concession: 200,
       concessionMonths: 0,
       idCardFee: 150,
       certFee: 300,
@@ -181,13 +184,16 @@ const DEFAULT_STATE = {
       id: 'stu_2',
       rollNo: 'TSM-2026-019',
       pin: '1234',
-      name: 'Ananya Kulkarni',
+      name: 'Ananya Sharma',
+      courses: ['Piano (Keyboard)'],
       course: 'Piano (Keyboard)',
       grade: 'Elementary Grade 1',
       batch: 'Tue/Thu/Sat • 5:00 PM - 6:00 PM',
-      phone: '9823044556',
+      phone: '9823011223',
+      parentPhone: '9823011223',
       isMinor: true,
-      guardian: 'Sneha Kulkarni',
+      guardian: 'Rajesh Sharma',
+      pickupNote: '6:00 PM Pickup',
       admissionDate: '2026-08-05',
       genuineDays: 34,
       bonusCredits: 2,
@@ -204,12 +210,12 @@ const DEFAULT_STATE = {
   ],
   attendance: {},
   audioClips: [
-    { id: 'aud_1', rollNo: 'TSM-2026-014', studentName: 'Aarav Sharma', title: 'Raag Bhupaali Alankaar Practice 1', date: '2026-11-11', dataUrl: '', status: 'Verified', feedback: 'Good tempo and clarity' },
-    { id: 'aud_2', rollNo: 'TSM-2026-014', studentName: 'Aarav Sharma', title: 'C Major Scale & Chord Transition', date: '2026-11-14', dataUrl: '', status: 'Verified', feedback: 'Clean transition' }
+    { id: 'aud_1', rollNo: 'TSM-2026-014', studentName: 'Aarav Sharma', title: 'TSM-2026-014_Aarav_Sharma_2026-11-11_Clip1', date: '2026-11-11', dataUrl: '', status: 'Verified', approvedAt: Date.now() - 86400000, feedback: 'Good tempo and clarity' },
+    { id: 'aud_2', rollNo: 'TSM-2026-014', studentName: 'Aarav Sharma', title: 'TSM-2026-014_Aarav_Sharma_2026-11-14_Clip2', date: '2026-11-14', dataUrl: '', status: 'Verified', approvedAt: Date.now(), feedback: 'Clean transition' }
   ],
   messages: [
-    { id: 'm1', rollNo: 'TSM-2026-014', sender: 'Student', text: 'Sir, uploaded both weekly practice audio clips.', time: '10:30 AM' },
-    { id: 'm2', rollNo: 'TSM-2026-014', sender: 'Admin', text: 'Verified Aarav. Your 48 genuine days and weekly clips are complete.', time: '10:45 AM' }
+    { id: 'm1', rollNo: 'TSM-2026-014', sender: 'Student', text: 'Sir, recorded both weekly practice audio clips.', time: '10:30 AM' },
+    { id: 'm2', rollNo: 'TSM-2026-014', sender: 'Admin', text: 'Approved Aarav. Clips auto-purge 3 days after approval.', time: '10:45 AM' }
   ],
   campaigns: [
     { id: 'c1', title: 'Winter Vocal & Keyboard Batch Reel', type: 'Unpaid / Organic', platform: 'Instagram Reels', status: 'Active', budget: '0', notes: 'Student performance clip @tikariyas' },
@@ -226,6 +232,7 @@ let activeTab = currentUser ? (currentUser.role === 'admin' ? 'dashboard' : 'stu
 let selectedDate = new Date().toISOString().split('T')[0];
 let filterBatch = 'ALL';
 let adminChatRoll = appState.students[0]?.rollNo || 'TSM-2026-014';
+let selectedReceiptIds = [];
 let db = null;
 let cloudSyncStatus = 'Connecting...';
 let loadedCustomFont = null;
@@ -235,6 +242,16 @@ let attachedImageDataUrl = null;
 let uploadedBasePdfBytes = null;
 let uploadedBasePdfName = '';
 let html5QrScanner = null;
+
+// In-App Audio Recorder State
+let mediaRecorder = null;
+let recordedChunks = [];
+let recordedAudioDataUrl = '';
+let recordedDurationSec = 0;
+let recordingTimerInterval = null;
+let isRecordingAudio = false;
+
+const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
 
 function setDynamicFavicon() {
   const c = document.createElement('canvas');
@@ -251,9 +268,37 @@ function setDynamicFavicon() {
   if (link) link.href = c.toDataURL('image/png');
 }
 
+function normalizeStudent(s) {
+  if (!Array.isArray(s.courses) || !s.courses.length) {
+    s.courses = s.course ? s.course.split(',').map(x => x.trim()).filter(Boolean) : ['Piano (Keyboard)'];
+  }
+  s.course = s.courses.join(', ');
+  if (s.genuineDays === undefined) s.genuineDays = s.attendedDays || 0;
+  if (s.concessionMonths === undefined) s.concessionMonths = 0;
+  if (!s.parentPhone) s.parentPhone = s.phone || '';
+  return s;
+}
+
+// Auto-purge audio binary data 3 days after Admin approval while preserving verified credit log
+function purgeExpiredAudioData(stateObj) {
+  if (!Array.isArray(stateObj.audioClips)) return false;
+  let purgedAny = false;
+  const now = Date.now();
+  stateObj.audioClips.forEach(c => {
+    if (c.status === 'Verified' && c.approvedAt && c.dataUrl) {
+      if (now - Number(c.approvedAt) >= THREE_DAYS_MS) {
+        c.dataUrl = '';
+        c.purgedAt = now;
+        purgedAny = true;
+      }
+    }
+  });
+  return purgedAny;
+}
+
 function loadState() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY) || localStorage.getItem('tsm_pwa_state_v2') || localStorage.getItem('tsm_pwa_state_v1');
+    const raw = localStorage.getItem(STORAGE_KEY) || localStorage.getItem('tsm_pwa_state_v4') || localStorage.getItem('tsm_pwa_state_v3');
     if (raw) {
       const parsed = JSON.parse(raw);
       if (parsed && parsed.students) {
@@ -261,10 +306,8 @@ function loadState() {
         if (!parsed.courses) parsed.courses = DEFAULT_COURSES;
         if (!parsed.batches) parsed.batches = DEFAULT_BATCHES;
         if (!parsed.audioClips) parsed.audioClips = [];
-        parsed.students.forEach(s => {
-          if (s.genuineDays === undefined) s.genuineDays = s.attendedDays || 0;
-          if (s.concessionMonths === undefined) s.concessionMonths = 0;
-        });
+        parsed.students = parsed.students.map(normalizeStudent);
+        purgeExpiredAudioData(parsed);
         return parsed;
       }
     }
@@ -273,10 +316,11 @@ function loadState() {
 }
 
 function saveState() {
+  purgeExpiredAudioData(appState);
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(appState));
   } catch (e) {
-    showToast('Storage warning: Keep uploaded files compact');
+    showToast('Storage notice: Old clips auto-cleared');
   }
   if (db) {
     db.collection('tsm_system').doc('master_state').set({
@@ -288,7 +332,7 @@ function saveState() {
 
 function loadSession() {
   try {
-    const raw = localStorage.getItem(SESSION_KEY);
+    const raw = localStorage.getItem(SESSION_KEY) || localStorage.getItem('tsm_active_session_v4');
     if (raw) return JSON.parse(raw);
   } catch (e) {}
   return null;
@@ -325,8 +369,11 @@ async function initFirebaseAuto() {
           if (!remote.courses) remote.courses = DEFAULT_COURSES;
           if (!remote.batches) remote.batches = DEFAULT_BATCHES;
           if (!remote.audioClips) remote.audioClips = [];
+          remote.students = remote.students.map(normalizeStudent);
+          const didPurge = purgeExpiredAudioData(remote);
           appState = remote;
           localStorage.setItem(STORAGE_KEY, JSON.stringify(appState));
+          if (didPurge) saveState();
           if (currentUser) renderCurrentTab();
           checkPublicQrVerify();
         }
@@ -406,7 +453,7 @@ function checkPublicQrVerify() {
 }
 
 // ==========================================
-// 3. CERTIFICATE ELIGIBILITY & BILLING ENGINE
+// 3. CERTIFICATE ELIGIBILITY, FAMILY GROUPING & BILLING ENGINE
 // ==========================================
 function getWeekRange(dateStr) {
   const d = new Date(dateStr);
@@ -448,7 +495,6 @@ function getWeeklyStats(dateStr, studentId) {
 }
 
 function evaluateCertificateEligibility(student, refDateStr) {
-  // Rule: 48 genuine days (no bonus days count) + 3 days/week attendance + 2 audio clips/week
   const genuineDays = Number(student.genuineDays || 0);
   const has48Genuine = genuineDays >= 48;
   const wk = getWeeklyStats(refDateStr, student.id);
@@ -482,8 +528,25 @@ function getMonthsEnrolled(admissionDateStr) {
 function getEffectiveConcession(student) {
   const months = getMonthsEnrolled(student.admissionDate);
   const period = Number(student.concessionMonths || 0);
-  if (period > 0 && months > period) return 0; // Concession period expired
+  if (period > 0 && months > period) return 0;
   return Number(student.concession || 0);
+}
+
+function getStudentNetPayable(student) {
+  const effConc = getEffectiveConcession(student);
+  return Math.max(0, Number(student.monthlyFee || 0) - effConc + Number(student.idCardFee || 0) + Number(student.certFee || 0));
+}
+
+function getFamilySiblings(student) {
+  const pPhone = (student.parentPhone || student.phone || '').trim();
+  const pName = (student.guardian || '').trim().toLowerCase();
+  return appState.students.filter(other => {
+    const oPhone = (other.parentPhone || other.phone || '').trim();
+    const oName = (other.guardian || '').trim().toLowerCase();
+    if (pPhone && oPhone && pPhone === oPhone) return true;
+    if (pName && oName && pName !== 'guardian verified' && pName !== 'self / verified' && pName === oName) return true;
+    return other.id === student.id;
+  });
 }
 
 function getNextBillingDate(admissionDateStr) {
@@ -576,6 +639,7 @@ function confirmLogout() {
 
 function executeLogout() {
   closeModal();
+  stopAudioRecording(true);
   currentUser = null;
   saveSession(null);
   document.getElementById('loginRollInput').value = '';
@@ -601,7 +665,7 @@ function renderNavTabs() {
   const studentTabs = [
     { id: 'student_home', label: 'My Profile & ID Card' },
     { id: 'student_attendance', label: 'My Attendance' },
-    { id: 'student_audio', label: 'Weekly Audio Clips' },
+    { id: 'student_audio', label: 'Record Audio Clip' },
     { id: 'student_fees', label: 'Fees & Receipts' },
     { id: 'student_vault', label: 'Study Material' },
     { id: 'student_messages', label: 'Message Teacher' }
@@ -621,6 +685,7 @@ function renderNavTabs() {
 
 function switchTab(id) {
   stopQrCamera();
+  stopAudioRecording(true);
   activeTab = id;
   renderNavTabs();
   renderCurrentTab();
@@ -707,7 +772,7 @@ function renderAdminDashboard(el) {
             <thead>
               <tr class="bg-slate-50 border-b border-slate-200 text-[11px] font-semibold text-slate-600 uppercase">
                 <th class="py-2.5 px-3">Roll No</th>
-                <th class="py-2.5 px-3">Student &amp; Course</th>
+                <th class="py-2.5 px-3">Student &amp; Instruments</th>
                 <th class="py-2.5 px-3">Genuine Days &amp; Audio</th>
                 <th class="py-2.5 px-3">Fee Status</th>
                 <th class="py-2.5 px-3 text-right">Actions</th>
@@ -764,7 +829,6 @@ function setStudentAttendanceStatus(studentId, newStatus) {
   const stu = appState.students.find(s => s.id === studentId);
 
   if (stu) {
-    // Only genuine 'present' days count toward 48 genuine days; bonus_used does NOT count toward 48 genuine days
     if (prev.status === 'present') stu.genuineDays = Math.max(0, (stu.genuineDays || 0) - 1);
     if (prev.status === 'teacher_leave') stu.bonusCredits = Math.max(0, (stu.bonusCredits || 0) - 1);
     if (prev.status === 'bonus_used') stu.bonusCredits = (stu.bonusCredits || 0) + 1;
@@ -804,7 +868,6 @@ function applyBatchStatus(status) {
 function processQrPayload(rawText) {
   if (!rawText) return false;
   let clean = rawText.trim().toUpperCase();
-  // Extract roll number whether scanned from full URL (?verify=TSM-2026-014) or typed directly (014 or TSM-2026-014)
   if (clean.includes('VERIFY=')) {
     clean = clean.split('VERIFY=')[1].split('&')[0];
   } else if (clean.includes('/')) {
@@ -928,7 +991,7 @@ function renderAttendanceTab(el) {
 
               <div class="w-44 shrink-0">
                 <div class="text-[11px] font-medium text-slate-700 truncate">${s.batch}</div>
-                <div class="text-[10px] text-slate-500 truncate">${s.isMinor ? 'Minor &bull; ' : ''}${s.guardian}</div>
+                <div class="text-[10px] text-slate-500 truncate">${s.isMinor ? 'Minor &bull; ' : ''}${s.guardian} ${s.pickupNote ? '('+s.pickupNote+')' : ''}</div>
               </div>
 
               <div class="flex items-center gap-1 shrink-0">
@@ -970,7 +1033,6 @@ function renderAttendanceTab(el) {
 function renderCoursesBatchesTab(el) {
   el.innerHTML = `
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
-      <!-- Courses & Instruments Designer -->
       <div class="lg:col-span-2 bg-white p-4 rounded-xl border border-slate-200 space-y-4">
         <div class="flex items-center justify-between">
           <h2 class="text-sm font-bold text-[#0F172A]">Courses, Instruments, Fees &amp; Discounts</h2>
@@ -1005,7 +1067,6 @@ function renderCoursesBatchesTab(el) {
         </div>
       </div>
 
-      <!-- Batch Timing Customization -->
       <div class="bg-white p-4 rounded-xl border border-slate-200 space-y-4">
         <div class="flex items-center justify-between">
           <h2 class="text-sm font-bold text-[#0F172A]">Batch Timings</h2>
@@ -1126,13 +1187,13 @@ function deleteBatchTiming(idx) {
 }
 
 // ==========================================
-// 8. STUDENTS, SMART-CARD ID & LETTER CERTIFICATE TEMPLATES
+// 8. STUDENTS (MULTI-INSTRUMENT & SAME-PARENT LINKING), ID CARDS & CERTIFICATES
 // ==========================================
 function renderStudentsTab(el) {
   el.innerHTML = `
     <div class="space-y-4">
       <div class="flex flex-wrap items-center justify-between gap-2 bg-white p-4 rounded-xl border border-slate-200">
-        <h2 class="text-sm font-bold text-[#0F172A]">Students, Smart-Card IDs &amp; Certificates</h2>
+        <h2 class="text-sm font-bold text-[#0F172A]">Students, Multi-Instrument Enrollment &amp; ID/Certs</h2>
         <div class="flex flex-wrap gap-2">
           <label class="px-2.5 py-1.5 border border-slate-300 text-xs font-semibold rounded-lg cursor-pointer hover:bg-slate-50">
             ${appState.idCardBgDataUrl ? 'ID Template Loaded' : 'Upload ID Template'}
@@ -1150,12 +1211,16 @@ function renderStudentsTab(el) {
         ${appState.students.map(s => {
           const elig = evaluateCertificateEligibility(s, selectedDate);
           const months = getMonthsEnrolled(s.admissionDate);
+          const siblings = getFamilySiblings(s);
           return `
             <div class="bg-white border border-slate-200 rounded-xl p-4 flex flex-col justify-between space-y-3">
               <div>
                 <div class="flex items-start justify-between gap-2">
                   <div>
-                    <span class="px-2 py-0.5 text-[10px] font-mono font-bold bg-slate-100 text-slate-800 rounded border border-slate-200">${s.rollNo}</span>
+                    <div class="flex items-center gap-1.5">
+                      <span class="px-2 py-0.5 text-[10px] font-mono font-bold bg-slate-100 text-slate-800 rounded border border-slate-200">${s.rollNo}</span>
+                      ${siblings.length > 1 ? `<span class="px-1.5 py-0.5 text-[9px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200 rounded">Family (${siblings.length})</span>` : ''}
+                    </div>
                     <h3 class="text-sm font-bold text-[#0F172A] mt-1.5">${s.name}</h3>
                     <p class="text-xs font-semibold text-indigo-700">${s.grade} &mdash; ${s.course}</p>
                   </div>
@@ -1165,6 +1230,7 @@ function renderStudentsTab(el) {
                 </div>
                 <div class="mt-3 pt-3 border-t border-slate-100 text-[11px] text-slate-600 space-y-1">
                   <div><b>Batch:</b> ${s.batch}</div>
+                  <div><b>Parent:</b> ${s.guardian} (${s.parentPhone || s.phone})</div>
                   <div><b>Admission:</b> ${s.admissionDate} (Mo #${months}) &bull; <b>Genuine Days:</b> ${s.genuineDays}</div>
                   <div><b>Weekly Audio:</b> ${elig.weeklyAudioCount}/2 &bull; <b>Concession:</b> ₹${s.concession} (${s.concessionMonths > 0 ? s.concessionMonths + ' mos' : 'Permanent'})</div>
                 </div>
@@ -1195,22 +1261,29 @@ function uploadTemplateImage(e, stateField) {
   reader.readAsDataURL(file);
 }
 
-function syncCourseFeeInModal(sel) {
-  const crs = appState.courses.find(x => x.name === sel.value);
-  if (!crs) return;
-  const form = sel.closest('form');
-  if (form) {
-    form.querySelector('[name="monthlyFee"]').value = crs.fee;
-    form.querySelector('[name="concession"]').value = crs.discount || 0;
-  }
+function recalcMultiCourseFee(container) {
+  const checked = [...container.querySelectorAll('input[name="selectedCourses"]:checked')];
+  let totalFee = 0;
+  let totalDisc = 0;
+  checked.forEach(cb => {
+    const crs = appState.courses.find(x => x.name === cb.value);
+    if (crs) {
+      totalFee += Number(crs.fee || 0);
+      totalDisc += Number(crs.discount || 0);
+    }
+  });
+  const feeInp = container.querySelector('[name="monthlyFee"]');
+  const discInp = container.querySelector('[name="concession"]');
+  if (feeInp && checked.length > 0) feeInp.value = totalFee;
+  if (discInp && checked.length > 0) discInp.value = totalDisc;
 }
 
 function openAddStudentModal() {
   const nextNum = 23 + appState.students.length;
   const roll = `TSM-2026-0${nextNum}`;
-  const firstCourse = appState.courses[0] || { fee: 1500, discount: 0 };
+  const firstCourse = appState.courses[0] || { name: 'Piano (Keyboard)', fee: 1500, discount: 0 };
   showModal(`
-    <h3 class="text-base font-bold text-[#0F172A] mb-3">New Student Admission</h3>
+    <h3 class="text-base font-bold text-[#0F172A] mb-3">New Student Admission (Multi-Instrument &amp; Family Ready)</h3>
     <form onsubmit="saveNewStudent(event)" class="space-y-3 text-xs">
       <div class="grid grid-cols-2 gap-3">
         <div>
@@ -1228,39 +1301,45 @@ function openAddStudentModal() {
           <input name="name" class="w-full px-3 py-2 border border-slate-300 rounded-lg" required />
         </div>
         <div>
-          <label class="block font-semibold text-slate-700 mb-1">WhatsApp Number</label>
+          <label class="block font-semibold text-slate-700 mb-1">Student / Primary WhatsApp</label>
           <input name="phone" class="w-full px-3 py-2 border border-slate-300 rounded-lg" required />
         </div>
       </div>
-      <div class="grid grid-cols-2 gap-3">
-        <div>
-          <label class="block font-semibold text-slate-700 mb-1">Instrument / Course</label>
-          <select name="course" onchange="syncCourseFeeInModal(this)" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
-            ${appState.courses.map(c => `<option value="${c.name}">${c.name} (₹${c.fee})</option>`).join('')}
-          </select>
+
+      <div>
+        <label class="block font-semibold text-slate-700 mb-1">Select Instruments / Courses (Check 1 or Multiple)</label>
+        <div class="grid grid-cols-2 sm:grid-cols-3 gap-1.5 p-2.5 border border-slate-300 rounded-lg bg-slate-50 max-h-36 overflow-y-auto">
+          ${appState.courses.map((c, idx) => `
+            <label class="flex items-center gap-1.5 text-[11px] font-medium text-slate-800 cursor-pointer">
+              <input type="checkbox" name="selectedCourses" value="${c.name}" ${idx===0?'checked':''} onchange="recalcMultiCourseFee(this.closest('form'))" />
+              <span class="truncate">${c.name} (₹${c.fee})</span>
+            </label>
+          `).join('')}
         </div>
+      </div>
+
+      <div class="grid grid-cols-3 gap-3">
         <div>
           <label class="block font-semibold text-slate-700 mb-1">Starting Grade</label>
-          <select name="grade" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+          <select name="grade" class="w-full px-2.5 py-2 border border-slate-300 rounded-lg">
             ${GRADES.map(g => `<option value="${g}">${g}</option>`).join('')}
           </select>
         </div>
-      </div>
-      <div class="grid grid-cols-2 gap-3">
         <div>
           <label class="block font-semibold text-slate-700 mb-1">Batch Timing</label>
-          <select name="batch" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+          <select name="batch" class="w-full px-2.5 py-2 border border-slate-300 rounded-lg">
             ${appState.batches.map(b => `<option value="${b}">${b}</option>`).join('')}
           </select>
         </div>
         <div>
           <label class="block font-semibold text-slate-700 mb-1">Admission Date</label>
-          <input type="date" name="admissionDate" value="${selectedDate}" class="w-full px-3 py-2 border border-slate-300 rounded-lg" required />
+          <input type="date" name="admissionDate" value="${selectedDate}" class="w-full px-2.5 py-2 border border-slate-300 rounded-lg" required />
         </div>
       </div>
+
       <div class="grid grid-cols-5 gap-2">
         <div>
-          <label class="block font-semibold text-slate-700 mb-1">Monthly Fee</label>
+          <label class="block font-semibold text-slate-700 mb-1">Total Fee</label>
           <input type="number" name="monthlyFee" value="${firstCourse.fee}" class="w-full px-2 py-2 border border-slate-300 rounded-lg" />
         </div>
         <div>
@@ -1268,7 +1347,7 @@ function openAddStudentModal() {
           <input type="number" name="concession" value="${firstCourse.discount}" class="w-full px-2 py-2 border border-slate-300 rounded-lg" />
         </div>
         <div>
-          <label class="block font-semibold text-slate-700 mb-1">Conc. Months</label>
+          <label class="block font-semibold text-slate-700 mb-1">Conc. Mos</label>
           <input type="number" name="concessionMonths" value="0" placeholder="0=All" class="w-full px-2 py-2 border border-slate-300 rounded-lg" />
         </div>
         <div>
@@ -1280,15 +1359,25 @@ function openAddStudentModal() {
           <input type="number" name="certFee" value="300" class="w-full px-2 py-2 border border-slate-300 rounded-lg" />
         </div>
       </div>
-      <div class="grid grid-cols-2 gap-3 items-center">
+
+      <div class="grid grid-cols-3 gap-2 items-center">
         <div>
-          <label class="block font-semibold text-slate-700 mb-1">Guardian / Pickup Note</label>
-          <input name="guardian" class="w-full px-3 py-2 border border-slate-300 rounded-lg" />
+          <label class="block font-semibold text-slate-700 mb-1">Parent / Guardian Name</label>
+          <input name="guardian" placeholder="Same name links siblings" class="w-full px-2.5 py-2 border border-slate-300 rounded-lg" />
         </div>
-        <label class="flex items-center gap-2 pt-4 font-semibold text-slate-700">
-          <input type="checkbox" name="isMinor" checked /> Minor Student (Child Safety Pickup)
-        </label>
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Parent Mobile (Family Link)</label>
+          <input name="parentPhone" placeholder="Same mobile links siblings" class="w-full px-2.5 py-2 border border-slate-300 rounded-lg" />
+        </div>
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Pickup Safety Note</label>
+          <input name="pickupNote" placeholder="e.g. 7:30 PM Pickup" class="w-full px-2.5 py-2 border border-slate-300 rounded-lg" />
+        </div>
       </div>
+      <label class="flex items-center gap-2 font-semibold text-slate-700">
+        <input type="checkbox" name="isMinor" checked /> Minor Student (Child Safety Pickup)
+      </label>
+
       <div class="flex justify-end gap-2 pt-3">
         <button type="button" onclick="closeModal()" class="px-4 py-2 border border-slate-300 rounded-lg font-semibold">Cancel</button>
         <button type="submit" class="px-4 py-2 bg-[#0F172A] text-white rounded-lg font-semibold">Save</button>
@@ -1299,14 +1388,21 @@ function openAddStudentModal() {
 
 function saveNewStudent(e) {
   e.preventDefault();
-  const fd = new FormData(e.target);
+  const form = e.target;
+  const fd = new FormData(form);
+  const selectedCourses = [...form.querySelectorAll('input[name="selectedCourses"]:checked')].map(cb => cb.value);
+  const finalCourses = selectedCourses.length ? selectedCourses : [appState.courses[0]?.name || 'Piano (Keyboard)'];
+  const phone = fd.get('phone').trim();
+
   const newStu = {
     id: 'stu_' + Date.now(),
     rollNo: fd.get('rollNo').toUpperCase(),
     pin: fd.get('pin'),
-    name: fd.get('name'),
-    phone: fd.get('phone'),
-    course: fd.get('course'),
+    name: fd.get('name').trim(),
+    phone,
+    parentPhone: (fd.get('parentPhone') || phone).trim(),
+    courses: finalCourses,
+    course: finalCourses.join(', '),
     grade: fd.get('grade'),
     batch: fd.get('batch'),
     admissionDate: fd.get('admissionDate'),
@@ -1321,7 +1417,8 @@ function saveNewStudent(e) {
     lastPaymentMode: 'UPI',
     lastPaymentDate: '-',
     isMinor: fd.get('isMinor') === 'on',
-    guardian: fd.get('guardian') || 'Guardian Verified',
+    guardian: (fd.get('guardian') || 'Guardian Verified').trim(),
+    pickupNote: (fd.get('pickupNote') || '').trim(),
     photoDataUrl: ''
   };
   appState.students.push(newStu);
@@ -1342,17 +1439,24 @@ function openEditStudentModal(stuId) {
           <input name="name" value="${s.name}" class="w-full px-3 py-2 border border-slate-300 rounded-lg" required />
         </div>
         <div>
-          <label class="block font-semibold text-slate-700 mb-1">WhatsApp Mobile</label>
+          <label class="block font-semibold text-slate-700 mb-1">Student WhatsApp</label>
           <input name="phone" value="${s.phone}" class="w-full px-3 py-2 border border-slate-300 rounded-lg" required />
         </div>
       </div>
-      <div class="grid grid-cols-3 gap-3">
-        <div>
-          <label class="block font-semibold text-slate-700 mb-1">Course</label>
-          <select name="course" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
-            ${appState.courses.map(c => `<option value="${c.name}" ${s.course===c.name?'selected':''}>${c.name}</option>`).join('')}
-          </select>
+
+      <div>
+        <label class="block font-semibold text-slate-700 mb-1">Enrolled Instruments / Courses (Check 1 or Multiple)</label>
+        <div class="grid grid-cols-2 sm:grid-cols-3 gap-1.5 p-2.5 border border-slate-300 rounded-lg bg-slate-50 max-h-36 overflow-y-auto">
+          ${appState.courses.map(c => `
+            <label class="flex items-center gap-1.5 text-[11px] font-medium text-slate-800 cursor-pointer">
+              <input type="checkbox" name="selectedCourses" value="${c.name}" ${(s.courses||[]).includes(c.name)?'checked':''} onchange="recalcMultiCourseFee(this.closest('form'))" />
+              <span class="truncate">${c.name} (₹${c.fee})</span>
+            </label>
+          `).join('')}
         </div>
+      </div>
+
+      <div class="grid grid-cols-3 gap-3">
         <div>
           <label class="block font-semibold text-slate-700 mb-1">Grade Level</label>
           <select name="grade" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
@@ -1360,13 +1464,22 @@ function openEditStudentModal(stuId) {
           </select>
         </div>
         <div>
-          <label class="block font-semibold text-slate-700 mb-1">Genuine Days</label>
-          <input type="number" name="genuineDays" value="${s.genuineDays}" class="w-full px-3 py-2 border border-slate-300 rounded-lg" />
+          <label class="block font-semibold text-slate-700 mb-1">Parent / Guardian Name</label>
+          <input name="guardian" value="${s.guardian}" class="w-full px-3 py-2 border border-slate-300 rounded-lg" />
+        </div>
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Parent Mobile (Family Link)</label>
+          <input name="parentPhone" value="${s.parentPhone || s.phone}" class="w-full px-3 py-2 border border-slate-300 rounded-lg" />
         </div>
       </div>
-      <div class="grid grid-cols-5 gap-2">
+
+      <div class="grid grid-cols-6 gap-2">
         <div>
-          <label class="block font-semibold text-slate-700 mb-1">Monthly Fee</label>
+          <label class="block font-semibold text-slate-700 mb-1">Gen. Days</label>
+          <input type="number" name="genuineDays" value="${s.genuineDays}" class="w-full px-2 py-2 border border-slate-300 rounded-lg" />
+        </div>
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Total Fee</label>
           <input type="number" name="monthlyFee" value="${s.monthlyFee}" class="w-full px-2 py-2 border border-slate-300 rounded-lg" />
         </div>
         <div>
@@ -1378,7 +1491,7 @@ function openEditStudentModal(stuId) {
           <input type="number" name="concessionMonths" value="${s.concessionMonths || 0}" class="w-full px-2 py-2 border border-slate-300 rounded-lg" />
         </div>
         <div>
-          <label class="block font-semibold text-slate-700 mb-1">ID Card Fee</label>
+          <label class="block font-semibold text-slate-700 mb-1">ID Fee</label>
           <input type="number" name="idCardFee" value="${s.idCardFee}" class="w-full px-2 py-2 border border-slate-300 rounded-lg" />
         </div>
         <div>
@@ -1399,11 +1512,16 @@ function openEditStudentModal(stuId) {
 
 function saveEditedStudent(e, stuId) {
   e.preventDefault();
+  const form = e.target;
   const s = appState.students.find(x => x.id === stuId);
-  const fd = new FormData(e.target);
-  s.name = fd.get('name');
-  s.phone = fd.get('phone');
-  s.course = fd.get('course');
+  const fd = new FormData(form);
+  const selectedCourses = [...form.querySelectorAll('input[name="selectedCourses"]:checked')].map(cb => cb.value);
+  s.courses = selectedCourses.length ? selectedCourses : s.courses;
+  s.course = s.courses.join(', ');
+  s.name = fd.get('name').trim();
+  s.phone = fd.get('phone').trim();
+  s.parentPhone = (fd.get('parentPhone') || s.phone).trim();
+  s.guardian = (fd.get('guardian') || s.guardian).trim();
   s.grade = fd.get('grade');
   s.genuineDays = Number(fd.get('genuineDays') || 0);
   s.monthlyFee = Number(fd.get('monthlyFee') || 0);
@@ -1449,7 +1567,7 @@ function openIdCardModal(stuId) {
         </div>
         <div class="font-mono font-bold text-[10px] text-indigo-700">${s.rollNo}</div>
         <div class="text-xs font-bold text-[#0F172A] leading-tight">${s.name}</div>
-        <div class="text-[9px] font-semibold text-slate-700 mt-0.5">${s.grade} &mdash; ${s.course}</div>
+        <div class="text-[8.5px] font-semibold text-slate-700 mt-0.5 leading-tight">${s.grade} &mdash; ${s.course}</div>
         <div class="text-[8px] text-slate-500 mt-0.5">Admitted: ${s.admissionDate}</div>
       </div>
       <div class="px-3 py-2 bg-slate-50/95 border-t border-slate-200 flex items-center justify-between">
@@ -1470,7 +1588,7 @@ function openIdCardModal(stuId) {
   }, 50);
 }
 
-// Letter-Sized Certificate (8.5in x 11in) with 48 Genuine Days + Weekly Audio & Attendance Verification
+// Letter-Sized Certificate (8.5in x 11in)
 function openCertificateModal(stuId) {
   const s = appState.students.find(x => x.id === stuId);
   if (!s) return;
@@ -1531,7 +1649,6 @@ async function downloadLetterCertificatePdf(stuId) {
   const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
   const fontReg = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
-  // Standard US Letter: 612 x 792 pt
   const p = pdfDoc.addPage([612, 792]);
   if (appState.certBgDataUrl && appState.certBgDataUrl.startsWith('data:image/png')) {
     const bgImg = await pdfDoc.embedPng(appState.certBgDataUrl);
@@ -1556,7 +1673,7 @@ async function downloadLetterCertificatePdf(stuId) {
   const certLevel = Math.min(8, Math.max(1, Math.floor(s.genuineDays / 48) || 1));
   const certSerial = `TSM-CERT-${s.rollNo.split('-').pop()}-G${certLevel}`;
   p.drawText(`Serial: ${certSerial} | Genuine Days: ${s.genuineDays}`, { x: 64, y: 120, size: 9, font: fontReg, color: rgb(0.28, 0.33, 0.41) });
-  p.drawText('Director, TIKARIYA\'S SCHOOL OF MUSIC', { x: 360, y: 120, size: 9.5, font: fontBold, color: rgb(0.06, 0.09, 0.16) });
+  p.drawText("Director, TIKARIYA'S SCHOOL OF MUSIC", { x: 360, y: 120, size: 9.5, font: fontBold, color: rgb(0.06, 0.09, 0.16) });
 
   const bytes = await pdfDoc.save();
   const blob = new Blob([bytes], { type: 'application/pdf' });
@@ -1567,19 +1684,42 @@ async function downloadLetterCertificatePdf(stuId) {
 }
 
 // ==========================================
-// 9. FEES, CUSTOM BROCHURE UPLOAD & COMPACT STANDARD RECEIPT (A5)
+// 9. FEES & COMBINED FAMILY / MULTI-INSTRUMENT STANDARD RECEIPTS (A5)
 // ==========================================
+function toggleReceiptSelection(stuId) {
+  if (selectedReceiptIds.includes(stuId)) {
+    selectedReceiptIds = selectedReceiptIds.filter(id => id !== stuId);
+  } else {
+    selectedReceiptIds.push(stuId);
+  }
+  renderCurrentTab();
+}
+
+function downloadFamilyCombinedReceipt(stuId) {
+  const s = appState.students.find(x => x.id === stuId);
+  if (!s) return;
+  const siblings = getFamilySiblings(s);
+  downloadCombinedStandardReceiptPdf(siblings.map(x => x.id));
+}
+
 function renderFeesTab(el) {
   el.innerHTML = `
     <div class="space-y-4">
       <div class="bg-white p-4 rounded-xl border border-slate-200 flex flex-wrap items-center justify-between gap-2">
-        <h2 class="text-sm font-bold text-[#0F172A]">Fees, Concession Periods &amp; Standard Receipts</h2>
+        <div>
+          <h2 class="text-sm font-bold text-[#0F172A]">Fees, Combined Family Receipts &amp; Multi-Instrument Billing</h2>
+        </div>
         <div class="flex flex-wrap gap-2">
+          ${selectedReceiptIds.length > 0 ? `
+            <button onclick="downloadCombinedStandardReceiptPdf(selectedReceiptIds)" class="px-3 py-1.5 bg-indigo-700 text-white text-xs font-semibold rounded-lg hover:bg-indigo-800">
+              Combined Receipt PDF (${selectedReceiptIds.length} Selected)
+            </button>
+          ` : ''}
           <label class="px-3 py-1.5 border border-slate-300 text-xs font-semibold rounded-lg cursor-pointer hover:bg-slate-50">
-            ${appState.customBrochureName ? `Brochure: ${appState.customBrochureName}` : 'Upload Custom Brochure PDF'}
+            ${appState.customBrochureName ? `Brochure: ${appState.customBrochureName}` : 'Upload Custom Brochure'}
             <input type="file" accept="application/pdf" onchange="uploadCustomBrochure(event)" class="hidden" />
           </label>
-          <button onclick="downloadActiveBrochure()" class="px-3 py-1.5 bg-[#0F172A] text-white text-xs font-semibold rounded-lg">Download Brochure</button>
+          <button onclick="downloadActiveBrochure()" class="px-3 py-1.5 bg-[#0F172A] text-white text-xs font-semibold rounded-lg">Brochure PDF</button>
         </div>
       </div>
 
@@ -1587,32 +1727,36 @@ function renderFeesTab(el) {
         <table class="w-full text-left border-collapse text-xs">
           <thead>
             <tr class="bg-slate-50 border-b border-slate-200 text-[11px] font-semibold text-slate-600 uppercase">
-              <th class="py-2.5 px-3">Student</th>
-              <th class="py-2.5 px-3">Admission / Cycle</th>
-              <th class="py-2.5 px-3">Fee - Active Conc. + ID/Cert</th>
+              <th class="py-2.5 px-3 w-8">Sel</th>
+              <th class="py-2.5 px-3">Student &amp; Parent</th>
+              <th class="py-2.5 px-3">Instruments / Courses</th>
+              <th class="py-2.5 px-3">Fee - Conc. + ID/Cert</th>
               <th class="py-2.5 px-3">Net Payable</th>
-              <th class="py-2.5 px-3">Mode &amp; Status</th>
-              <th class="py-2.5 px-3 text-right">Actions</th>
+              <th class="py-2.5 px-3">Status</th>
+              <th class="py-2.5 px-3 text-right">Receipts &amp; WhatsApp</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-200">
             ${appState.students.map(s => {
               const effConc = getEffectiveConcession(s);
-              const net = Math.max(0, s.monthlyFee - effConc + s.idCardFee + s.certFee);
-              const months = getMonthsEnrolled(s.admissionDate);
+              const net = getStudentNetPayable(s);
+              const siblings = getFamilySiblings(s);
+              const isChecked = selectedReceiptIds.includes(s.id);
               return `
                 <tr class="hover:bg-slate-50">
                   <td class="py-2.5 px-3">
-                    <div class="font-bold text-[#0F172A]">${s.name}</div>
-                    <div class="text-[10px] font-mono text-slate-500">${s.rollNo}</div>
+                    <input type="checkbox" ${isChecked ? 'checked' : ''} onchange="toggleReceiptSelection('${s.id}')" />
                   </td>
-                  <td class="py-2.5 px-3 text-slate-600">
-                    <div>${s.admissionDate} (Mo #${months})</div>
-                    <div class="text-[10px] text-slate-500">Due: ${getNextBillingDate(s.admissionDate)}</div>
+                  <td class="py-2.5 px-3">
+                    <div class="font-bold text-[#0F172A]">${s.name} <span class="font-mono font-normal text-[10px] text-slate-500">(${s.rollNo})</span></div>
+                    <div class="text-[10px] text-slate-500">Parent: <b>${s.guardian}</b> (${s.parentPhone || s.phone})</div>
+                  </td>
+                  <td class="py-2.5 px-3">
+                    <div class="font-semibold text-indigo-700">${s.course}</div>
+                    <div class="text-[10px] text-slate-500">Admitted: ${s.admissionDate}</div>
                   </td>
                   <td class="py-2.5 px-3 tabular-nums text-slate-600">
                     ₹${s.monthlyFee} - ₹${effConc} + ₹${s.idCardFee + s.certFee}
-                    ${s.concessionMonths > 0 ? `<div class="text-[10px] text-slate-400">Conc. Period: ${s.concessionMonths} mos</div>` : ''}
                   </td>
                   <td class="py-2.5 px-3 font-bold text-[#0F172A] tabular-nums">₹${net}</td>
                   <td class="py-2.5 px-3">
@@ -1622,9 +1766,10 @@ function renderFeesTab(el) {
                       <option value="Unpaid|Pending" ${s.feeStatus==='Unpaid'?'selected':''}>Unpaid</option>
                     </select>
                   </td>
-                  <td class="py-2.5 px-3 text-right space-x-1">
-                    <button onclick="downloadStandardReceiptPdf('${s.id}')" class="px-2.5 py-1 bg-[#0F172A] text-white text-[11px] font-semibold rounded hover:bg-slate-800">Receipt PDF</button>
-                    <button onclick="sendWhatsAppFeeAlert('${s.id}')" class="px-2.5 py-1 bg-emerald-50 text-emerald-800 border border-emerald-200 text-[11px] font-semibold rounded hover:bg-emerald-100">WhatsApp</button>
+                  <td class="py-2.5 px-3 text-right space-x-1 whitespace-nowrap">
+                    <button onclick="downloadCombinedStandardReceiptPdf(['${s.id}'])" class="px-2.5 py-1 bg-[#0F172A] text-white text-[11px] font-semibold rounded hover:bg-slate-800">Receipt PDF</button>
+                    ${siblings.length > 1 ? `<button onclick="downloadFamilyCombinedReceipt('${s.id}')" class="px-2.5 py-1 bg-indigo-50 text-indigo-700 border border-indigo-200 text-[11px] font-semibold rounded hover:bg-indigo-100">Family Receipt (${siblings.length})</button>` : ''}
+                    <button onclick="sendWhatsAppFeeAlert('${s.id}')" class="px-2 py-1 bg-emerald-50 text-emerald-800 border border-emerald-200 text-[11px] font-semibold rounded hover:bg-emerald-100">WA</button>
                   </td>
                 </tr>
               `;
@@ -1662,7 +1807,7 @@ async function downloadActiveBrochure() {
   const pdfDoc = await PDFDocument.create();
   const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
   const fontReg = await pdfDoc.embedFont(StandardFonts.Helvetica);
-  const p = pdfDoc.addPage([420, 595]); // Compact A5 Brochure
+  const p = pdfDoc.addPage([420, 595]);
 
   p.drawRectangle({ x: 24, y: 24, width: 372, height: 547, borderColor: rgb(0.8, 0.83, 0.88), borderWidth: 1 });
   p.drawText('B. S. TIKARIYA CULTURAL FOUNDATION', { x: 105, y: 540, size: 8.5, font: fontBold, color: rgb(0.28, 0.33, 0.41) });
@@ -1693,95 +1838,245 @@ function updateFeeStatus(stuId, val) {
   renderCurrentTab();
 }
 
-// Standard Compact Receipt Size (A5: 420 x 595 pt, lightweight single-page/compact layout)
-async function downloadStandardReceiptPdf(stuId) {
-  const s = appState.students.find(x => x.id === stuId);
-  if (!s) return;
+async function downloadCombinedStandardReceiptPdf(studentIds) {
+  const targets = appState.students.filter(x => studentIds.includes(x.id));
+  if (!targets.length) return;
+
   const { PDFDocument, StandardFonts, rgb } = PDFLib;
   const pdfDoc = await PDFDocument.create();
   const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
   const fontReg = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
-  // Standard Receipt Voucher Size (420 x 595 pt / A5)
   const p = pdfDoc.addPage([420, 595]);
-  p.drawRectangle({ x: 20, y: 20, width: 380, height: 555, borderColor: rgb(0.75, 0.78, 0.84), borderWidth: 1 });
-  p.drawRectangle({ x: 20, y: 570, width: 380, height: 5, color: rgb(0.06, 0.09, 0.16) });
+  p.drawRectangle({ x: 18, y: 18, width: 384, height: 559, borderColor: rgb(0.75, 0.78, 0.84), borderWidth: 1 });
+  p.drawRectangle({ x: 18, y: 572, width: 384, height: 5, color: rgb(0.06, 0.09, 0.16) });
 
-  p.drawText('B. S. TIKARIYA CULTURAL FOUNDATION', { x: 105, y: 545, size: 8.5, font: fontBold, color: rgb(0.28, 0.33, 0.41) });
-  p.drawText('CIN: U88900MH2025NPL454435', { x: 140, y: 534, size: 7.5, font: fontReg, color: rgb(0.39, 0.45, 0.55) });
-  drawStyledAcademyTitlePdf(p, 85, 512, 14.5, fontBold);
-  p.drawText('FEE RECEIPT', { x: 175, y: 492, size: 9, font: fontBold, color: rgb(0.28, 0.33, 0.41) });
+  p.drawText('B. S. TIKARIYA CULTURAL FOUNDATION', { x: 105, y: 548, size: 8.5, font: fontBold, color: rgb(0.28, 0.33, 0.41) });
+  p.drawText('CIN: U88900MH2025NPL454435', { x: 140, y: 537, size: 7.5, font: fontReg, color: rgb(0.39, 0.45, 0.55) });
+  drawStyledAcademyTitlePdf(p, 85, 515, 14.5, fontBold);
 
-  const effConc = getEffectiveConcession(s);
-  const net = Math.max(0, s.monthlyFee - effConc + s.idCardFee + s.certFee);
-  const months = getMonthsEnrolled(s.admissionDate);
-  const rows = [
-    ['Student:', `${s.name} (${s.rollNo})`],
-    ['Course:', `${s.grade} - ${s.course}`],
-    ['Billing Cycle:', `From ${s.admissionDate} (Month #${months})`],
-    ['Payment:', `${s.feeStatus} via ${s.lastPaymentMode} (${s.lastPaymentDate})`],
-    ['Tuition Fee:', `INR ${s.monthlyFee}`],
-    ['Concession:', `- INR ${effConc}`],
-    ['ID / Cert Fee:', `INR ${s.idCardFee + s.certFee}`],
-    ['NET PAID / DUE:', `INR ${net}`]
-  ];
-  let y = 460;
-  rows.forEach(([k, v]) => {
-    p.drawText(k, { x: 36, y, size: 8.5, font: fontBold, color: rgb(0.28, 0.33, 0.41) });
-    p.drawText(String(v), { x: 145, y, size: 8.5, font: fontReg, color: rgb(0.06, 0.09, 0.16) });
-    y -= 20;
+  const isFamily = targets.length > 1;
+  const receiptNo = `TSM-RCP-${Date.now().toString().slice(-6)}`;
+  p.drawText(isFamily ? 'CONSOLIDATED FAMILY FEE RECEIPT' : 'OFFICIAL FEE RECEIPT', {
+    x: isFamily ? 120 : 155, y: 496, size: 8.5, font: fontBold, color: rgb(0.28, 0.33, 0.41)
   });
 
-  // Compact Attendance Summary Footer on same receipt
-  p.drawLine({ start: { x: 36, y: y - 4 }, end: { x: 384, y: y - 4 }, thickness: 0.5, color: rgb(0.8, 0.83, 0.88) });
-  p.drawText(`Genuine Attendance: ${s.genuineDays} Days (${s.genuineDays % 48}/48) | Bonus Credits: ${s.bonusCredits}`, {
-    x: 36, y: y - 20, size: 8, font: fontReg, color: rgb(0.28, 0.33, 0.41)
+  const primary = targets[0];
+  p.drawText(`Receipt No: ${receiptNo}`, { x: 32, y: 476, size: 8, font: fontBold, color: rgb(0.06, 0.09, 0.16) });
+  p.drawText(`Date: ${selectedDate}`, { x: 310, y: 476, size: 8, font: fontReg, color: rgb(0.28, 0.33, 0.41) });
+  p.drawText(`Parent / Guardian: ${primary.guardian} (${primary.parentPhone || primary.phone})`, {
+    x: 32, y: 462, size: 8.5, font: fontBold, color: rgb(0.06, 0.09, 0.16)
   });
+
+  p.drawLine({ start: { x: 32, y: 452 }, end: { x: 388, y: 452 }, thickness: 0.7, color: rgb(0.75, 0.78, 0.84) });
+
+  let y = 436;
+  let grandTotal = 0;
+
+  targets.forEach((stu, index) => {
+    const effConc = getEffectiveConcession(stu);
+    const subTotal = getStudentNetPayable(stu);
+    grandTotal += subTotal;
+
+    p.drawText(`${index + 1}. ${stu.name} (${stu.rollNo}) — ${stu.grade}`, {
+      x: 32, y, size: 8.5, font: fontBold, color: rgb(0.06, 0.09, 0.16)
+    });
+    y -= 13;
+
+    const courseList = Array.isArray(stu.courses) && stu.courses.length ? stu.courses : [stu.course];
+    p.drawText(`   Courses: ${courseList.join(' + ')}`, {
+      x: 32, y, size: 8, font: fontReg, color: rgb(0.26, 0.22, 0.79)
+    });
+    y -= 13;
+
+    p.drawText(`   Fee: INR ${stu.monthlyFee} | Conc: -INR ${effConc} | ID/Cert: INR ${stu.idCardFee + stu.certFee} | ${stu.feeStatus} (${stu.lastPaymentMode})`, {
+      x: 32, y, size: 7.5, font: fontReg, color: rgb(0.28, 0.33, 0.41)
+    });
+    p.drawText(`INR ${subTotal}`, { x: 342, y, size: 8.5, font: fontBold, color: rgb(0.06, 0.09, 0.16) });
+    y -= 18;
+  });
+
+  p.drawLine({ start: { x: 32, y: y + 4 }, end: { x: 388, y: y + 4 }, thickness: 0.8, color: rgb(0.06, 0.09, 0.16) });
+  y -= 12;
+  p.drawText('GRAND TOTAL:', { x: 32, y, size: 9.5, font: fontBold, color: rgb(0.06, 0.09, 0.16) });
+  p.drawText(`INR ${grandTotal}`, { x: 332, y, size: 10, font: fontBold, color: rgb(0.72, 0.11, 0.11) });
+
+  y -= 24;
+  targets.forEach(stu => {
+    p.drawText(`${stu.rollNo}: ${stu.genuineDays} Genuine Days (${stu.genuineDays % 48}/48) | Bonus Credits: ${stu.bonusCredits}`, {
+      x: 32, y, size: 7.5, font: fontReg, color: rgb(0.35, 0.4, 0.48)
+    });
+    y -= 12;
+  });
+
+  p.drawText("Authorized Signatory — TIKARIYA'S SCHOOL OF MUSIC", { x: 185, y: 34, size: 7.5, font: fontBold, color: rgb(0.28, 0.33, 0.41) });
 
   const bytes = await pdfDoc.save({ useObjectStreams: true });
   const blob = new Blob([bytes], { type: 'application/pdf' });
   const link = document.createElement('a');
   link.href = URL.createObjectURL(blob);
-  link.download = `TSM_Receipt_${s.rollNo}.pdf`;
+  link.download = isFamily ? `TSM_Family_Receipt_${primary.guardian.replace(/\s+/g, '_')}.pdf` : `TSM_Receipt_${primary.rollNo}.pdf`;
   link.click();
 }
 
 function sendWhatsAppFeeAlert(stuId) {
   const s = appState.students.find(x => x.id === stuId);
-  const effConc = getEffectiveConcession(s);
-  const net = Math.max(0, s.monthlyFee - effConc + s.idCardFee + s.certFee);
+  const siblings = getFamilySiblings(s);
+  const totalFamily = siblings.reduce((acc, item) => acc + getStudentNetPayable(item), 0);
+  const targetPhone = s.parentPhone || s.phone;
+  const namesStr = siblings.map(x => `${x.name} (${x.course})`).join(', ');
   const msg = s.feeStatus === 'Paid'
-    ? `B. S. TIKARIYA CULTURAL FOUNDATION - TIKARIYA'S SCHOOL OF MUSIC. Fee Receipt Confirmation for ${s.name} (${s.rollNo}): INR ${net} received via ${s.lastPaymentMode}. Thank you.`
-    : `B. S. TIKARIYA CULTURAL FOUNDATION - TIKARIYA'S SCHOOL OF MUSIC. Fee Reminder for ${s.name} (${s.rollNo}): Monthly fee of INR ${net} is due as per your admission cycle (${s.admissionDate}). Kindly pay via UPI or Cash.`;
-  window.open(`https://wa.me/91${s.phone}?text=${encodeURIComponent(msg)}`, '_blank');
+    ? `B. S. TIKARIYA CULTURAL FOUNDATION - TIKARIYA'S SCHOOL OF MUSIC. Consolidated Fee Receipt Confirmation for ${namesStr}: Total INR ${totalFamily} received via ${s.lastPaymentMode}. Thank you.`
+    : `B. S. TIKARIYA CULTURAL FOUNDATION - TIKARIYA'S SCHOOL OF MUSIC. Fee Reminder for ${namesStr}: Total payable INR ${totalFamily} is due. Kindly pay via UPI or Cash.`;
+  window.open(`https://wa.me/91${targetPhone}?text=${encodeURIComponent(msg)}`, '_blank');
 }
 
 // ==========================================
-// 10. PRACTICE AUDIO CLIP SYSTEM (2 CLIPS/WEEK FOR CERT ELIGIBILITY)
+// 10. IN-APP LOW-SIZE AUDIO RECORDER, AUTO-NAMING & 3-DAY AUTO-PURGE
 // ==========================================
+function generateAutoAudioClipName(stu) {
+  const sameDayCount = (appState.audioClips || []).filter(c => c.rollNo === stu.rollNo && c.date === selectedDate).length + 1;
+  const safeName = stu.name.trim().replace(/\s+/g, '_');
+  const safeCourse = (stu.courses?.[0] || stu.course || 'Practice').trim().replace(/[^a-zA-Z0-9]+/g, '_');
+  return `${stu.rollNo}_${safeName}_${safeCourse}_${selectedDate}_Clip${sameDayCount}`;
+}
+
+async function toggleInAppAudioRecord(stuId) {
+  const stu = appState.students.find(x => x.id === stuId);
+  if (!stu) return;
+
+  if (isRecordingAudio) {
+    stopAudioRecording(false);
+    return;
+  }
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        channelCount: 1,
+        sampleRate: 16000,
+        echoCancellation: true,
+        noiseSuppression: true
+      }
+    });
+
+    recordedChunks = [];
+    recordedAudioDataUrl = '';
+    recordedDurationSec = 0;
+
+    // Low bitrate (24 kbps mono Opus/WebM) for ultra-small file size (~3 KB per second, ~90 KB for 30s)
+    const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : '';
+    const options = mimeType ? { mimeType, audioBitsPerSecond: 24000 } : { audioBitsPerSecond: 24000 };
+    mediaRecorder = new MediaRecorder(stream, options);
+
+    mediaRecorder.ondataavailable = e => {
+      if (e.data && e.data.size > 0) recordedChunks.push(e.data);
+    };
+
+    mediaRecorder.onstop = () => {
+      stream.getTracks().forEach(t => t.stop());
+      const blob = new Blob(recordedChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
+      const reader = new FileReader();
+      reader.onload = ev => {
+        recordedAudioDataUrl = ev.target.result;
+        const sizeKb = Math.round(blob.size / 1024);
+        showToast(`Recorded ${recordedDurationSec}s (${sizeKb} KB)`);
+        renderCurrentTab();
+      };
+      reader.readAsDataURL(blob);
+    };
+
+    mediaRecorder.start();
+    isRecordingAudio = true;
+    renderCurrentTab();
+
+    recordingTimerInterval = setInterval(() => {
+      recordedDurationSec++;
+      const timerEl = document.getElementById('recTimerText');
+      if (timerEl) timerEl.textContent = `${recordedDurationSec}s / 45s`;
+      if (recordedDurationSec >= 45) {
+        stopAudioRecording(false);
+      }
+    }, 1000);
+  } catch (err) {
+    showToast('Microphone access denied or unavailable');
+  }
+}
+
+function stopAudioRecording(discard) {
+  if (recordingTimerInterval) {
+    clearInterval(recordingTimerInterval);
+    recordingTimerInterval = null;
+  }
+  isRecordingAudio = false;
+  if (discard) {
+    recordedChunks = [];
+    recordedAudioDataUrl = '';
+    recordedDurationSec = 0;
+  }
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+    try { mediaRecorder.stop(); } catch (e) {}
+  }
+}
+
+function submitRecordedAudioClip(stuId) {
+  const stu = appState.students.find(x => x.id === stuId);
+  if (!stu || !recordedAudioDataUrl) return;
+  const titleInp = document.getElementById('autoAudioTitleInput');
+  const autoTitle = titleInp ? titleInp.value.trim() : generateAutoAudioClipName(stu);
+
+  appState.audioClips.unshift({
+    id: 'aud_' + Date.now(),
+    rollNo: stu.rollNo,
+    studentName: stu.name,
+    title: autoTitle || generateAutoAudioClipName(stu),
+    date: selectedDate,
+    dataUrl: recordedAudioDataUrl,
+    status: 'Submitted',
+    approvedAt: null,
+    feedback: ''
+  });
+
+  recordedAudioDataUrl = '';
+  recordedChunks = [];
+  recordedDurationSec = 0;
+  saveState();
+  renderCurrentTab();
+  showToast('Practice recording submitted');
+}
+
 function renderAdminAudioTab(el) {
   el.innerHTML = `
     <div class="space-y-4">
       <div class="bg-white p-4 rounded-xl border border-slate-200 flex items-center justify-between">
         <div>
-          <h2 class="text-sm font-bold text-[#0F172A]">Student Weekly Practice Audio Clips (2 Clips/Week Required for Certificate)</h2>
+          <h2 class="text-sm font-bold text-[#0F172A]">Student Weekly Practice Audio Clips (2 Clips/Week Required)</h2>
+          <p class="text-[11px] text-slate-500">Audio files automatically delete 3 days after approval while retaining verified progress credit.</p>
         </div>
       </div>
 
       <div class="bg-white rounded-xl border border-slate-200 divide-y divide-slate-200">
-        ${appState.audioClips.length ? appState.audioClips.map(c => `
-          <div class="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-            <div class="space-y-1">
-              <div class="font-bold text-[#0F172A]">${c.title} &mdash; <span class="text-indigo-700">${c.studentName} (${c.rollNo})</span></div>
-              <div class="text-[11px] text-slate-500">Submitted: ${c.date} &bull; Status: <b>${c.status}</b></div>
-              ${c.dataUrl ? `<audio controls src="${c.dataUrl}" class="h-8 mt-1"></audio>` : '<span class="text-[10px] text-slate-400">(Sample Reference Clip)</span>'}
+        ${appState.audioClips.length ? appState.audioClips.map(c => {
+          let expiryNote = '';
+          if (c.status === 'Verified' && c.approvedAt) {
+            const msLeft = THREE_DAYS_MS - (Date.now() - Number(c.approvedAt));
+            const hrsLeft = Math.max(0, Math.ceil(msLeft / (1000 * 60 * 60)));
+            expiryNote = c.dataUrl ? ` &bull; Auto-deletes in ${hrsLeft}h` : ' &bull; Audio auto-deleted after 3d (Credit kept)';
+          }
+          return `
+            <div class="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+              <div class="space-y-1">
+                <div class="font-bold text-[#0F172A]">${c.title}</div>
+                <div class="text-[11px] text-slate-500">Student: <b>${c.studentName}</b> (${c.rollNo}) &bull; ${c.date} &bull; Status: <b>${c.status}</b>${expiryNote}</div>
+                ${c.dataUrl ? `<audio controls src="${c.dataUrl}" class="h-8 mt-1"></audio>` : '<span class="text-[10px] text-slate-400">Audio file purged (Credit verified)</span>'}
+              </div>
+              <div class="flex items-center gap-2">
+                <input value="${c.feedback || ''}" placeholder="Feedback..." onchange="updateAudioFeedback('${c.id}', this.value)" class="px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs" />
+                <button onclick="verifyAudioClip('${c.id}')" class="px-3 py-1.5 bg-emerald-700 text-white font-semibold rounded-lg">Approve</button>
+              </div>
             </div>
-            <div class="flex items-center gap-2">
-              <input value="${c.feedback || ''}" placeholder="Teacher feedback..." onchange="updateAudioFeedback('${c.id}', this.value)" class="px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs" />
-              <button onclick="verifyAudioClip('${c.id}')" class="px-3 py-1.5 bg-emerald-700 text-white font-semibold rounded-lg">Verify</button>
-            </div>
-          </div>
-        `).join('') : '<p class="p-6 text-xs text-slate-500 text-center">No audio clips uploaded yet.</p>'}
+          `;
+        }).join('') : '<p class="p-6 text-xs text-slate-500 text-center">No audio clips recorded yet.</p>'}
       </div>
     </div>
   `;
@@ -1794,35 +2089,13 @@ function updateAudioFeedback(clipId, text) {
 
 function verifyAudioClip(clipId) {
   const c = appState.audioClips.find(x => x.id === clipId);
-  if (c) { c.status = 'Verified'; saveState(); renderCurrentTab(); showToast('Audio clip verified'); }
-}
-
-function uploadStudentAudioClip(e, stu) {
-  e.preventDefault();
-  const title = document.getElementById('audioTitleInput').value.trim();
-  const file = document.getElementById('audioFileInput').files[0];
-  if (!title || !file) return;
-  if (file.size > 1500000) {
-    showToast('Please upload a compressed MP3/M4A clip under 1.5 MB');
-    return;
-  }
-  const reader = new FileReader();
-  reader.onload = function(ev) {
-    appState.audioClips.unshift({
-      id: 'aud_' + Date.now(),
-      rollNo: stu.rollNo,
-      studentName: stu.name,
-      title,
-      date: selectedDate,
-      dataUrl: ev.target.result,
-      status: 'Submitted',
-      feedback: ''
-    });
+  if (c) {
+    c.status = 'Verified';
+    c.approvedAt = Date.now();
     saveState();
     renderCurrentTab();
-    showToast('Practice audio clip uploaded');
-  };
-  reader.readAsDataURL(file);
+    showToast('Approved — audio will auto-delete after 3 days');
+  }
 }
 
 // ==========================================
@@ -2102,7 +2375,7 @@ function renderMessagesTab(el) {
       <div class="bg-white p-4 rounded-xl border border-slate-200 space-y-3">
         <h3 class="text-sm font-bold text-[#0F172A]">WhatsApp Notifications</h3>
         <select id="waStudentSelect" class="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg">
-          ${appState.students.map(s => `<option value="${s.id}">${s.name} (${s.rollNo}) — +91 ${s.phone}</option>`).join('')}
+          ${appState.students.map(s => `<option value="${s.id}">${s.name} (${s.rollNo}) — +91 ${s.parentPhone || s.phone}</option>`).join('')}
         </select>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
           <button onclick="launchWaTemplate('welcome')" class="p-2.5 text-left text-xs font-semibold border border-slate-200 rounded-lg hover:bg-slate-50">1. Welcome Message</button>
@@ -2134,6 +2407,7 @@ function sendAdminMessage(e) {
 function launchWaTemplate(type) {
   const s = appState.students.find(x => x.id === document.getElementById('waStudentSelect').value);
   if (!s) return;
+  const targetPhone = s.parentPhone || s.phone;
   const templates = {
     welcome: `B. S. TIKARIYA CULTURAL FOUNDATION - TIKARIYA'S SCHOOL OF MUSIC. Welcome ${s.name} (Roll No: ${s.rollNo}) to ${s.grade} - ${s.course}. Batch: ${s.batch}.`,
     fee_due: `TIKARIYA'S SCHOOL OF MUSIC: Reminder that monthly tuition fee for ${s.name} (${s.rollNo}) is due as per admission date ${s.admissionDate}. Payment accepted via UPI or Cash.`,
@@ -2141,7 +2415,7 @@ function launchWaTemplate(type) {
     short_att: `TIKARIYA'S SCHOOL OF MUSIC: Attendance Notice for ${s.name} (${s.rollNo}). Weekly attendance is below the 3-day requirement (*).`,
     cert_ready: `TIKARIYA'S SCHOOL OF MUSIC: Congratulations ${s.name} (${s.rollNo})! You have completed 48 genuine days and weekly practice audio submissions for your ${s.grade} Certificate.`
   };
-  window.open(`https://wa.me/91${s.phone}?text=${encodeURIComponent(templates[type])}`, '_blank');
+  window.open(`https://wa.me/91${targetPhone}?text=${encodeURIComponent(templates[type])}`, '_blank');
 }
 
 // ==========================================
@@ -2257,14 +2531,14 @@ function resetDemoData() {
 }
 
 // ==========================================
-// 14. STUDENT PORTAL (WITH AUDIO UPLOAD & PERSISTENT LOGIN)
+// 14. STUDENT PORTAL (IN-APP RECORDER, AUTO-NAMING & FAMILY RECEIPTS)
 // ==========================================
 function renderStudentPortal(el, tab) {
   const s = appState.students.find(x => x.id === currentUser.studentId);
   if (!s) return;
   const mod48 = s.genuineDays % 48;
-  const effConc = getEffectiveConcession(s);
-  const netFee = Math.max(0, s.monthlyFee - effConc + s.idCardFee + s.certFee);
+  const netFee = getStudentNetPayable(s);
+  const siblings = getFamilySiblings(s);
   const months = getMonthsEnrolled(s.admissionDate);
   const nextDue = getNextBillingDate(s.admissionDate);
   const elig = evaluateCertificateEligibility(s, selectedDate);
@@ -2357,26 +2631,50 @@ function renderStudentPortal(el, tab) {
     `;
   } else if (tab === 'student_audio') {
     const myClips = appState.audioClips.filter(c => c.rollNo.toUpperCase() === s.rollNo.toUpperCase());
+    const autoClipName = generateAutoAudioClipName(s);
     el.innerHTML = `
       <div class="max-w-xl mx-auto space-y-4">
         <div class="bg-white p-4 rounded-xl border border-slate-200 space-y-3 text-xs">
-          <h3 class="text-sm font-bold text-[#0F172A]">Upload Weekly Practice Audio Clip (2 Clips/Week Required)</h3>
-          <form onsubmit="uploadStudentAudioClip(event, appState.students.find(x=>x.id==='${s.id}'))" class="space-y-2.5">
-            <input id="audioTitleInput" placeholder="Song / Alankaar / Raag Practice Title" class="w-full px-3 py-2 border border-slate-300 rounded-lg" required />
-            <input id="audioFileInput" type="file" accept="audio/*" class="w-full text-xs" required />
-            <button type="submit" class="px-4 py-2 bg-[#0F172A] text-white font-semibold rounded-lg">Submit Audio Clip</button>
-          </form>
+          <div class="flex items-center justify-between">
+            <h3 class="text-sm font-bold text-[#0F172A]">In-App Practice Audio Recorder (2 Clips/Week)</h3>
+            <span class="px-2 py-0.5 bg-slate-100 border border-slate-200 rounded font-mono text-[10px]">${elig.weeklyAudioCount}/2 This Week</span>
+          </div>
+          <p class="text-[11px] text-slate-500">Low-size voice/instrument recording (max 45s) with automated student naming. Auto-deletes 3 days after teacher approval.</p>
+
+          <div>
+            <label class="block font-semibold text-slate-700 mb-1">Automated Clip Name</label>
+            <input id="autoAudioTitleInput" value="${autoClipName}" class="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono text-xs bg-slate-50" />
+          </div>
+
+          <div class="flex flex-wrap items-center gap-2 pt-1">
+            <button type="button" onclick="toggleInAppAudioRecord('${s.id}')"
+              class="px-4 py-2 font-semibold rounded-lg text-white transition ${isRecordingAudio ? 'bg-[#B91C1C] animate-pulse' : 'bg-[#0F172A] hover:bg-slate-800'}">
+              ${isRecordingAudio ? 'Stop Recording' : 'Start In-App Recording'}
+            </button>
+            ${isRecordingAudio ? `<span id="recTimerText" class="font-mono font-bold text-red-700">${recordedDurationSec}s / 45s</span>` : ''}
+          </div>
+
+          ${recordedAudioDataUrl ? `
+            <div class="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-2">
+              <div class="text-[11px] font-semibold text-slate-700">Preview Recording (${recordedDurationSec}s):</div>
+              <audio controls src="${recordedAudioDataUrl}" class="h-8 w-full"></audio>
+              <div class="flex gap-2">
+                <button type="button" onclick="submitRecordedAudioClip('${s.id}')" class="px-4 py-1.5 bg-emerald-700 text-white font-semibold rounded-lg">Submit Clip</button>
+                <button type="button" onclick="stopAudioRecording(true); renderCurrentTab();" class="px-3 py-1.5 border border-slate-300 rounded-lg font-semibold">Discard</button>
+              </div>
+            </div>
+          ` : ''}
         </div>
 
         <div class="bg-white p-4 rounded-xl border border-slate-200 divide-y divide-slate-200 text-xs">
           ${myClips.map(c => `
             <div class="py-3 space-y-1">
               <div class="flex justify-between font-bold text-[#0F172A]">
-                <span>${c.title}</span>
-                <span class="text-emerald-700">${c.status}</span>
+                <span class="font-mono text-[11px]">${c.title}</span>
+                <span class="${c.status==='Verified' ? 'text-emerald-700' : 'text-amber-700'}">${c.status}</span>
               </div>
               <div class="text-[11px] text-slate-500">${c.date} ${c.feedback ? `&bull; Feedback: ${c.feedback}` : ''}</div>
-              ${c.dataUrl ? `<audio controls src="${c.dataUrl}" class="h-8 mt-1 w-full"></audio>` : ''}
+              ${c.dataUrl ? `<audio controls src="${c.dataUrl}" class="h-8 mt-1 w-full"></audio>` : '<span class="text-[10px] text-slate-400">Audio auto-deleted after 3-day approval retention</span>'}
             </div>
           `).join('')}
         </div>
@@ -2386,12 +2684,15 @@ function renderStudentPortal(el, tab) {
     el.innerHTML = `
       <div class="max-w-xl mx-auto bg-white p-5 rounded-xl border border-slate-200 space-y-3 text-xs">
         <h3 class="text-sm font-bold text-[#0F172A]">Fees &amp; Receipts</h3>
-        <div class="p-3 bg-slate-50 rounded-lg border border-slate-200 flex items-center justify-between">
+        <div class="p-3 bg-slate-50 rounded-lg border border-slate-200 flex flex-wrap items-center justify-between gap-2">
           <div>
-            <div class="font-bold text-[#0F172A]">Monthly Payable: INR ${netFee}</div>
+            <div class="font-bold text-[#0F172A]">${s.course} &mdash; INR ${netFee}</div>
             <div class="text-slate-500">Admitted: ${s.admissionDate} (Month #${months}) &bull; Status: <b>${s.feeStatus}</b></div>
           </div>
-          <button onclick="downloadStandardReceiptPdf('${s.id}')" class="px-3 py-2 bg-[#0F172A] text-white font-semibold rounded-lg">Receipt PDF</button>
+          <div class="flex gap-1.5">
+            <button onclick="downloadCombinedStandardReceiptPdf(['${s.id}'])" class="px-3 py-2 bg-[#0F172A] text-white font-semibold rounded-lg">My Receipt PDF</button>
+            ${siblings.length > 1 ? `<button onclick="downloadFamilyCombinedReceipt('${s.id}')" class="px-3 py-2 bg-indigo-700 text-white font-semibold rounded-lg">Family Receipt (${siblings.length})</button>` : ''}
+          </div>
         </div>
       </div>
     `;
