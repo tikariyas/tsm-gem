@@ -4,8 +4,12 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <meta name="theme-color" content="#0F172A" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="TSM" />
   <title>TIKARIYA'S SCHOOL OF MUSIC</title>
-  <link rel="icon" type="image/png" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAYUlEQVR4nO3ZwQkAIAwEwcz+m7bW0g/i4C6B4T1kZg4A4L+0A2gH0A6gHUA7gHYA7QDaAbQDaAfQDqAdQDuAdgDtANoBtANoB9AOoB1AO4B2AO0A2gG0A2gH0A6gHUA7wAE/2gJ871c7WQAAAABJRU5ErkJggg==" />
+  <link id="faviconLink" rel="icon" type="image/png" href="" />
+  <link id="appleIconLink" rel="apple-touch-icon" href="" />
+  <link id="manifestLink" rel="manifest" href="" />
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/opentype.js@1.3.4/dist/opentype.min.js"></script>
@@ -96,10 +100,107 @@
 
 <script>
 // ==========================================
-// 1. CONFIG, PERSISTENT SESSION & STATE
+// 1. PWA MANIFEST & HIGH-RES DESKTOP/MENU APP ICONS
 // ==========================================
-const STORAGE_KEY = 'tsm_pwa_state_v5';
-const SESSION_KEY = 'tsm_active_session_v5';
+function generateAppIconPng(size) {
+  const c = document.createElement('canvas');
+  c.width = size; c.height = size;
+  const ctx = c.getContext('2d');
+  const r = Math.round(size * 0.22);
+  ctx.fillStyle = '#0F172A';
+  ctx.beginPath();
+  ctx.roundRect(0, 0, size, size, r);
+  ctx.fill();
+
+  ctx.strokeStyle = '#334155';
+  ctx.lineWidth = Math.max(2, size * 0.02);
+  ctx.beginPath();
+  ctx.roundRect(size * 0.04, size * 0.04, size * 0.92, size * 0.92, r * 0.85);
+  ctx.stroke();
+
+  const fontSize = Math.round(size * 0.34);
+  ctx.font = `900 ${fontSize}px Arial, sans-serif`;
+  ctx.textBaseline = 'middle';
+  const y = size * 0.52;
+  const wTS = ctx.measureText('TS').width;
+  const wM = ctx.measureText('M').width;
+  const startX = (size - (wTS + wM)) / 2;
+
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillText('TS', startX, y);
+  ctx.fillStyle = '#EF4444';
+  ctx.fillText('M', startX + wTS, y);
+
+  return c.toDataURL('image/png');
+}
+
+function initPwaIconsAndManifest() {
+  try {
+    const icon64 = generateAppIconPng(64);
+    const icon192 = generateAppIconPng(192);
+    const icon512 = generateAppIconPng(512);
+
+    const fav = document.getElementById('faviconLink');
+    const apple = document.getElementById('appleIconLink');
+    if (fav) fav.href = icon64;
+    if (apple) apple.href = icon192;
+
+    const baseUrl = window.location.href.split('?')[0].split('#')[0];
+    const manifestObj = {
+      name: "TIKARIYA'S SCHOOL OF MUSIC",
+      short_name: "TSM",
+      description: "TIKARIYA'S SCHOOL OF MUSIC - B. S. TIKARIYA CULTURAL FOUNDATION",
+      start_url: baseUrl,
+      scope: baseUrl,
+      display: "standalone",
+      background_color: "#F8FAFC",
+      theme_color: "#0F172A",
+      icons: [
+        { src: icon192, sizes: "192x192", type: "image/png", purpose: "any maskable" },
+        { src: icon512, sizes: "512x512", type: "image/png", purpose: "any maskable" }
+      ]
+    };
+    const manifestBlob = new Blob([JSON.stringify(manifestObj)], { type: 'application/manifest+json' });
+    const manifestLink = document.getElementById('manifestLink');
+    if (manifestLink) manifestLink.href = URL.createObjectURL(manifestBlob);
+  } catch (e) {}
+}
+
+let deferredInstallPrompt = null;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredInstallPrompt = e;
+});
+
+async function triggerPwaInstall() {
+  if (deferredInstallPrompt) {
+    deferredInstallPrompt.prompt();
+    const res = await deferredInstallPrompt.userChoice;
+    deferredInstallPrompt = null;
+    if (res.outcome === 'accepted') showToast('App installed with TSM icon');
+  } else {
+    showModal(`
+      <div class="space-y-3 text-xs">
+        <div class="flex items-center justify-between">
+          <h3 class="text-sm font-bold text-[#0F172A]">Create Desktop &amp; Start Menu App Icon</h3>
+          <button onclick="closeModal()" class="text-slate-500 font-semibold">Close</button>
+        </div>
+        <p class="text-slate-600">If Chrome previously cached an older shortcut without an icon:</p>
+        <ol class="list-decimal pl-5 space-y-1.5 text-slate-700">
+          <li>Open Chrome Menu (<b>&vellip;</b> top-right) &rarr; <b>Cast, save, and share</b> &rarr; <b>Uninstall TIKARIYA'S SCHOOL OF MUSIC</b> (if listed).</li>
+          <li>Reload this page once, then click <b>Cast, save, and share</b> &rarr; <b>Install page as app</b> (or <b>Create shortcut</b> with <i>Open as window</i> checked).</li>
+          <li>The new <b>TSM</b> icon will now appear on your Desktop and Start Menu.</li>
+        </ol>
+      </div>
+    `);
+  }
+}
+
+// ==========================================
+// 2. CONFIG, PERSISTENT SESSION & STATE
+// ==========================================
+const STORAGE_KEY = 'tsm_pwa_state_v6';
+const SESSION_KEY = 'tsm_active_session_v6';
 const CONFIG_KEY = 'tsm_firebase_config_v1';
 
 const DEFAULT_FIREBASE_CONFIG = {
@@ -121,14 +222,14 @@ const GRADES = [
 ];
 
 const DEFAULT_COURSES = [
-  { id: 'crs_1', name: 'Piano (Keyboard)', category: 'Instrument', fee: 1500, discount: 0, feature: 'Staff & Sargam Notation + Ear Training' },
-  { id: 'crs_2', name: 'Guitar', category: 'Instrument', fee: 1500, discount: 0, feature: 'Chords, Fingerstyle & Lead' },
-  { id: 'crs_3', name: 'Violin', category: 'Instrument', fee: 1600, discount: 0, feature: 'Bowing & Classical Ragas' },
-  { id: 'crs_4', name: 'Flute', category: 'Instrument', fee: 1400, discount: 0, feature: 'Breath Control & Bansuri Alankaars' },
-  { id: 'crs_5', name: 'Harmonium', category: 'Instrument', fee: 1400, discount: 0, feature: 'Thaat, Accompaniment & Sur Sadhana' },
-  { id: 'crs_6', name: 'Tabla', category: 'Instrument', fee: 1400, discount: 0, feature: 'Taal, Kaayda & Layakari' },
-  { id: 'crs_7', name: 'Vocal', category: 'Instrument', fee: 1500, discount: 0, feature: 'Hindustani Classical & Voice Culture' },
-  { id: 'crs_8', name: 'Singing', category: 'Instrument', fee: 1500, discount: 0, feature: 'Light Classical, Bhajan & Film' },
+  { id: 'crs_1', name: 'Piano', category: 'Instrument', fee: 1200, discount: 0, feature: 'Staff & Sargam Notation + Ear Training' },
+  { id: 'crs_2', name: 'Guitar', category: 'Instrument', fee: 1200, discount: 0, feature: 'Chords, Fingerstyle & Lead' },
+  { id: 'crs_3', name: 'Violin', category: 'Instrument', fee: 1500, discount: 0, feature: 'Bowing & Classical Ragas' },
+  { id: 'crs_4', name: 'Flute', category: 'Instrument', fee: 1200, discount: 0, feature: 'Breath Control & Bansuri Alankaars' },
+  { id: 'crs_5', name: 'Harmonium', category: 'Instrument', fee: 1200, discount: 0, feature: 'Thaat, Accompaniment & Sur Sadhana' },
+  { id: 'crs_6', name: 'Tabla', category: 'Instrument', fee: 1000, discount: 0, feature: 'Taal, Kaayda & Layakari' },
+  { id: 'crs_7', name: 'Vocals', category: 'Instrument', fee: 1000, discount: 0, feature: 'Hindustani Classical & Voice Culture' },
+  { id: 'crs_8', name: 'Octopad', category: 'Instrument', fee: 1500, discount: 0, feature: 'Electronic Rhythm & Live Percussion' },
   { id: 'crs_9', name: 'Sound Recordist', category: 'Special Course', fee: 2500, discount: 0, feature: 'DAW Mixing, Mic Placement & Mastering' },
   { id: 'crs_10', name: 'Karaoke Singing', category: 'Special Course', fee: 1500, discount: 0, feature: 'Pitch, Track Sync & Stage Mic Technique' },
   { id: 'crs_11', name: 'Music Sense Workshop', category: 'Workshop', fee: 1000, discount: 0, feature: 'Rhythm, Scale & Ear Recognition' },
@@ -136,11 +237,7 @@ const DEFAULT_COURSES = [
 ];
 
 const DEFAULT_BATCHES = [
-  'Mon/Wed/Fri • 5:00 PM - 6:00 PM',
-  'Mon/Wed/Fri • 6:30 PM - 7:30 PM',
-  'Tue/Thu/Sat • 5:00 PM - 6:00 PM',
-  'Tue/Thu/Sat • 6:30 PM - 7:30 PM',
-  'Weekend Batch • 11:00 AM - 1:00 PM'
+  '8:30 AM', '9:30 AM', '10:30 AM', '4:00 PM', '5:00 PM', '6:00 PM'
 ];
 
 const DEFAULT_STATE = {
@@ -152,16 +249,18 @@ const DEFAULT_STATE = {
   customBrochureName: '',
   idCardBgDataUrl: '',
   certBgDataUrl: '',
+  holidays: {},
+  certs: [],
   students: [
     {
       id: 'stu_1',
       rollNo: 'TSM-2026-014',
       pin: '1234',
       name: 'Aarav Sharma',
-      courses: ['Guitar', 'Vocal'],
-      course: 'Guitar, Vocal',
+      courses: ['Guitar', 'Vocals'],
+      course: 'Guitar, Vocals',
       grade: 'Elementary Grade 2',
-      batch: 'Mon/Wed/Fri • 6:30 PM - 7:30 PM',
+      batch: '6:00 PM',
       phone: '9823011223',
       parentPhone: '9823011223',
       isMinor: true,
@@ -170,7 +269,7 @@ const DEFAULT_STATE = {
       admissionDate: '2026-07-14',
       genuineDays: 48,
       bonusCredits: 1,
-      monthlyFee: 3000,
+      monthlyFee: 2200,
       concession: 200,
       concessionMonths: 0,
       idCardFee: 150,
@@ -179,50 +278,16 @@ const DEFAULT_STATE = {
       lastPaymentMode: 'UPI',
       lastPaymentDate: '2026-11-10',
       photoDataUrl: ''
-    },
-    {
-      id: 'stu_2',
-      rollNo: 'TSM-2026-019',
-      pin: '1234',
-      name: 'Ananya Sharma',
-      courses: ['Piano (Keyboard)'],
-      course: 'Piano (Keyboard)',
-      grade: 'Elementary Grade 1',
-      batch: 'Tue/Thu/Sat • 5:00 PM - 6:00 PM',
-      phone: '9823011223',
-      parentPhone: '9823011223',
-      isMinor: true,
-      guardian: 'Rajesh Sharma',
-      pickupNote: '6:00 PM Pickup',
-      admissionDate: '2026-08-05',
-      genuineDays: 34,
-      bonusCredits: 2,
-      monthlyFee: 1500,
-      concession: 200,
-      concessionMonths: 4,
-      idCardFee: 150,
-      certFee: 0,
-      feeStatus: 'Unpaid',
-      lastPaymentMode: 'Cash',
-      lastPaymentDate: '2026-10-05',
-      photoDataUrl: ''
     }
   ],
   attendance: {},
-  audioClips: [
-    { id: 'aud_1', rollNo: 'TSM-2026-014', studentName: 'Aarav Sharma', title: 'TSM-2026-014_Aarav_Sharma_2026-11-11_Clip1', date: '2026-11-11', dataUrl: '', status: 'Verified', approvedAt: Date.now() - 86400000, feedback: 'Good tempo and clarity' },
-    { id: 'aud_2', rollNo: 'TSM-2026-014', studentName: 'Aarav Sharma', title: 'TSM-2026-014_Aarav_Sharma_2026-11-14_Clip2', date: '2026-11-14', dataUrl: '', status: 'Verified', approvedAt: Date.now(), feedback: 'Clean transition' }
-  ],
-  messages: [
-    { id: 'm1', rollNo: 'TSM-2026-014', sender: 'Student', text: 'Sir, recorded both weekly practice audio clips.', time: '10:30 AM' },
-    { id: 'm2', rollNo: 'TSM-2026-014', sender: 'Admin', text: 'Approved Aarav. Clips auto-purge 3 days after approval.', time: '10:45 AM' }
-  ],
+  audioClips: [],
+  messages: [],
   campaigns: [
-    { id: 'c1', title: 'Winter Vocal & Keyboard Batch Reel', type: 'Unpaid / Organic', platform: 'Instagram Reels', status: 'Active', budget: '0', notes: 'Student performance clip @tikariyas' },
-    { id: 'c2', title: 'Sound Recordist & Karaoke Workshop Ad', type: 'Paid Promotion', platform: 'Instagram Sponsored', status: 'Scheduled', budget: '1500', notes: 'Target Jalna & surrounding music learners' }
+    { id: 'c1', title: 'Winter Vocal & Keyboard Batch Reel', type: 'Unpaid / Organic', platform: 'Instagram Reels', status: 'Active', budget: '0', notes: 'Student performance clip @tikariyas' }
   ],
   vaultItems: [
-    { id: 'v1', title: 'KB NOTES — PART 1 (Alankaars 1–20 & Raags)', course: 'Piano (Keyboard)', grade: 'Elementary Grade 1', pages: 35, date: '2026-11-01' }
+    { id: 'v1', title: 'KB NOTES — PART 1 (Alankaars 1–20 & Raags)', course: 'Piano', grade: 'Elementary Grade 1', pages: 35, date: '2026-11-01' }
   ]
 };
 
@@ -230,8 +295,10 @@ let appState = loadState();
 let currentUser = loadSession();
 let activeTab = currentUser ? (currentUser.role === 'admin' ? 'dashboard' : 'student_home') : 'dashboard';
 let selectedDate = new Date().toISOString().split('T')[0];
+let calendarMonth = selectedDate.slice(0, 7); // YYYY-MM
+let attendanceSubView = 'register'; // 'register' | 'calendar'
 let filterBatch = 'ALL';
-let adminChatRoll = appState.students[0]?.rollNo || 'TSM-2026-014';
+let adminChatRoll = appState.students[0]?.rollNo || 'TSM-0001';
 let selectedReceiptIds = [];
 let db = null;
 let cloudSyncStatus = 'Connecting...';
@@ -253,33 +320,22 @@ let isRecordingAudio = false;
 
 const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
 
-function setDynamicFavicon() {
-  const c = document.createElement('canvas');
-  c.width = 64; c.height = 64;
-  const ctx = c.getContext('2d');
-  ctx.fillStyle = '#0F172A';
-  ctx.beginPath(); ctx.roundRect(0, 0, 64, 64, 14); ctx.fill();
-  ctx.font = '900 22px Arial, sans-serif';
-  ctx.fillStyle = '#FFFFFF';
-  ctx.fillText('TS', 9, 40);
-  ctx.fillStyle = '#EF4444';
-  ctx.fillText('M', 38, 40);
-  const link = document.querySelector("link[rel*='icon']");
-  if (link) link.href = c.toDataURL('image/png');
-}
-
 function normalizeStudent(s) {
   if (!Array.isArray(s.courses) || !s.courses.length) {
-    s.courses = s.course ? s.course.split(',').map(x => x.trim()).filter(Boolean) : ['Piano (Keyboard)'];
+    s.courses = s.course ? s.course.split(/[,/]/).map(x => x.trim()).filter(Boolean) : ['Piano'];
   }
   s.course = s.courses.join(', ');
   if (s.genuineDays === undefined) s.genuineDays = s.attendedDays || 0;
   if (s.concessionMonths === undefined) s.concessionMonths = 0;
   if (!s.parentPhone) s.parentPhone = s.phone || '';
+  if (!s.pin) s.pin = '1234';
+  if (!s.grade) {
+    const gradeIdx = Math.min(GRADES.length - 1, Math.floor((s.genuineDays || 0) / 48));
+    s.grade = GRADES[gradeIdx];
+  }
   return s;
 }
 
-// Auto-purge audio binary data 3 days after Admin approval while preserving verified credit log
 function purgeExpiredAudioData(stateObj) {
   if (!Array.isArray(stateObj.audioClips)) return false;
   let purgedAny = false;
@@ -298,7 +354,7 @@ function purgeExpiredAudioData(stateObj) {
 
 function loadState() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY) || localStorage.getItem('tsm_pwa_state_v4') || localStorage.getItem('tsm_pwa_state_v3');
+    const raw = localStorage.getItem(STORAGE_KEY) || localStorage.getItem('tsm_pwa_state_v5') || localStorage.getItem('tsm_pwa_state_v4');
     if (raw) {
       const parsed = JSON.parse(raw);
       if (parsed && parsed.students) {
@@ -306,6 +362,8 @@ function loadState() {
         if (!parsed.courses) parsed.courses = DEFAULT_COURSES;
         if (!parsed.batches) parsed.batches = DEFAULT_BATCHES;
         if (!parsed.audioClips) parsed.audioClips = [];
+        if (!parsed.holidays) parsed.holidays = {};
+        if (!parsed.certs) parsed.certs = [];
         parsed.students = parsed.students.map(normalizeStudent);
         purgeExpiredAudioData(parsed);
         return parsed;
@@ -320,7 +378,7 @@ function saveState() {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(appState));
   } catch (e) {
-    showToast('Storage notice: Old clips auto-cleared');
+    showToast('Storage notice: Keep attachments compact');
   }
   if (db) {
     db.collection('tsm_system').doc('master_state').set({
@@ -332,7 +390,7 @@ function saveState() {
 
 function loadSession() {
   try {
-    const raw = localStorage.getItem(SESSION_KEY) || localStorage.getItem('tsm_active_session_v4');
+    const raw = localStorage.getItem(SESSION_KEY) || localStorage.getItem('tsm_active_session_v5');
     if (raw) return JSON.parse(raw);
   } catch (e) {}
   return null;
@@ -369,6 +427,8 @@ async function initFirebaseAuto() {
           if (!remote.courses) remote.courses = DEFAULT_COURSES;
           if (!remote.batches) remote.batches = DEFAULT_BATCHES;
           if (!remote.audioClips) remote.audioClips = [];
+          if (!remote.holidays) remote.holidays = {};
+          if (!remote.certs) remote.certs = [];
           remote.students = remote.students.map(normalizeStudent);
           const didPurge = purgeExpiredAudioData(remote);
           appState = remote;
@@ -396,7 +456,223 @@ function showToast(msg) {
 }
 
 // ==========================================
-// 2. PUBLIC QR VERIFICATION (?verify= & ?cert=)
+// 3. BACKUP & RESTORE ENGINE (Tikariya_Backup_YYYY-MM-DD.json)
+// ==========================================
+function exportBackupJson() {
+  const todayStr = new Date().toISOString().split('T')[0];
+  const nosMap = {};
+  const attMap = {};
+  const payMap = {};
+
+  appState.students.forEach((s, idx) => {
+    nosMap[s.id] = s.rollNo || `TSM-${String(idx + 1).padStart(4, '0')}`;
+    if (s.feeStatus === 'Paid') {
+      payMap[s.id] = { [s.admissionDate.slice(0, 7)]: { d: s.lastPaymentDate || todayStr, m: s.lastPaymentMode || 'UPI' } };
+    }
+  });
+
+  Object.entries(appState.attendance || {}).forEach(([key, rec]) => {
+    const idx = key.indexOf('_');
+    if (idx === -1) return;
+    const dt = key.slice(0, idx);
+    const sid = key.slice(idx + 1);
+    if (!attMap[dt]) attMap[dt] = {};
+    attMap[dt][sid] = rec.status === 'present' ? 'P' : rec.status === 'absent' ? 'A' : rec.status === 'teacher_leave' ? 'L' : rec.status;
+  });
+
+  const feeCfg = {};
+  appState.courses.forEach(c => { feeCfg[c.name] = c.fee; });
+
+  const backupPayload = {
+    app: "tsm-attendance",
+    saved: todayStr,
+    schemaVersion: 3,
+    data: {
+      students: appState.students.map(s => ({
+        id: s.id,
+        gid: s.id,
+        name: s.name,
+        course: s.courses && s.courses.length > 1 ? s.courses.join('/') : (s.courses?.[0] || s.course),
+        batch: s.batch,
+        adm: s.admissionDate,
+        fee: s.monthlyFee,
+        dob: s.dob || '',
+        phone: s.phone || '',
+        parent: s.guardian || '',
+        pphone: s.parentPhone || s.phone || '',
+        email: s.email || '',
+        addr: s.addr || '',
+        notes: s.pickupNote || '',
+        photo: s.photoDataUrl || '',
+        pin: s.pin || '1234',
+        genuineDays: s.genuineDays || 0,
+        bonusCredits: s.bonusCredits || 0,
+        concession: s.concession || 0,
+        concessionMonths: s.concessionMonths || 0,
+        idCardFee: s.idCardFee || 0,
+        certFee: s.certFee || 0,
+        feeStatus: s.feeStatus || 'Unpaid'
+      })),
+      att: attMap,
+      pay: payMap,
+      hol: appState.holidays || {},
+      cfg: {
+        batches: appState.batches,
+        fee: feeCfg
+      },
+      nos: nosMap,
+      certs: appState.certs || [],
+      audioClips: appState.audioClips || [],
+      messages: appState.messages || [],
+      campaigns: appState.campaigns || [],
+      vaultItems: appState.vaultItems || [],
+      adminRollNo: appState.adminRollNo,
+      adminPin: appState.adminPin
+    }
+  };
+
+  const blob = new Blob([JSON.stringify(backupPayload, null, 2)], { type: 'application/json' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = `Tikariya_Backup_${todayStr}.json`;
+  link.click();
+  showToast(`Exported Tikariya_Backup_${todayStr}.json`);
+}
+
+function handleRestoreBackupFile(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(ev) {
+    try {
+      const raw = JSON.parse(ev.target.result);
+      const d = raw.data ? raw.data : raw;
+      if (!d || !Array.isArray(d.students)) {
+        showToast('Invalid backup JSON format');
+        return;
+      }
+
+      const nosMap = d.nos || {};
+      const attMap = d.att || {};
+      const payMap = d.pay || {};
+      const cfg = d.cfg || {};
+
+      // Count genuine 'P' days from att history for each student
+      const genuineCountBySid = {};
+      const restoredAttendance = {};
+      Object.entries(attMap).forEach(([dateStr, dayObj]) => {
+        if (!dayObj || typeof dayObj !== 'object') return;
+        Object.entries(dayObj).forEach(([sid, code]) => {
+          let mappedStatus = 'present';
+          if (code === 'P' || code === 'present') {
+            mappedStatus = 'present';
+            genuineCountBySid[sid] = (genuineCountBySid[sid] || 0) + 1;
+          } else if (code === 'A' || code === 'absent') {
+            mappedStatus = 'absent';
+          } else if (code === 'L' || code === 'teacher_leave') {
+            mappedStatus = 'teacher_leave';
+          } else if (code === 'bonus_used' || code === 'excused_leave') {
+            mappedStatus = code;
+          }
+          restoredAttendance[`${dateStr}_${sid}`] = {
+            status: mappedStatus,
+            time: '',
+            note: ''
+          };
+        });
+      });
+
+      // Merge courses from cfg.fee
+      if (cfg.fee && typeof cfg.fee === 'object') {
+        Object.entries(cfg.fee).forEach(([cName, cFee]) => {
+          const exists = appState.courses.find(x => x.name.toLowerCase() === cName.toLowerCase());
+          if (exists) exists.fee = Number(cFee);
+          else appState.courses.push({ id: 'crs_' + Date.now() + Math.random().toString(36).slice(2, 5), name: cName, category: 'Instrument', fee: Number(cFee), discount: 0, feature: '' });
+        });
+      }
+
+      if (Array.isArray(cfg.batches) && cfg.batches.length) {
+        appState.batches = cfg.batches;
+      }
+
+      const restoredStudents = d.students.map((st, idx) => {
+        const courseArr = String(st.course || 'Piano').split(/[,/]/).map(x => x.trim()).filter(Boolean);
+        let baseFee = Number(st.base || st.fee || 1000);
+        let concAmt = 0;
+        if (st.disc && typeof st.disc === 'object') {
+          if (st.disc.t === '%') concAmt = Math.round(baseFee * (Number(st.disc.v || 0) / 100));
+          else concAmt = Number(st.disc.v || 0);
+        } else if (typeof st.concession === 'number') {
+          concAmt = st.concession;
+        }
+
+        const stuPays = payMap[st.id] || {};
+        const payKeys = Object.keys(stuPays);
+        const latestPayKey = payKeys.sort().pop();
+        const latestPay = latestPayKey ? stuPays[latestPayKey] : null;
+        const isPaid = st.feeStatus === 'Paid' || Boolean(latestPay);
+        const payMode = (latestPay && typeof latestPay === 'object' && latestPay.m) ? latestPay.m : 'UPI';
+        const payDate = (latestPay && typeof latestPay === 'object' && latestPay.d) ? latestPay.d : (latestPayKey || '-');
+
+        const genuineTotal = st.genuineDays !== undefined ? Number(st.genuineDays) : (genuineCountBySid[st.id] || 0);
+        const gradeIdx = Math.min(GRADES.length - 1, Math.floor(genuineTotal / 48));
+
+        return normalizeStudent({
+          id: st.id,
+          rollNo: (nosMap[st.id] || st.rollNo || `TSM-${String(idx + 1).padStart(4, '0')}`).toUpperCase(),
+          pin: st.pin || '1234',
+          name: st.name,
+          courses: courseArr,
+          course: courseArr.join(', '),
+          grade: st.grade || GRADES[gradeIdx],
+          batch: st.batch || appState.batches[0] || '5:00 PM',
+          dob: st.dob || '',
+          phone: (st.phone || st.pphone || '').replace(/\s+/g, ''),
+          parentPhone: (st.pphone || st.phone || '').replace(/\s+/g, ''),
+          email: st.email || '',
+          addr: st.addr || '',
+          isMinor: true,
+          guardian: st.parent || st.guardian || 'Guardian',
+          pickupNote: st.notes || st.pickupNote || '',
+          admissionDate: st.adm || st.admissionDate || selectedDate,
+          genuineDays: genuineTotal,
+          bonusCredits: Number(st.bonusCredits || 0),
+          monthlyFee: baseFee,
+          concession: concAmt,
+          concessionMonths: Number(st.concessionMonths || 0),
+          idCardFee: Number(st.idCardFee || 0),
+          certFee: Number(st.certFee || 0),
+          feeStatus: isPaid ? 'Paid' : 'Unpaid',
+          lastPaymentMode: payMode,
+          lastPaymentDate: payDate,
+          photoDataUrl: st.photo || st.photoDataUrl || ''
+        });
+      });
+
+      appState.students = restoredStudents;
+      appState.attendance = restoredAttendance;
+      appState.holidays = d.hol || appState.holidays || {};
+      appState.certs = d.certs || appState.certs || [];
+      if (Array.isArray(d.audioClips)) appState.audioClips = d.audioClips;
+      if (Array.isArray(d.messages)) appState.messages = d.messages;
+      if (Array.isArray(d.campaigns)) appState.campaigns = d.campaigns;
+      if (Array.isArray(d.vaultItems)) appState.vaultItems = d.vaultItems;
+      if (d.adminRollNo) appState.adminRollNo = d.adminRollNo;
+      if (d.adminPin) appState.adminPin = d.adminPin;
+
+      saveState();
+      renderCurrentTab();
+      showToast(`Restored ${restoredStudents.length} students & attendance history`);
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to parse backup file');
+    }
+  };
+  reader.readAsText(file);
+}
+
+// ==========================================
+// 4. PUBLIC QR VERIFICATION (?verify= & ?cert=)
 // ==========================================
 function checkPublicQrVerify() {
   const params = new URLSearchParams(window.location.search);
@@ -453,7 +729,7 @@ function checkPublicQrVerify() {
 }
 
 // ==========================================
-// 3. CERTIFICATE ELIGIBILITY, FAMILY GROUPING & BILLING ENGINE
+// 5. CERTIFICATE ELIGIBILITY, FAMILY GROUPING & BILLING ENGINE
 // ==========================================
 function getWeekRange(dateStr) {
   const d = new Date(dateStr);
@@ -538,13 +814,13 @@ function getStudentNetPayable(student) {
 }
 
 function getFamilySiblings(student) {
-  const pPhone = (student.parentPhone || student.phone || '').trim();
+  const pPhone = (student.parentPhone || student.phone || '').replace(/\s+/g, '').trim();
   const pName = (student.guardian || '').trim().toLowerCase();
   return appState.students.filter(other => {
-    const oPhone = (other.parentPhone || other.phone || '').trim();
+    const oPhone = (other.parentPhone || other.phone || '').replace(/\s+/g, '').trim();
     const oName = (other.guardian || '').trim().toLowerCase();
     if (pPhone && oPhone && pPhone === oPhone) return true;
-    if (pName && oName && pName !== 'guardian verified' && pName !== 'self / verified' && pName === oName) return true;
+    if (pName && oName && pName !== 'guardian' && pName !== 'guardian verified' && pName !== 'self / verified' && pName === oName) return true;
     return other.id === student.id;
   });
 }
@@ -574,7 +850,7 @@ function drawStyledAcademyTitlePdf(page, x, y, size, fontBold) {
 }
 
 // ==========================================
-// 4. LOGIN & PERSISTENT SESSION
+// 6. LOGIN & PERSISTENT SESSION
 // ==========================================
 function handleUnifiedLogin(e) {
   e.preventDefault();
@@ -652,7 +928,7 @@ function renderNavTabs() {
   const container = document.getElementById('navTabsContainer');
   const adminTabs = [
     { id: 'dashboard', label: 'Overview' },
-    { id: 'attendance', label: 'Attendance' },
+    { id: 'attendance', label: 'Attendance & Calendar' },
     { id: 'students', label: 'Students & ID/Certs' },
     { id: 'courses', label: 'Courses & Batches' },
     { id: 'fees', label: 'Fees & Receipts' },
@@ -660,11 +936,11 @@ function renderNavTabs() {
     { id: 'vault', label: 'Study Vault' },
     { id: 'messages', label: 'Messages & WhatsApp' },
     { id: 'marketing', label: 'Instagram' },
-    { id: 'settings', label: 'Settings' }
+    { id: 'settings', label: 'Settings & Backup' }
   ];
   const studentTabs = [
     { id: 'student_home', label: 'My Profile & ID Card' },
-    { id: 'student_attendance', label: 'My Attendance' },
+    { id: 'student_attendance', label: 'My Attendance Calendar' },
     { id: 'student_audio', label: 'Record Audio Clip' },
     { id: 'student_fees', label: 'Fees & Receipts' },
     { id: 'student_vault', label: 'Study Material' },
@@ -710,7 +986,7 @@ function renderCurrentTab() {
 }
 
 // ==========================================
-// 5. ADMIN OVERVIEW DASHBOARD
+// 7. ADMIN OVERVIEW DASHBOARD
 // ==========================================
 function renderAdminDashboard(el) {
   const totalStu = appState.students.length;
@@ -728,18 +1004,18 @@ function renderAdminDashboard(el) {
         </div>
         <div class="flex flex-wrap gap-2">
           <button onclick="downloadActiveBrochure()" class="px-3 py-1.5 border border-slate-300 text-slate-800 text-xs font-semibold rounded-lg hover:bg-slate-50">Brochure PDF</button>
-          <button onclick="switchTab('attendance')" class="px-3 py-1.5 bg-[#0F172A] text-white text-xs font-semibold rounded-lg hover:bg-slate-800">Attendance</button>
+          <button onclick="switchTab('attendance')" class="px-3 py-1.5 bg-[#0F172A] text-white text-xs font-semibold rounded-lg hover:bg-slate-800">Attendance &amp; Calendar</button>
           <button onclick="openAddStudentModal()" class="px-3 py-1.5 bg-indigo-700 text-white text-xs font-semibold rounded-lg hover:bg-indigo-800">+ New Admission</button>
         </div>
       </div>
 
       ${unpaidStudents.length > 0 ? `
         <div class="bg-amber-50 border border-amber-200 rounded-xl p-3.5 flex flex-wrap items-center justify-between gap-2 text-xs">
-          <div>
-            <span class="font-bold text-amber-900">Fee Reminder:</span>
-            <span class="text-amber-800">${unpaidStudents.map(u => `${u.name} (${u.rollNo} - Due ${getNextBillingDate(u.admissionDate)})`).join(', ')}</span>
+          <div class="truncate max-w-3xl">
+            <span class="font-bold text-amber-900">Fee Reminder (${unpaidStudents.length}):</span>
+            <span class="text-amber-800">${unpaidStudents.slice(0, 5).map(u => `${u.name} (${u.rollNo})`).join(', ')}${unpaidStudents.length > 5 ? ` +${unpaidStudents.length - 5} more` : ''}</span>
           </div>
-          <button onclick="switchTab('fees')" class="px-3 py-1 bg-amber-800 text-white font-semibold rounded-lg">Fees</button>
+          <button onclick="switchTab('fees')" class="px-3 py-1 bg-amber-800 text-white font-semibold rounded-lg shrink-0">Manage Fees</button>
         </div>
       ` : ''}
 
@@ -816,7 +1092,7 @@ function renderAdminDashboard(el) {
 }
 
 // ==========================================
-// 6. ATTENDANCE REGISTER + WORKING CAMERA QR SCANNER
+// 8. ATTENDANCE REGISTER + MONTHLY VISUAL CALENDAR + QR SCANNER
 // ==========================================
 function getAttendanceRecord(dateStr, studentId) {
   const key = `${dateStr}_${studentId}`;
@@ -863,6 +1139,121 @@ function getFilteredStudents() {
 
 function applyBatchStatus(status) {
   getFilteredStudents().forEach(s => setStudentAttendanceStatus(s.id, status));
+}
+
+function toggleHolidayDate(dateStr) {
+  if (!appState.holidays) appState.holidays = {};
+  if (appState.holidays[dateStr]) delete appState.holidays[dateStr];
+  else appState.holidays[dateStr] = true;
+  saveState();
+  renderCurrentTab();
+  showToast(appState.holidays[dateStr] ? `Marked ${dateStr} as Holiday` : `Removed Holiday on ${dateStr}`);
+}
+
+function shiftCalendarMonth(delta) {
+  const [y, m] = calendarMonth.split('-').map(Number);
+  const d = new Date(y, m - 1 + delta, 1);
+  calendarMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  renderCurrentTab();
+}
+
+function selectDateFromCalendar(dateStr) {
+  selectedDate = dateStr;
+  attendanceSubView = 'register';
+  renderCurrentTab();
+}
+
+function buildMonthlyCalendarHtml(studentFilterObj) {
+  const [yr, mo] = calendarMonth.split('-').map(Number);
+  const firstDay = new Date(yr, mo - 1, 1);
+  const daysInMonth = new Date(yr, mo, 0).getDate();
+  const startWeekday = firstDay.getDay(); // 0 Sun .. 6 Sat
+  const monthLabel = firstDay.toLocaleString('default', { month: 'long', year: 'numeric' });
+  const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+  let cells = '';
+  for (let i = 0; i < startWeekday; i++) {
+    cells += `<div class="h-20 bg-slate-50/60 border border-slate-100 rounded-lg"></div>`;
+  }
+
+  for (let day = 1; day <= daysInMonth; day++) {
+    const dt = `${yr}-${String(mo).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    const isHoliday = Boolean(appState.holidays && appState.holidays[dt]);
+    const isSelected = dt === selectedDate;
+    const isSunday = new Date(yr, mo - 1, day).getDay() === 0;
+
+    if (studentFilterObj) {
+      // Single Student Calendar View
+      const rec = appState.attendance[`${dt}_${studentFilterObj.id}`];
+      let badge = '';
+      if (isHoliday) badge = `<span class="px-1.5 py-0.5 text-[9px] font-bold bg-purple-100 text-purple-800 rounded">HOLIDAY</span>`;
+      else if (rec) {
+        const map = {
+          present: 'bg-emerald-100 text-emerald-800 border-emerald-200|PRESENT',
+          absent: 'bg-red-100 text-red-800 border-red-200|ABSENT',
+          teacher_leave: 'bg-amber-100 text-amber-800 border-amber-200|T-LEAVE',
+          bonus_used: 'bg-indigo-100 text-indigo-800 border-indigo-200|BONUS',
+          excused_leave: 'bg-slate-200 text-slate-800 border-slate-300|EXCUSED'
+        };
+        const [cls, lbl] = (map[rec.status] || 'bg-slate-100 text-slate-700|MARKED').split('|');
+        badge = `<span class="px-1.5 py-0.5 text-[9px] font-bold border rounded ${cls}">${lbl}</span>`;
+      }
+      cells += `
+        <div class="h-20 p-1.5 border rounded-lg flex flex-col justify-between ${isSelected ? 'border-[#0F172A] bg-slate-50' : 'border-slate-200 bg-white'}">
+          <div class="flex justify-between items-center">
+            <span class="text-xs font-bold ${isSunday ? 'text-red-600' : 'text-slate-700'}">${day}</span>
+          </div>
+          <div class="text-center">${badge}</div>
+        </div>
+      `;
+    } else {
+      // Admin Academy-Wide Calendar View
+      let pCount = 0, aCount = 0, lCount = 0;
+      appState.students.forEach(s => {
+        const rec = appState.attendance[`${dt}_${s.id}`];
+        if (rec) {
+          if (rec.status === 'present' || rec.status === 'bonus_used') pCount++;
+          else if (rec.status === 'absent') aCount++;
+          else if (rec.status === 'teacher_leave') lCount++;
+        }
+      });
+      const hasMarks = (pCount + aCount + lCount) > 0;
+      cells += `
+        <div onclick="selectDateFromCalendar('${dt}')" class="h-24 p-1.5 border rounded-lg flex flex-col justify-between cursor-pointer transition hover:border-[#0F172A] ${isSelected ? 'border-2 border-[#0F172A] bg-indigo-50/30' : isHoliday ? 'border-purple-200 bg-purple-50/40' : 'border-slate-200 bg-white'}">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold ${isSunday ? 'text-red-600' : 'text-slate-800'}">${day}</span>
+            <button type="button" onclick="event.stopPropagation(); toggleHolidayDate('${dt}')" title="Toggle Holiday" class="text-[9px] px-1 rounded ${isHoliday ? 'bg-purple-700 text-white font-bold' : 'text-slate-400 hover:bg-slate-100'}">
+              ${isHoliday ? 'HOL' : 'H'}
+            </button>
+          </div>
+          <div class="space-y-0.5 text-[9px] font-semibold tabular-nums">
+            ${isHoliday ? '<div class="text-purple-700 font-bold text-center">Holiday</div>' : ''}
+            ${hasMarks ? `
+              <div class="flex justify-between text-emerald-700"><span>Present:</span><span>${pCount}</span></div>
+              ${aCount > 0 ? `<div class="flex justify-between text-red-600"><span>Absent:</span><span>${aCount}</span></div>` : ''}
+              ${lCount > 0 ? `<div class="flex justify-between text-amber-700"><span>T-Leave:</span><span>${lCount}</span></div>` : ''}
+            ` : (!isHoliday ? '<div class="text-slate-300 text-center">&mdash;</div>' : '')}
+          </div>
+        </div>
+      `;
+    }
+  }
+
+  return `
+    <div class="bg-white p-4 rounded-xl border border-slate-200 space-y-3">
+      <div class="flex items-center justify-between">
+        <button type="button" onclick="shiftCalendarMonth(-1)" class="px-3 py-1.5 text-xs font-semibold border border-slate-300 rounded-lg hover:bg-slate-50">&larr; Prev</button>
+        <h3 class="text-sm font-bold text-[#0F172A] uppercase tracking-wide">${monthLabel}</h3>
+        <button type="button" onclick="shiftCalendarMonth(1)" class="px-3 py-1.5 text-xs font-semibold border border-slate-300 rounded-lg hover:bg-slate-50">Next &rarr;</button>
+      </div>
+      <div class="grid grid-cols-7 gap-1.5 text-center text-[11px] font-bold text-slate-500 uppercase">
+        ${weekdays.map(w => `<div>${w}</div>`).join('')}
+      </div>
+      <div class="grid grid-cols-7 gap-1.5">
+        ${cells}
+      </div>
+    </div>
+  `;
 }
 
 function processQrPayload(rawText) {
@@ -946,9 +1337,13 @@ function renderAttendanceTab(el) {
     <div class="space-y-4">
       <div class="bg-white p-3.5 rounded-xl border border-slate-200 flex flex-wrap items-end justify-between gap-3">
         <div class="flex flex-wrap items-end gap-2.5">
+          <div class="flex p-1 bg-slate-100 rounded-lg">
+            <button type="button" onclick="attendanceSubView='register'; renderCurrentTab();" class="px-3 py-1 text-xs font-semibold rounded-md ${attendanceSubView==='register' ? 'bg-white text-[#0F172A] shadow-sm' : 'text-slate-600'}">Daily Register</button>
+            <button type="button" onclick="attendanceSubView='calendar'; renderCurrentTab();" class="px-3 py-1 text-xs font-semibold rounded-md ${attendanceSubView==='calendar' ? 'bg-white text-[#0F172A] shadow-sm' : 'text-slate-600'}">Monthly Calendar</button>
+          </div>
           <div>
             <label class="block text-[10px] font-bold uppercase text-slate-500 mb-0.5">Date</label>
-            <input type="date" value="${selectedDate}" onchange="selectedDate=this.value; renderCurrentTab();" class="px-2.5 py-1.5 text-xs font-semibold border border-slate-300 rounded-lg" />
+            <input type="date" value="${selectedDate}" onchange="selectedDate=this.value; calendarMonth=this.value.slice(0,7); renderCurrentTab();" class="px-2.5 py-1.5 text-xs font-semibold border border-slate-300 rounded-lg" />
           </div>
           <div>
             <label class="block text-[10px] font-bold uppercase text-slate-500 mb-0.5">Batch</label>
@@ -957,78 +1352,82 @@ function renderAttendanceTab(el) {
               ${appState.batches.map(b => `<option value="${b}" ${filterBatch===b?'selected':''}>${b}</option>`).join('')}
             </select>
           </div>
-          <div class="flex flex-wrap gap-1.5">
-            <button onclick="applyBatchStatus('present')" class="px-2.5 py-1.5 text-[11px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-lg hover:bg-emerald-100">All Present</button>
-            <button onclick="applyBatchStatus('teacher_leave')" class="px-2.5 py-1.5 text-[11px] font-semibold bg-amber-50 text-amber-800 border border-amber-200 rounded-lg hover:bg-amber-100">Teacher Leave</button>
-          </div>
+          ${attendanceSubView === 'register' ? `
+            <div class="flex flex-wrap gap-1.5">
+              <button onclick="applyBatchStatus('present')" class="px-2.5 py-1.5 text-[11px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-lg hover:bg-emerald-100">All Present</button>
+              <button onclick="applyBatchStatus('teacher_leave')" class="px-2.5 py-1.5 text-[11px] font-semibold bg-amber-50 text-amber-800 border border-amber-200 rounded-lg hover:bg-amber-100">Teacher Leave</button>
+            </div>
+          ` : ''}
         </div>
 
         <div class="flex flex-wrap items-center gap-1.5">
           <button type="button" onclick="openCameraQrScanner()" class="px-3 py-1.5 bg-indigo-700 text-white text-xs font-semibold rounded-lg hover:bg-indigo-800">Scan QR Camera</button>
           <form onsubmit="handleQuickQrCheckIn(event)" class="flex items-center gap-1">
-            <input id="qrQuickScanInput" placeholder="Roll No (e.g. 014)" class="px-2.5 py-1.5 text-xs font-mono uppercase border border-slate-300 rounded-lg w-36" />
+            <input id="qrQuickScanInput" placeholder="Roll No (e.g. 001)" class="px-2.5 py-1.5 text-xs font-mono uppercase border border-slate-300 rounded-lg w-36" />
             <button type="submit" class="px-2.5 py-1.5 bg-slate-800 text-white text-xs font-semibold rounded-lg">Mark</button>
           </form>
           <button type="button" onclick="exportDailyAttendancePdf()" class="px-2.5 py-1.5 border border-slate-300 text-slate-800 text-xs font-semibold rounded-lg hover:bg-slate-50">PDF</button>
         </div>
       </div>
 
-      <div class="bg-white rounded-xl border border-slate-200 divide-y divide-slate-200 overflow-x-auto">
-        ${visibleStudents.map(s => {
-          const rec = getAttendanceRecord(selectedDate, s.id);
-          const wk = getWeeklyStats(selectedDate, s.id);
-          const isShort = rec.status === 'absent' || wk.hasShortFlag;
-          const mod48 = s.genuineDays % 48;
-          return `
-            <div class="px-3 py-2 flex items-center justify-between gap-3 min-w-[960px] hover:bg-slate-50/80 transition">
-              <div class="flex items-center gap-2.5 w-56 shrink-0">
-                <span class="px-1.5 py-0.5 text-[10px] font-mono font-semibold bg-slate-100 border border-slate-200 rounded text-slate-700">${s.rollNo}</span>
-                <div class="truncate">
-                  <div class="text-xs font-bold text-[#0F172A] truncate">${s.name} ${isShort ? '<span class="text-red-600 font-bold">*</span>' : ''}</div>
-                  <div class="text-[10px] text-indigo-700 truncate">${s.grade} &mdash; ${s.course}</div>
+      ${attendanceSubView === 'calendar' ? buildMonthlyCalendarHtml(null) : `
+        <div class="bg-white rounded-xl border border-slate-200 divide-y divide-slate-200 overflow-x-auto">
+          ${visibleStudents.map(s => {
+            const rec = getAttendanceRecord(selectedDate, s.id);
+            const wk = getWeeklyStats(selectedDate, s.id);
+            const isShort = rec.status === 'absent' || wk.hasShortFlag;
+            const mod48 = s.genuineDays % 48;
+            return `
+              <div class="px-3 py-2 flex items-center justify-between gap-3 min-w-[960px] hover:bg-slate-50/80 transition">
+                <div class="flex items-center gap-2.5 w-56 shrink-0">
+                  <span class="px-1.5 py-0.5 text-[10px] font-mono font-semibold bg-slate-100 border border-slate-200 rounded text-slate-700">${s.rollNo}</span>
+                  <div class="truncate">
+                    <div class="text-xs font-bold text-[#0F172A] truncate">${s.name} ${isShort ? '<span class="text-red-600 font-bold">*</span>' : ''}</div>
+                    <div class="text-[10px] text-indigo-700 truncate">${s.grade} &mdash; ${s.course}</div>
+                  </div>
                 </div>
+
+                <div class="w-44 shrink-0">
+                  <div class="text-[11px] font-medium text-slate-700 truncate">${s.batch}</div>
+                  <div class="text-[10px] text-slate-500 truncate">${s.isMinor ? 'Minor &bull; ' : ''}${s.guardian} ${s.pickupNote ? '('+s.pickupNote+')' : ''}</div>
+                </div>
+
+                <div class="flex items-center gap-1 shrink-0">
+                  ${statuses.map(st => `
+                    <button onclick="setStudentAttendanceStatus('${s.id}', '${st.id}')"
+                      class="px-2 py-1 text-[10px] font-semibold rounded border transition ${
+                        rec.status === st.id
+                          ? st.activeClass
+                          : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
+                      }">
+                      ${st.label}
+                    </button>
+                  `).join('')}
+                </div>
+
+                <input type="text" value="${rec.time}" onchange="updateAttendanceField('${s.id}', 'time', this.value)"
+                  class="w-20 px-2 py-1 text-[11px] font-mono border border-slate-200 rounded text-center shrink-0" />
+
+                <div class="w-32 shrink-0 text-right tabular-nums">
+                  <span class="inline-block px-1.5 py-0.5 text-[10px] font-semibold rounded ${isShort ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}">
+                    Wk: ${wk.totalWeekSessions}/3 ${isShort ? '*' : ''}
+                  </span>
+                  <div class="text-[10px] text-slate-600 mt-0.5">Gen: <b>${mod48}/48</b> &bull; B:<b>${s.bonusCredits}</b></div>
+                </div>
+
+                <input type="text" value="${rec.note || ''}" placeholder="Remark" onchange="updateAttendanceField('${s.id}', 'note', this.value)"
+                  class="w-32 px-2 py-1 text-[11px] border border-slate-200 rounded shrink-0" />
               </div>
-
-              <div class="w-44 shrink-0">
-                <div class="text-[11px] font-medium text-slate-700 truncate">${s.batch}</div>
-                <div class="text-[10px] text-slate-500 truncate">${s.isMinor ? 'Minor &bull; ' : ''}${s.guardian} ${s.pickupNote ? '('+s.pickupNote+')' : ''}</div>
-              </div>
-
-              <div class="flex items-center gap-1 shrink-0">
-                ${statuses.map(st => `
-                  <button onclick="setStudentAttendanceStatus('${s.id}', '${st.id}')"
-                    class="px-2 py-1 text-[10px] font-semibold rounded border transition ${
-                      rec.status === st.id
-                        ? st.activeClass
-                        : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
-                    }">
-                    ${st.label}
-                  </button>
-                `).join('')}
-              </div>
-
-              <input type="text" value="${rec.time}" onchange="updateAttendanceField('${s.id}', 'time', this.value)"
-                class="w-20 px-2 py-1 text-[11px] font-mono border border-slate-200 rounded text-center shrink-0" />
-
-              <div class="w-32 shrink-0 text-right tabular-nums">
-                <span class="inline-block px-1.5 py-0.5 text-[10px] font-semibold rounded ${isShort ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}">
-                  Wk: ${wk.totalWeekSessions}/3 ${isShort ? '*' : ''}
-                </span>
-                <div class="text-[10px] text-slate-600 mt-0.5">Gen: <b>${mod48}/48</b> &bull; B:<b>${s.bonusCredits}</b></div>
-              </div>
-
-              <input type="text" value="${rec.note || ''}" placeholder="Remark" onchange="updateAttendanceField('${s.id}', 'note', this.value)"
-                class="w-32 px-2 py-1 text-[11px] border border-slate-200 rounded shrink-0" />
-            </div>
-          `;
-        }).join('')}
-      </div>
+            `;
+          }).join('')}
+        </div>
+      `}
     </div>
   `;
 }
 
 // ==========================================
-// 7. COURSES, FEES, DISCOUNTS & BATCH CUSTOMIZATION
+// 9. COURSES, FEES, DISCOUNTS & BATCH CUSTOMIZATION
 // ==========================================
 function renderCoursesBatchesTab(el) {
   el.innerHTML = `
@@ -1072,7 +1471,7 @@ function renderCoursesBatchesTab(el) {
           <h2 class="text-sm font-bold text-[#0F172A]">Batch Timings</h2>
         </div>
         <form onsubmit="addBatchTiming(event)" class="flex gap-2">
-          <input id="newBatchInput" placeholder="e.g. Mon/Wed/Fri • 4:00 PM - 5:00 PM" class="flex-1 px-3 py-1.5 text-xs border border-slate-300 rounded-lg" required />
+          <input id="newBatchInput" placeholder="e.g. 4:00 PM" class="flex-1 px-3 py-1.5 text-xs border border-slate-300 rounded-lg" required />
           <button type="submit" class="px-3 py-1.5 bg-[#0F172A] text-white text-xs font-semibold rounded-lg">Add</button>
         </form>
         <div class="divide-y divide-slate-200 text-xs">
@@ -1113,7 +1512,7 @@ function openCourseModal(courseId) {
       <div class="grid grid-cols-2 gap-3">
         <div>
           <label class="block font-semibold text-slate-700 mb-1">Monthly / Course Fee (INR)</label>
-          <input type="number" name="fee" value="${c ? c.fee : 1500}" class="w-full px-3 py-2 border border-slate-300 rounded-lg" required />
+          <input type="number" name="fee" value="${c ? c.fee : 1200}" class="w-full px-3 py-2 border border-slate-300 rounded-lg" required />
         </div>
         <div>
           <label class="block font-semibold text-slate-700 mb-1">Default Discount (INR)</label>
@@ -1187,7 +1586,7 @@ function deleteBatchTiming(idx) {
 }
 
 // ==========================================
-// 8. STUDENTS (MULTI-INSTRUMENT & SAME-PARENT LINKING), ID CARDS & CERTIFICATES
+// 10. STUDENTS (MULTI-INSTRUMENT & SAME-PARENT LINKING), ID CARDS & CERTIFICATES
 // ==========================================
 function renderStudentsTab(el) {
   el.innerHTML = `
@@ -1279,9 +1678,9 @@ function recalcMultiCourseFee(container) {
 }
 
 function openAddStudentModal() {
-  const nextNum = 23 + appState.students.length;
-  const roll = `TSM-2026-0${nextNum}`;
-  const firstCourse = appState.courses[0] || { name: 'Piano (Keyboard)', fee: 1500, discount: 0 };
+  const nextNum = appState.students.length + 1;
+  const roll = `TSM-${String(nextNum).padStart(4, '0')}`;
+  const firstCourse = appState.courses[0] || { name: 'Piano', fee: 1200, discount: 0 };
   showModal(`
     <h3 class="text-base font-bold text-[#0F172A] mb-3">New Student Admission (Multi-Instrument &amp; Family Ready)</h3>
     <form onsubmit="saveNewStudent(event)" class="space-y-3 text-xs">
@@ -1391,7 +1790,7 @@ function saveNewStudent(e) {
   const form = e.target;
   const fd = new FormData(form);
   const selectedCourses = [...form.querySelectorAll('input[name="selectedCourses"]:checked')].map(cb => cb.value);
-  const finalCourses = selectedCourses.length ? selectedCourses : [appState.courses[0]?.name || 'Piano (Keyboard)'];
+  const finalCourses = selectedCourses.length ? selectedCourses : [appState.courses[0]?.name || 'Piano'];
   const phone = fd.get('phone').trim();
 
   const newStu = {
@@ -1417,7 +1816,7 @@ function saveNewStudent(e) {
     lastPaymentMode: 'UPI',
     lastPaymentDate: '-',
     isMinor: fd.get('isMinor') === 'on',
-    guardian: (fd.get('guardian') || 'Guardian Verified').trim(),
+    guardian: (fd.get('guardian') || 'Guardian').trim(),
     pickupNote: (fd.get('pickupNote') || '').trim(),
     photoDataUrl: ''
   };
@@ -1542,7 +1941,6 @@ function deleteStudent(stuId) {
   renderCurrentTab();
 }
 
-// Portrait CR80 Smart-Card Sized ID Card (54mm x 85.6mm)
 function openIdCardModal(stuId) {
   const s = appState.students.find(x => x.id === stuId);
   if (!s) return;
@@ -1588,7 +1986,6 @@ function openIdCardModal(stuId) {
   }, 50);
 }
 
-// Letter-Sized Certificate (8.5in x 11in)
 function openCertificateModal(stuId) {
   const s = appState.students.find(x => x.id === stuId);
   if (!s) return;
@@ -1684,7 +2081,7 @@ async function downloadLetterCertificatePdf(stuId) {
 }
 
 // ==========================================
-// 9. FEES & COMBINED FAMILY / MULTI-INSTRUMENT STANDARD RECEIPTS (A5)
+// 11. FEES & COMBINED FAMILY / MULTI-INSTRUMENT STANDARD RECEIPTS (A5)
 // ==========================================
 function toggleReceiptSelection(stuId) {
   if (selectedReceiptIds.includes(stuId)) {
@@ -1932,7 +2329,7 @@ function sendWhatsAppFeeAlert(stuId) {
 }
 
 // ==========================================
-// 10. IN-APP LOW-SIZE AUDIO RECORDER, AUTO-NAMING & 3-DAY AUTO-PURGE
+// 12. IN-APP LOW-SIZE AUDIO RECORDER, AUTO-NAMING & 3-DAY AUTO-PURGE
 // ==========================================
 function generateAutoAudioClipName(stu) {
   const sameDayCount = (appState.audioClips || []).filter(c => c.rollNo === stu.rollNo && c.date === selectedDate).length + 1;
@@ -1964,7 +2361,6 @@ async function toggleInAppAudioRecord(stuId) {
     recordedAudioDataUrl = '';
     recordedDurationSec = 0;
 
-    // Low bitrate (24 kbps mono Opus/WebM) for ultra-small file size (~3 KB per second, ~90 KB for 30s)
     const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : '';
     const options = mimeType ? { mimeType, audioBitsPerSecond: 24000 } : { audioBitsPerSecond: 24000 };
     mediaRecorder = new MediaRecorder(stream, options);
@@ -2057,8 +2453,9 @@ function renderAdminAudioTab(el) {
 
       <div class="bg-white rounded-xl border border-slate-200 divide-y divide-slate-200">
         ${appState.audioClips.length ? appState.audioClips.map(c => {
+          const isApproved = c.status === 'Verified';
           let expiryNote = '';
-          if (c.status === 'Verified' && c.approvedAt) {
+          if (isApproved && c.approvedAt) {
             const msLeft = THREE_DAYS_MS - (Date.now() - Number(c.approvedAt));
             const hrsLeft = Math.max(0, Math.ceil(msLeft / (1000 * 60 * 60)));
             expiryNote = c.dataUrl ? ` &bull; Auto-deletes in ${hrsLeft}h` : ' &bull; Audio auto-deleted after 3d (Credit kept)';
@@ -2067,12 +2464,15 @@ function renderAdminAudioTab(el) {
             <div class="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
               <div class="space-y-1">
                 <div class="font-bold text-[#0F172A]">${c.title}</div>
-                <div class="text-[11px] text-slate-500">Student: <b>${c.studentName}</b> (${c.rollNo}) &bull; ${c.date} &bull; Status: <b>${c.status}</b>${expiryNote}</div>
+                <div class="text-[11px] text-slate-500">Student: <b>${c.studentName}</b> (${c.rollNo}) &bull; ${c.date} &bull; Status: <b>${isApproved ? 'APPROVED' : c.status}</b>${expiryNote}</div>
                 ${c.dataUrl ? `<audio controls src="${c.dataUrl}" class="h-8 mt-1"></audio>` : '<span class="text-[10px] text-slate-400">Audio file purged (Credit verified)</span>'}
               </div>
               <div class="flex items-center gap-2">
                 <input value="${c.feedback || ''}" placeholder="Feedback..." onchange="updateAudioFeedback('${c.id}', this.value)" class="px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs" />
-                <button onclick="verifyAudioClip('${c.id}')" class="px-3 py-1.5 bg-emerald-700 text-white font-semibold rounded-lg">Approve</button>
+                <button onclick="verifyAudioClip('${c.id}')" ${isApproved ? 'disabled' : ''}
+                  class="px-3 py-1.5 font-semibold rounded-lg transition ${isApproved ? 'bg-emerald-100 text-emerald-800 border border-emerald-300 cursor-default' : 'bg-emerald-700 hover:bg-emerald-800 text-white'}">
+                  ${isApproved ? 'APPROVED' : 'APPROVE'}
+                </button>
               </div>
             </div>
           `;
@@ -2089,17 +2489,17 @@ function updateAudioFeedback(clipId, text) {
 
 function verifyAudioClip(clipId) {
   const c = appState.audioClips.find(x => x.id === clipId);
-  if (c) {
+  if (c && c.status !== 'Verified') {
     c.status = 'Verified';
     c.approvedAt = Date.now();
     saveState();
     renderCurrentTab();
-    showToast('Approved — audio will auto-delete after 3 days');
+    showToast('APPROVED — audio will auto-delete after 3 days');
   }
 }
 
 // ==========================================
-// 11. STUDY VAULT & PRIVATE SAREGAMA STUDIO
+// 13. STUDY VAULT & PRIVATE SAREGAMA STUDIO
 // ==========================================
 function renderVaultTab(el) {
   const sargamKeys = ['S', 'R', 'G', 'M', 'P', 'D', 'N', "S'", 'r', 'g', 'm', 'd', 'n', '|', '-'];
@@ -2334,13 +2734,13 @@ async function exportProtectedNotationPdf() {
 function addVaultEntryPrompt() {
   const title = prompt('Workbook / Sheet Title:');
   if (!title) return;
-  appState.vaultItems.push({ id: 'v_' + Date.now(), title, course: 'Piano (Keyboard)', grade: 'Elementary Grade 1', pages: 12, date: selectedDate });
+  appState.vaultItems.push({ id: 'v_' + Date.now(), title, course: 'Piano', grade: 'Elementary Grade 1', pages: 12, date: selectedDate });
   saveState();
   renderCurrentTab();
 }
 
 // ==========================================
-// 12. MESSAGING & WHATSAPP TEMPLATES
+// 14. MESSAGING & WHATSAPP TEMPLATES
 // ==========================================
 function renderMessagesTab(el) {
   const selectedStu = appState.students.find(s => s.rollNo === adminChatRoll) || appState.students[0];
@@ -2419,7 +2819,7 @@ function launchWaTemplate(type) {
 }
 
 // ==========================================
-// 13. INSTAGRAM PROMOTIONS & SETTINGS
+// 15. INSTAGRAM PROMOTIONS & SETTINGS (BACKUP / RESTORE / DESKTOP APP ICON)
 // ==========================================
 function renderMarketingTab(el) {
   el.innerHTML = `
@@ -2467,6 +2867,24 @@ function renderSettingsTab(el) {
   const isConnected = cloudSyncStatus.includes('Cloud Synced');
   el.innerHTML = `
     <div class="max-w-2xl space-y-5">
+      <!-- Backup & Restore Section -->
+      <div class="bg-white p-5 rounded-xl border border-slate-200 space-y-3">
+        <div class="flex items-center justify-between">
+          <h2 class="text-sm font-bold text-[#0F172A]">Backup &amp; Restore Database (JSON)</h2>
+          <span class="text-[11px] text-slate-500">${appState.students.length} Students Loaded</span>
+        </div>
+        <p class="text-xs text-slate-600">Compatible with <code>Tikariya_Backup_YYYY-MM-DD.json</code>. Restoring imports all students, photos, roll numbers, attendance history, fee logs, and syncs to Firebase Cloud.</p>
+        <div class="flex flex-wrap gap-2 pt-1">
+          <button onclick="exportBackupJson()" class="px-4 py-2 bg-[#0F172A] text-white text-xs font-semibold rounded-lg hover:bg-slate-800">Download Backup JSON</button>
+          <label class="px-4 py-2 bg-indigo-50 text-indigo-800 border border-indigo-200 text-xs font-semibold rounded-lg cursor-pointer hover:bg-indigo-100">
+            Restore Backup JSON
+            <input type="file" accept=".json,application/json" onchange="handleRestoreBackupFile(event)" class="hidden" />
+          </label>
+          <button onclick="triggerPwaInstall()" class="px-4 py-2 border border-slate-300 text-slate-800 text-xs font-semibold rounded-lg hover:bg-slate-50">Install / Desktop Icon</button>
+        </div>
+      </div>
+
+      <!-- Cloud Sync Section -->
       <div class="bg-white p-5 rounded-xl border border-slate-200 space-y-3">
         <div class="flex items-center justify-between">
           <h2 class="text-sm font-bold text-[#0F172A]">Cloud Sync &amp; Database</h2>
@@ -2479,6 +2897,7 @@ function renderSettingsTab(el) {
         </div>
       </div>
 
+      <!-- Admin Credentials Section -->
       <div class="bg-white p-5 rounded-xl border border-slate-200 space-y-3">
         <h3 class="text-sm font-bold text-[#0F172A]">Admin Credentials</h3>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-md">
@@ -2531,7 +2950,7 @@ function resetDemoData() {
 }
 
 // ==========================================
-// 14. STUDENT PORTAL (IN-APP RECORDER, AUTO-NAMING & FAMILY RECEIPTS)
+// 16. STUDENT PORTAL (WITH MONTHLY ATTENDANCE CALENDAR)
 // ==========================================
 function renderStudentPortal(el, tab) {
   const s = appState.students.find(x => x.id === currentUser.studentId);
@@ -2610,23 +3029,26 @@ function renderStudentPortal(el, tab) {
     const wk = getWeeklyStats(selectedDate, s.id);
     el.innerHTML = `
       ${feeBanner}
-      <div class="max-w-xl mx-auto bg-white p-5 rounded-xl border border-slate-200 space-y-3">
-        <h3 class="text-sm font-bold text-[#0F172A]">My Attendance &amp; Certificate Progress</h3>
-        <div class="grid grid-cols-3 gap-3 text-center">
-          <div class="p-3 bg-slate-50 rounded-lg border border-slate-200">
-            <div class="text-[11px] text-slate-500">Genuine Days</div>
-            <div class="text-xl font-bold text-[#0F172A] mt-1">${s.genuineDays}</div>
+      <div class="max-w-3xl mx-auto space-y-4">
+        <div class="bg-white p-5 rounded-xl border border-slate-200 space-y-3">
+          <h3 class="text-sm font-bold text-[#0F172A]">My Attendance &amp; Certificate Progress</h3>
+          <div class="grid grid-cols-3 gap-3 text-center">
+            <div class="p-3 bg-slate-50 rounded-lg border border-slate-200">
+              <div class="text-[11px] text-slate-500">Genuine Days</div>
+              <div class="text-xl font-bold text-[#0F172A] mt-1">${s.genuineDays}</div>
+            </div>
+            <div class="p-3 bg-indigo-50 rounded-lg border border-indigo-200">
+              <div class="text-[11px] text-indigo-700">Cert Cycle (48d)</div>
+              <div class="text-xl font-bold text-indigo-800 mt-1">${mod48}/48</div>
+            </div>
+            <div class="p-3 bg-amber-50 rounded-lg border border-amber-200">
+              <div class="text-[11px] text-amber-700">Bonus Credits</div>
+              <div class="text-xl font-bold text-amber-800 mt-1">${s.bonusCredits}</div>
+            </div>
           </div>
-          <div class="p-3 bg-indigo-50 rounded-lg border border-indigo-200">
-            <div class="text-[11px] text-indigo-700">Cert Cycle (48d)</div>
-            <div class="text-xl font-bold text-indigo-800 mt-1">${mod48}/48</div>
-          </div>
-          <div class="p-3 bg-amber-50 rounded-lg border border-amber-200">
-            <div class="text-[11px] text-amber-700">Bonus Credits</div>
-            <div class="text-xl font-bold text-amber-800 mt-1">${s.bonusCredits}</div>
-          </div>
+          <div class="text-xs text-slate-600 pt-1">This Week Sessions: <b>${wk.totalWeekSessions}/3</b> &bull; Weekly Audio Clips: <b>${elig.weeklyAudioCount}/2</b> (48 genuine days required; bonus days do not count toward certificate).</div>
         </div>
-        <div class="text-xs text-slate-600 pt-2">This Week Sessions: <b>${wk.totalWeekSessions}/3</b> &bull; Weekly Audio Clips: <b>${elig.weeklyAudioCount}/2</b> (48 genuine days required; bonus days do not count toward certificate).</div>
+        ${buildMonthlyCalendarHtml(s)}
       </div>
     `;
   } else if (tab === 'student_audio') {
@@ -2671,7 +3093,7 @@ function renderStudentPortal(el, tab) {
             <div class="py-3 space-y-1">
               <div class="flex justify-between font-bold text-[#0F172A]">
                 <span class="font-mono text-[11px]">${c.title}</span>
-                <span class="${c.status==='Verified' ? 'text-emerald-700' : 'text-amber-700'}">${c.status}</span>
+                <span class="${c.status==='Verified' ? 'text-emerald-700' : 'text-amber-700'}">${c.status==='Verified' ? 'APPROVED' : c.status}</span>
               </div>
               <div class="text-[11px] text-slate-500">${c.date} ${c.feedback ? `&bull; Feedback: ${c.feedback}` : ''}</div>
               ${c.dataUrl ? `<audio controls src="${c.dataUrl}" class="h-8 mt-1 w-full"></audio>` : '<span class="text-[10px] text-slate-400">Audio auto-deleted after 3-day approval retention</span>'}
@@ -2804,7 +3226,7 @@ async function exportDailyAttendancePdf() {
 }
 
 // ==========================================
-// 15. MODAL HELPERS & BOOTSTRAP
+// 17. MODAL HELPERS & BOOTSTRAP
 // ==========================================
 function showModal(html) {
   document.getElementById('modalBox').innerHTML = html;
@@ -2816,7 +3238,7 @@ function closeModal() {
   document.getElementById('modalBackdrop').classList.add('hidden');
 }
 
-setDynamicFavicon();
+initPwaIconsAndManifest();
 checkPublicQrVerify();
 if (currentUser && !window.location.search.includes('verify=') && !window.location.search.includes('cert=')) {
   enterApp();
