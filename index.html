@@ -18,6 +18,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-messaging-compat.js"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
     body { font-family: 'Inter', sans-serif; background-color: #F8FAFC; color: #0F172A; }
@@ -64,21 +65,21 @@
   <!-- MAIN APPLICATION SHELL -->
   <div id="appShell" class="hidden flex-1 flex flex-col">
     <header class="bg-white border-b border-slate-200 sticky top-0 z-30">
-      <div class="max-w-7xl mx-auto px-3 sm:px-6 h-14 flex items-center justify-between gap-2">
-        <div class="flex items-center gap-3 min-w-0">
+      <div class="max-w-7xl mx-auto px-3 sm:px-6 py-2 flex flex-wrap items-center justify-between gap-2">
+        <div class="flex items-center gap-2.5 min-w-0 flex-1">
           <div class="w-8 h-8 rounded-lg bg-[#0F172A] text-white flex items-center justify-center font-extrabold text-xs tracking-tight shrink-0">TS<span class="text-[#EF4444]">M</span></div>
-          <div class="truncate">
-            <div class="flex items-center gap-2">
-              <span class="font-extrabold text-sm sm:text-base text-[#0F172A] uppercase tracking-tight truncate">TIKARIYA'S SCHOOL OF <span class="text-[#B91C1C]">M</span>USIC</span>
-              <span id="roleBadge" class="hidden sm:inline-block px-2 py-0.5 text-[10px] font-semibold uppercase rounded bg-slate-100 text-slate-800 border border-slate-300">Admin</span>
+          <div class="min-w-0 flex-1">
+            <div class="flex flex-wrap items-center gap-1.5">
+              <span class="font-extrabold text-xs sm:text-base text-[#0F172A] uppercase tracking-tight leading-tight break-words">TIKARIYA'S SCHOOL OF <span class="text-[#B91C1C]">M</span>USIC</span>
+              <span id="roleBadge" class="px-1.5 py-0.5 text-[9px] sm:text-[10px] font-semibold uppercase rounded bg-slate-100 text-slate-800 border border-slate-300 shrink-0">Admin</span>
             </div>
-            <p class="text-[10px] text-slate-500 truncate">B. S. TIKARIYA CULTURAL FOUNDATION &bull; CIN: U88900MH2025NPL454435</p>
+            <p class="text-[9px] sm:text-[10px] text-slate-500 truncate">B. S. TIKARIYA CULTURAL FOUNDATION &bull; CIN: U88900MH2025NPL454435</p>
           </div>
         </div>
 
-        <div class="flex items-center gap-2 shrink-0">
+        <div class="flex items-center gap-1.5 shrink-0">
           <button onclick="downloadActiveBrochure()" class="hidden md:inline-block px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:text-slate-900 border border-slate-300 rounded-lg">Brochure</button>
-          <button onclick="confirmLogout()" class="px-3 py-1.5 text-xs font-semibold text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-lg transition">Sign Out</button>
+          <button onclick="confirmLogout()" class="px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-lg transition">Sign Out</button>
         </div>
       </div>
 
@@ -100,8 +101,10 @@
 
 <script>
 // ==========================================
-// 1. PWA MANIFEST & HIGH-RES DESKTOP/MENU APP ICONS
+// 1. ISOLATED PWA MANIFEST (/tsm-gem/), ICONS & REAL FCM SERVICE WORKER
 // ==========================================
+const FCM_VAPID_KEY = "BOjkdHDAmnmcprZ3U0pS0YT4C8IN-UWavlHXNusmSW8_qHql4FtTyIXyqz2E01oPUFdDLk2Ul1c9sTM771hJ5Pg";
+
 function generateAppIconPng(size) {
   const c = document.createElement('canvas');
   c.width = size; c.height = size;
@@ -145,25 +148,104 @@ function initPwaIconsAndManifest() {
     if (fav) fav.href = icon64;
     if (apple) apple.href = icon192;
 
-    const baseUrl = window.location.href.split('?')[0].split('#')[0];
+    const isGhPages = window.location.hostname.includes('github.io');
+    const startUrl = isGhPages ? "https://tikariyas.github.io/tsm-gem/" : window.location.href.split('?')[0].split('#')[0];
+    const scopeUrl = isGhPages ? "https://tikariyas.github.io/tsm-gem/" : startUrl;
+
     const manifestObj = {
+      id: "/tsm-gem/",
       name: "TIKARIYA'S SCHOOL OF MUSIC",
       short_name: "TSM",
       description: "TIKARIYA'S SCHOOL OF MUSIC - B. S. TIKARIYA CULTURAL FOUNDATION",
-      start_url: baseUrl,
-      scope: baseUrl,
+      start_url: startUrl,
+      scope: scopeUrl,
       display: "standalone",
       background_color: "#F8FAFC",
       theme_color: "#0F172A",
       icons: [
-        { src: icon192, sizes: "192x192", type: "image/png", purpose: "any maskable" },
-        { src: icon512, sizes: "512x512", type: "image/png", purpose: "any maskable" }
+        { src: icon192, sizes: "192x192", type: "image/png", purpose: "any" },
+        { src: icon512, sizes: "512x512", type: "image/png", purpose: "any" }
       ]
     };
-    const manifestBlob = new Blob([JSON.stringify(manifestObj)], { type: 'application/manifest+json' });
+
+    const encodedManifest = "data:application/manifest+json;charset=utf-8," + encodeURIComponent(JSON.stringify(manifestObj));
     const manifestLink = document.getElementById('manifestLink');
-    if (manifestLink) manifestLink.href = URL.createObjectURL(manifestBlob);
+    if (manifestLink) manifestLink.setAttribute('href', encodedManifest);
   } catch (e) {}
+}
+
+let swRegistration = null;
+let fcmMessaging = null;
+let currentDeviceFcmToken = localStorage.getItem('tsm_fcm_token') || '';
+
+async function initBackgroundFcmServiceWorker() {
+  if (!('serviceWorker' in navigator)) return;
+  try {
+    swRegistration = await navigator.serviceWorker.register('./firebase-messaging-sw.js').catch(() => null);
+    if (firebase.messaging && firebase.messaging.isSupported()) {
+      fcmMessaging = firebase.messaging();
+      fcmMessaging.onMessage((payload) => {
+        const title = (payload.notification && payload.notification.title) || "TIKARIYA'S SCHOOL OF MUSIC";
+        const body = (payload.notification && payload.notification.body) || "New academy update";
+        showToast(`${title}: ${body}`);
+        if (Notification.permission === 'granted') {
+          if (swRegistration && swRegistration.showNotification) {
+            swRegistration.showNotification(title, { body, icon: generateAppIconPng(192), tag: 'tsm-fg' });
+          } else {
+            new Notification(title, { body, icon: generateAppIconPng(192) });
+          }
+        }
+      });
+    }
+  } catch (e) {}
+}
+
+async function enableFcmPushForCurrentUser(silent = false) {
+  if (!('Notification' in window)) {
+    if (!silent) showToast('Notifications not supported in this browser');
+    return;
+  }
+  const perm = Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission();
+  if (perm !== 'granted') {
+    if (!silent) showToast('Notification permission blocked in browser settings');
+    return;
+  }
+  try {
+    if (!swRegistration && 'serviceWorker' in navigator) {
+      swRegistration = await navigator.serviceWorker.register('./firebase-messaging-sw.js').catch(() => null);
+    }
+    if (fcmMessaging && swRegistration) {
+      const token = await fcmMessaging.getToken({
+        vapidKey: FCM_VAPID_KEY,
+        serviceWorkerRegistration: swRegistration
+      });
+      if (token) {
+        currentDeviceFcmToken = token;
+        localStorage.setItem('tsm_fcm_token', token);
+        saveDeviceTokenToState(token);
+        if (!silent) showToast('Background Push Notifications Enabled');
+        return;
+      }
+    }
+    if (!silent) showToast('Push enabled (ensure firebase-messaging-sw.js is uploaded)');
+  } catch (err) {
+    console.warn('FCM token error:', err);
+    if (!silent) showToast('Upload firebase-messaging-sw.js to GitHub root to activate closed-app push');
+  }
+}
+
+function saveDeviceTokenToState(token) {
+  if (!token || !currentUser) return;
+  if (!appState.fcmTokens || typeof appState.fcmTokens !== 'object') appState.fcmTokens = {};
+  const key = currentUser.role === 'admin'
+    ? 'ADMIN'
+    : (appState.students.find(x => x.id === currentUser.studentId)?.rollNo || '');
+  if (!key) return;
+  if (!Array.isArray(appState.fcmTokens[key])) appState.fcmTokens[key] = [];
+  if (!appState.fcmTokens[key].includes(token)) {
+    appState.fcmTokens[key].push(token);
+    saveState();
+  }
 }
 
 let deferredInstallPrompt = null;
@@ -177,19 +259,18 @@ async function triggerPwaInstall() {
     deferredInstallPrompt.prompt();
     const res = await deferredInstallPrompt.userChoice;
     deferredInstallPrompt = null;
-    if (res.outcome === 'accepted') showToast('App installed with TSM icon');
+    if (res.outcome === 'accepted') showToast('TSM App installed with dedicated icon');
   } else {
     showModal(`
       <div class="space-y-3 text-xs">
         <div class="flex items-center justify-between">
-          <h3 class="text-sm font-bold text-[#0F172A]">Create Desktop &amp; Start Menu App Icon</h3>
+          <h3 class="text-sm font-bold text-[#0F172A]">Separate TSM App Icon Setup</h3>
           <button onclick="closeModal()" class="text-slate-500 font-semibold">Close</button>
         </div>
-        <p class="text-slate-600">If Chrome previously cached an older shortcut without an icon:</p>
+        <p class="text-slate-600">This build uses isolated <code>id: "/tsm-gem/"</code> so it installs completely separate from Sing From Home (SFH):</p>
         <ol class="list-decimal pl-5 space-y-1.5 text-slate-700">
-          <li>Open Chrome Menu (<b>&vellip;</b> top-right) &rarr; <b>Cast, save, and share</b> &rarr; <b>Uninstall TIKARIYA'S SCHOOL OF MUSIC</b> (if listed).</li>
-          <li>Reload this page once, then click <b>Cast, save, and share</b> &rarr; <b>Install page as app</b> (or <b>Create shortcut</b> with <i>Open as window</i> checked).</li>
-          <li>The new <b>TSM</b> icon will now appear on your Desktop and Start Menu.</li>
+          <li><b>PC Chrome:</b> Open <code>chrome://apps</code>, remove any old merged shortcut if needed, reload <code>tikariyas.github.io/tsm-gem/</code>, and click the <b>Install</b> icon in the address bar.</li>
+          <li><b>Android Chrome:</b> Tap the address bar lock/settings icon &rarr; <b>Site settings</b> &rarr; <b>Clear &amp; reset</b>, reload, and tap <b>&vellip; &rarr; Install app</b>.</li>
         </ol>
       </div>
     `);
@@ -199,8 +280,8 @@ async function triggerPwaInstall() {
 // ==========================================
 // 2. CONFIG, PERSISTENT SESSION & STATE
 // ==========================================
-const STORAGE_KEY = 'tsm_pwa_state_v6';
-const SESSION_KEY = 'tsm_active_session_v6';
+const STORAGE_KEY = 'tsm_pwa_state_v8';
+const SESSION_KEY = 'tsm_active_session_v8';
 const CONFIG_KEY = 'tsm_firebase_config_v1';
 
 const DEFAULT_FIREBASE_CONFIG = {
@@ -243,6 +324,8 @@ const DEFAULT_BATCHES = [
 const DEFAULT_STATE = {
   adminRollNo: 'MUSICSNSOUNDS',
   adminPin: '1995',
+  pushRelayUrl: '',
+  fcmTokens: {},
   courses: DEFAULT_COURSES,
   batches: DEFAULT_BATCHES,
   customBrochureDataUrl: '',
@@ -251,10 +334,11 @@ const DEFAULT_STATE = {
   certBgDataUrl: '',
   holidays: {},
   certs: [],
+  pushAlerts: [],
   students: [
     {
       id: 'stu_1',
-      rollNo: 'TSM-2026-014',
+      rollNo: 'TSM-0001',
       pin: '1234',
       name: 'Aarav Sharma',
       courses: ['Guitar', 'Vocals'],
@@ -295,8 +379,8 @@ let appState = loadState();
 let currentUser = loadSession();
 let activeTab = currentUser ? (currentUser.role === 'admin' ? 'dashboard' : 'student_home') : 'dashboard';
 let selectedDate = new Date().toISOString().split('T')[0];
-let calendarMonth = selectedDate.slice(0, 7); // YYYY-MM
-let attendanceSubView = 'register'; // 'register' | 'calendar'
+let calendarMonth = selectedDate.slice(0, 7);
+let attendanceSubView = 'register';
 let filterBatch = 'ALL';
 let adminChatRoll = appState.students[0]?.rollNo || 'TSM-0001';
 let selectedReceiptIds = [];
@@ -309,6 +393,7 @@ let attachedImageDataUrl = null;
 let uploadedBasePdfBytes = null;
 let uploadedBasePdfName = '';
 let html5QrScanner = null;
+let lastSeenPushId = localStorage.getItem('tsm_last_push_id') || '';
 
 // In-App Audio Recorder State
 let mediaRecorder = null;
@@ -320,12 +405,25 @@ let isRecordingAudio = false;
 
 const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
 
+function getNextRollNumber() {
+  let maxNum = 0;
+  (appState.students || []).forEach(s => {
+    const m = String(s.rollNo || '').match(/(\d+)$/);
+    if (m) {
+      const n = parseInt(m[1], 10);
+      if (n > maxNum && n < 9000) maxNum = n;
+    }
+  });
+  return `TSM-${String(maxNum + 1).padStart(4, '0')}`;
+}
+
 function normalizeStudent(s) {
   if (!Array.isArray(s.courses) || !s.courses.length) {
     s.courses = s.course ? s.course.split(/[,/]/).map(x => x.trim()).filter(Boolean) : ['Piano'];
   }
   s.course = s.courses.join(', ');
   if (s.genuineDays === undefined) s.genuineDays = s.attendedDays || 0;
+  if (s.bonusCredits === undefined) s.bonusCredits = 0;
   if (s.concessionMonths === undefined) s.concessionMonths = 0;
   if (!s.parentPhone) s.parentPhone = s.phone || '';
   if (!s.pin) s.pin = '1234';
@@ -334,6 +432,87 @@ function normalizeStudent(s) {
     s.grade = GRADES[gradeIdx];
   }
   return s;
+}
+
+// ==========================================
+// 3. GENUINE DAYS & BONUS AUTO-CONVERSION CALCULATOR
+// ==========================================
+function recalculateStudentAttendanceStats(student) {
+  const admDate = student.admissionDate || '2000-01-01';
+  const entries = [];
+  Object.entries(appState.attendance || {}).forEach(([key, rec]) => {
+    const idx = key.indexOf('_');
+    if (idx === -1) return;
+    const dt = key.slice(0, idx);
+    const sid = key.slice(idx + 1);
+    if (sid === student.id && dt >= admDate) {
+      entries.push({ dt, status: rec.status });
+    }
+  });
+
+  if (!entries.length) return;
+  entries.sort((a, b) => a.dt.localeCompare(b.dt));
+
+  const admTime = new Date(admDate).getTime();
+  const weekBuckets = new Map();
+  entries.forEach(item => {
+    const dayDiff = Math.max(0, Math.floor((new Date(item.dt).getTime() - admTime) / 86400000));
+    const weekIdx = Math.floor(dayDiff / 7);
+    if (!weekBuckets.has(weekIdx)) weekBuckets.set(weekIdx, []);
+    weekBuckets.get(weekIdx).push(item);
+  });
+
+  let totalGenuine = 0;
+  let bankedBonus = 0;
+  let teacherLeaveMakeupDebt = 0;
+
+  const sortedWeeks = [...weekBuckets.keys()].sort((a, b) => a - b);
+  sortedWeeks.forEach(wIdx => {
+    const items = weekBuckets.get(wIdx);
+    const presentCount = items.filter(x => x.status === 'present').length;
+    const bonusUsedCount = items.filter(x => x.status === 'bonus_used').length;
+    const teacherLeaveCount = items.filter(x => x.status === 'teacher_leave').length;
+    const excusedLeaveCount = items.filter(x => x.status === 'excused_leave').length;
+
+    teacherLeaveMakeupDebt += teacherLeaveCount;
+
+    let weekGenuine = 0;
+    let weekNewBonus = 0;
+
+    for (let i = 0; i < presentCount; i++) {
+      if (weekGenuine < 3) {
+        weekGenuine++;
+      } else if (teacherLeaveMakeupDebt > 0) {
+        weekGenuine++;
+        teacherLeaveMakeupDebt--;
+      } else {
+        weekNewBonus++;
+      }
+    }
+
+    bankedBonus += weekNewBonus;
+
+    const explicitConvert = Math.min(bankedBonus, bonusUsedCount);
+    weekGenuine += explicitConvert;
+    bankedBonus -= explicitConvert;
+
+    const plannedLeaves = teacherLeaveCount + excusedLeaveCount;
+    if (plannedLeaves > 0 && weekGenuine < 3 && bankedBonus > 0) {
+      const needed = Math.min(3 - weekGenuine, plannedLeaves, bankedBonus);
+      weekGenuine += needed;
+      bankedBonus -= needed;
+      if (teacherLeaveCount > 0) {
+        teacherLeaveMakeupDebt = Math.max(0, teacherLeaveMakeupDebt - needed);
+      }
+    }
+
+    totalGenuine += weekGenuine;
+  });
+
+  student.genuineDays = totalGenuine;
+  student.bonusCredits = bankedBonus;
+  const gradeIdx = Math.min(GRADES.length - 1, Math.floor(totalGenuine / 48));
+  student.grade = GRADES[gradeIdx];
 }
 
 function purgeExpiredAudioData(stateObj) {
@@ -354,7 +533,7 @@ function purgeExpiredAudioData(stateObj) {
 
 function loadState() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY) || localStorage.getItem('tsm_pwa_state_v5') || localStorage.getItem('tsm_pwa_state_v4');
+    const raw = localStorage.getItem(STORAGE_KEY) || localStorage.getItem('tsm_pwa_state_v7') || localStorage.getItem('tsm_pwa_state_v6');
     if (raw) {
       const parsed = JSON.parse(raw);
       if (parsed && parsed.students) {
@@ -364,6 +543,8 @@ function loadState() {
         if (!parsed.audioClips) parsed.audioClips = [];
         if (!parsed.holidays) parsed.holidays = {};
         if (!parsed.certs) parsed.certs = [];
+        if (!parsed.pushAlerts) parsed.pushAlerts = [];
+        if (!parsed.fcmTokens) parsed.fcmTokens = {};
         parsed.students = parsed.students.map(normalizeStudent);
         purgeExpiredAudioData(parsed);
         return parsed;
@@ -388,9 +569,62 @@ function saveState() {
   }
 }
 
+function dispatchPushAlert(targetRoll, title, body) {
+  const alertObj = {
+    id: 'push_' + Date.now(),
+    targetRoll: targetRoll || 'ALL',
+    title,
+    body,
+    ts: Date.now()
+  };
+  if (!Array.isArray(appState.pushAlerts)) appState.pushAlerts = [];
+  appState.pushAlerts = [alertObj, ...appState.pushAlerts.slice(0, 19)];
+  saveState();
+
+  // If Push Relay Webhook (Cloudflare Worker) is configured, send real closed-app FCM push to target tokens
+  const tokensMap = appState.fcmTokens || {};
+  let targetTokens = [];
+  if (targetRoll === 'ALL') {
+    Object.values(tokensMap).forEach(arr => { if (Array.isArray(arr)) targetTokens.push(...arr); });
+  } else if (Array.isArray(tokensMap[targetRoll])) {
+    targetTokens = [...tokensMap[targetRoll]];
+  }
+  targetTokens = [...new Set(targetTokens)];
+
+  if (appState.pushRelayUrl && targetTokens.length > 0) {
+    fetch(appState.pushRelayUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tokens: targetTokens, title, body, url: '/tsm-gem/' })
+    }).catch(() => {});
+  }
+}
+
+function checkIncomingPushAlerts() {
+  if (!currentUser || !Array.isArray(appState.pushAlerts) || !appState.pushAlerts.length) return;
+  const latest = appState.pushAlerts[0];
+  if (!latest || latest.id === lastSeenPushId) return;
+
+  const myRoll = currentUser.role === 'admin'
+    ? 'ADMIN'
+    : (appState.students.find(x => x.id === currentUser.studentId)?.rollNo || '');
+
+  if (latest.targetRoll === 'ALL' || latest.targetRoll === myRoll) {
+    lastSeenPushId = latest.id;
+    localStorage.setItem('tsm_last_push_id', latest.id);
+    if (Notification.permission === 'granted') {
+      if (swRegistration && swRegistration.showNotification) {
+        swRegistration.showNotification(latest.title, { body: latest.body, icon: generateAppIconPng(192), tag: 'tsm-alert' });
+      } else {
+        new Notification(latest.title, { body: latest.body, icon: generateAppIconPng(192) });
+      }
+    }
+  }
+}
+
 function loadSession() {
   try {
-    const raw = localStorage.getItem(SESSION_KEY) || localStorage.getItem('tsm_active_session_v5');
+    const raw = localStorage.getItem(SESSION_KEY) || localStorage.getItem('tsm_active_session_v7');
     if (raw) return JSON.parse(raw);
   } catch (e) {}
   return null;
@@ -417,6 +651,8 @@ async function initFirebaseAuto() {
       try { await firebase.auth().signInAnonymously(); } catch (e) {}
     }
 
+    await initBackgroundFcmServiceWorker();
+
     db = firebase.firestore();
     db.collection('tsm_system').doc('master_state').onSnapshot(doc => {
       cloudSyncStatus = 'Cloud Synced (tikariya-music---foundation)';
@@ -429,12 +665,18 @@ async function initFirebaseAuto() {
           if (!remote.audioClips) remote.audioClips = [];
           if (!remote.holidays) remote.holidays = {};
           if (!remote.certs) remote.certs = [];
+          if (!remote.pushAlerts) remote.pushAlerts = [];
+          if (!remote.fcmTokens) remote.fcmTokens = {};
           remote.students = remote.students.map(normalizeStudent);
           const didPurge = purgeExpiredAudioData(remote);
           appState = remote;
           localStorage.setItem(STORAGE_KEY, JSON.stringify(appState));
           if (didPurge) saveState();
-          if (currentUser) renderCurrentTab();
+          checkIncomingPushAlerts();
+          if (currentUser) {
+            if (currentDeviceFcmToken) saveDeviceTokenToState(currentDeviceFcmToken);
+            renderCurrentTab();
+          }
           checkPublicQrVerify();
         }
       } else {
@@ -456,7 +698,7 @@ function showToast(msg) {
 }
 
 // ==========================================
-// 3. BACKUP & RESTORE ENGINE (Tikariya_Backup_YYYY-MM-DD.json)
+// 4. BACKUP & RESTORE ENGINE (Tikariya_Backup_YYYY-MM-DD.json)
 // ==========================================
 function exportBackupJson() {
   const todayStr = new Date().toISOString().split('T')[0];
@@ -557,23 +799,15 @@ function handleRestoreBackupFile(e) {
       const payMap = d.pay || {};
       const cfg = d.cfg || {};
 
-      // Count genuine 'P' days from att history for each student
-      const genuineCountBySid = {};
       const restoredAttendance = {};
       Object.entries(attMap).forEach(([dateStr, dayObj]) => {
         if (!dayObj || typeof dayObj !== 'object') return;
         Object.entries(dayObj).forEach(([sid, code]) => {
           let mappedStatus = 'present';
-          if (code === 'P' || code === 'present') {
-            mappedStatus = 'present';
-            genuineCountBySid[sid] = (genuineCountBySid[sid] || 0) + 1;
-          } else if (code === 'A' || code === 'absent') {
-            mappedStatus = 'absent';
-          } else if (code === 'L' || code === 'teacher_leave') {
-            mappedStatus = 'teacher_leave';
-          } else if (code === 'bonus_used' || code === 'excused_leave') {
-            mappedStatus = code;
-          }
+          if (code === 'P' || code === 'present') mappedStatus = 'present';
+          else if (code === 'A' || code === 'absent') mappedStatus = 'absent';
+          else if (code === 'L' || code === 'teacher_leave') mappedStatus = 'teacher_leave';
+          else if (code === 'bonus_used' || code === 'excused_leave') mappedStatus = code;
           restoredAttendance[`${dateStr}_${sid}`] = {
             status: mappedStatus,
             time: '',
@@ -582,7 +816,6 @@ function handleRestoreBackupFile(e) {
         });
       });
 
-      // Merge courses from cfg.fee
       if (cfg.fee && typeof cfg.fee === 'object') {
         Object.entries(cfg.fee).forEach(([cName, cFee]) => {
           const exists = appState.courses.find(x => x.name.toLowerCase() === cName.toLowerCase());
@@ -594,6 +827,8 @@ function handleRestoreBackupFile(e) {
       if (Array.isArray(cfg.batches) && cfg.batches.length) {
         appState.batches = cfg.batches;
       }
+
+      appState.attendance = restoredAttendance;
 
       const restoredStudents = d.students.map((st, idx) => {
         const courseArr = String(st.course || 'Piano').split(/[,/]/).map(x => x.trim()).filter(Boolean);
@@ -614,17 +849,14 @@ function handleRestoreBackupFile(e) {
         const payMode = (latestPay && typeof latestPay === 'object' && latestPay.m) ? latestPay.m : 'UPI';
         const payDate = (latestPay && typeof latestPay === 'object' && latestPay.d) ? latestPay.d : (latestPayKey || '-');
 
-        const genuineTotal = st.genuineDays !== undefined ? Number(st.genuineDays) : (genuineCountBySid[st.id] || 0);
-        const gradeIdx = Math.min(GRADES.length - 1, Math.floor(genuineTotal / 48));
-
-        return normalizeStudent({
+        const stuObj = normalizeStudent({
           id: st.id,
           rollNo: (nosMap[st.id] || st.rollNo || `TSM-${String(idx + 1).padStart(4, '0')}`).toUpperCase(),
           pin: st.pin || '1234',
           name: st.name,
           courses: courseArr,
           course: courseArr.join(', '),
-          grade: st.grade || GRADES[gradeIdx],
+          grade: st.grade || 'Elementary Grade 1',
           batch: st.batch || appState.batches[0] || '5:00 PM',
           dob: st.dob || '',
           phone: (st.phone || st.pphone || '').replace(/\s+/g, ''),
@@ -635,7 +867,7 @@ function handleRestoreBackupFile(e) {
           guardian: st.parent || st.guardian || 'Guardian',
           pickupNote: st.notes || st.pickupNote || '',
           admissionDate: st.adm || st.admissionDate || selectedDate,
-          genuineDays: genuineTotal,
+          genuineDays: Number(st.genuineDays || 0),
           bonusCredits: Number(st.bonusCredits || 0),
           monthlyFee: baseFee,
           concession: concAmt,
@@ -647,10 +879,11 @@ function handleRestoreBackupFile(e) {
           lastPaymentDate: payDate,
           photoDataUrl: st.photo || st.photoDataUrl || ''
         });
+        recalculateStudentAttendanceStats(stuObj);
+        return stuObj;
       });
 
       appState.students = restoredStudents;
-      appState.attendance = restoredAttendance;
       appState.holidays = d.hol || appState.holidays || {};
       appState.certs = d.certs || appState.certs || [];
       if (Array.isArray(d.audioClips)) appState.audioClips = d.audioClips;
@@ -662,7 +895,7 @@ function handleRestoreBackupFile(e) {
 
       saveState();
       renderCurrentTab();
-      showToast(`Restored ${restoredStudents.length} students & attendance history`);
+      showToast(`Restored ${restoredStudents.length} students & recalculated genuine/bonus days`);
     } catch (err) {
       console.error(err);
       showToast('Failed to parse backup file');
@@ -672,7 +905,7 @@ function handleRestoreBackupFile(e) {
 }
 
 // ==========================================
-// 4. PUBLIC QR VERIFICATION (?verify= & ?cert=)
+// 5. PUBLIC QR VERIFICATION (?verify= & ?cert=)
 // ==========================================
 function checkPublicQrVerify() {
   const params = new URLSearchParams(window.location.search);
@@ -729,54 +962,66 @@ function checkPublicQrVerify() {
 }
 
 // ==========================================
-// 5. CERTIFICATE ELIGIBILITY, FAMILY GROUPING & BILLING ENGINE
+// 6. WEEKLY STATS, CERTIFICATE ELIGIBILITY & BILLING ENGINE
 // ==========================================
-function getWeekRange(dateStr) {
+function getAdmissionWeekRange(dateStr, admissionDateStr) {
   const d = new Date(dateStr);
-  const dayOfWeek = d.getDay();
-  const diffToMon = (dayOfWeek === 0 ? -6 : 1 - dayOfWeek);
-  const mon = new Date(d);
-  mon.setDate(d.getDate() + diffToMon);
-  const sun = new Date(mon);
-  sun.setDate(mon.getDate() + 6);
+  if (!admissionDateStr) {
+    const dayOfWeek = d.getDay();
+    const diffToMon = (dayOfWeek === 0 ? -6 : 1 - dayOfWeek);
+    const mon = new Date(d);
+    mon.setDate(d.getDate() + diffToMon);
+    const sun = new Date(mon);
+    sun.setDate(mon.getDate() + 6);
+    return { startStr: mon.toISOString().split('T')[0], endStr: sun.toISOString().split('T')[0], start: mon };
+  }
+  const adm = new Date(admissionDateStr);
+  const diffDays = Math.max(0, Math.floor((d.getTime() - adm.getTime()) / 86400000));
+  const weekOffset = Math.floor(diffDays / 7) * 7;
+  const start = new Date(adm);
+  start.setDate(adm.getDate() + weekOffset);
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
   return {
-    monStr: mon.toISOString().split('T')[0],
-    sunStr: sun.toISOString().split('T')[0],
-    mon
+    startStr: start.toISOString().split('T')[0],
+    endStr: end.toISOString().split('T')[0],
+    start
   };
 }
 
-function getWeeklyStats(dateStr, studentId) {
-  const { mon } = getWeekRange(dateStr);
+function getWeeklyStats(dateStr, student) {
+  const { start } = getAdmissionWeekRange(dateStr, student.admissionDate);
   let genuineWeekDays = 0;
   let bonusUsedCount = 0;
   let teacherLeaveCount = 0;
+  let excusedLeaveCount = 0;
   let absentCount = 0;
 
   for (let i = 0; i < 7; i++) {
-    const cur = new Date(mon);
-    cur.setDate(mon.getDate() + i);
-    const key = `${cur.toISOString().split('T')[0]}_${studentId}`;
+    const cur = new Date(start);
+    cur.setDate(start.getDate() + i);
+    const key = `${cur.toISOString().split('T')[0]}_${student.id}`;
     const rec = appState.attendance[key];
     if (rec) {
       if (rec.status === 'present') genuineWeekDays++;
       else if (rec.status === 'bonus_used') bonusUsedCount++;
       else if (rec.status === 'teacher_leave') teacherLeaveCount++;
+      else if (rec.status === 'excused_leave') excusedLeaveCount++;
       else if (rec.status === 'absent') absentCount++;
     }
   }
   const totalWeekSessions = genuineWeekDays + bonusUsedCount;
   const hasShortFlag = absentCount > 0 && totalWeekSessions < 3;
-  return { genuineWeekDays, bonusUsedCount, totalWeekSessions, teacherLeaveCount, absentCount, hasShortFlag };
+  return { genuineWeekDays, bonusUsedCount, totalWeekSessions, teacherLeaveCount, excusedLeaveCount, absentCount, hasShortFlag };
 }
 
 function evaluateCertificateEligibility(student, refDateStr) {
   const genuineDays = Number(student.genuineDays || 0);
   const has48Genuine = genuineDays >= 48;
-  const wk = getWeeklyStats(refDateStr, student.id);
-  const { monStr, sunStr } = getWeekRange(refDateStr);
+  const wk = getWeeklyStats(refDateStr, student);
+  const { startStr, endStr } = getAdmissionWeekRange(refDateStr, student.admissionDate);
   const stuClips = (appState.audioClips || []).filter(c => c.rollNo.toUpperCase() === student.rollNo.toUpperCase());
-  const weeklyClips = stuClips.filter(c => c.date >= monStr && c.date <= sunStr);
+  const weeklyClips = stuClips.filter(c => c.date >= startStr && c.date <= endStr);
   const hasWeeklyAudio = weeklyClips.length >= 2 || stuClips.length >= 2;
   const hasWeeklyAttendance = wk.totalWeekSessions >= 3 || genuineDays >= 48;
   const eligible = has48Genuine && hasWeeklyAudio && hasWeeklyAttendance;
@@ -850,7 +1095,7 @@ function drawStyledAcademyTitlePdf(page, x, y, size, fontBold) {
 }
 
 // ==========================================
-// 6. LOGIN & PERSISTENT SESSION
+// 7. LOGIN & PERSISTENT SESSION
 // ==========================================
 function handleUnifiedLogin(e) {
   e.preventDefault();
@@ -865,6 +1110,7 @@ function handleUnifiedLogin(e) {
     saveSession(currentUser);
     activeTab = 'dashboard';
     enterApp();
+    enableFcmPushForCurrentUser(true);
     return;
   }
 
@@ -873,7 +1119,9 @@ function handleUnifiedLogin(e) {
     currentUser = { role: 'student', studentId: stu.id };
     saveSession(currentUser);
     activeTab = 'student_home';
+    calendarMonth = (stu.admissionDate || selectedDate).slice(0, 7);
     enterApp();
+    enableFcmPushForCurrentUser(true);
   } else {
     showLoginError('Invalid Roll Number or Access PIN.');
   }
@@ -986,7 +1234,7 @@ function renderCurrentTab() {
 }
 
 // ==========================================
-// 7. ADMIN OVERVIEW DASHBOARD
+// 8. ADMIN OVERVIEW DASHBOARD
 // ==========================================
 function renderAdminDashboard(el) {
   const totalStu = appState.students.length;
@@ -1049,7 +1297,7 @@ function renderAdminDashboard(el) {
               <tr class="bg-slate-50 border-b border-slate-200 text-[11px] font-semibold text-slate-600 uppercase">
                 <th class="py-2.5 px-3">Roll No</th>
                 <th class="py-2.5 px-3">Student &amp; Instruments</th>
-                <th class="py-2.5 px-3">Genuine Days &amp; Audio</th>
+                <th class="py-2.5 px-3">Genuine &amp; Bonus Days</th>
                 <th class="py-2.5 px-3">Fee Status</th>
                 <th class="py-2.5 px-3 text-right">Actions</th>
               </tr>
@@ -1066,7 +1314,7 @@ function renderAdminDashboard(el) {
                       <div class="text-[11px] text-indigo-700">${s.grade} &mdash; ${s.course}</div>
                     </td>
                     <td class="py-2.5 px-3 tabular-nums">
-                      <span class="font-semibold text-[#0F172A]">${s.genuineDays} Genuine</span> (${mod}/48)
+                      <span class="font-semibold text-[#0F172A]">${s.genuineDays} Genuine</span> (${mod}/48) &bull; Bonus: <b>${s.bonusCredits}</b>
                       <div class="text-[10px] ${elig.eligible ? 'text-emerald-700 font-bold' : 'text-slate-500'}">
                         Audio Clips: ${elig.weeklyAudioCount}/2 wk &bull; ${elig.eligible ? 'CERT ELIGIBLE' : 'In Progress'}
                       </div>
@@ -1092,7 +1340,7 @@ function renderAdminDashboard(el) {
 }
 
 // ==========================================
-// 8. ATTENDANCE REGISTER + MONTHLY VISUAL CALENDAR + QR SCANNER
+// 9. ATTENDANCE REGISTER + ADMISSION-CUSTOMIZED MONTHLY CALENDAR
 // ==========================================
 function getAttendanceRecord(dateStr, studentId) {
   const key = `${dateStr}_${studentId}`;
@@ -1104,24 +1352,16 @@ function setStudentAttendanceStatus(studentId, newStatus) {
   const prev = getAttendanceRecord(selectedDate, studentId);
   const stu = appState.students.find(s => s.id === studentId);
 
-  if (stu) {
-    if (prev.status === 'present') stu.genuineDays = Math.max(0, (stu.genuineDays || 0) - 1);
-    if (prev.status === 'teacher_leave') stu.bonusCredits = Math.max(0, (stu.bonusCredits || 0) - 1);
-    if (prev.status === 'bonus_used') stu.bonusCredits = (stu.bonusCredits || 0) + 1;
-
-    if (newStatus === 'present') stu.genuineDays = (stu.genuineDays || 0) + 1;
-    if (newStatus === 'teacher_leave') stu.bonusCredits = (stu.bonusCredits || 0) + 1;
-    if (newStatus === 'bonus_used') stu.bonusCredits = Math.max(0, (stu.bonusCredits || 0) - 1);
-
-    const gradeIdx = Math.min(GRADES.length - 1, Math.floor(stu.genuineDays / 48));
-    stu.grade = GRADES[gradeIdx];
-  }
-
   appState.attendance[key] = {
     ...prev,
     status: newStatus,
     time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   };
+
+  if (stu) {
+    recalculateStudentAttendanceStats(stu);
+  }
+
   saveState();
   renderCurrentTab();
 }
@@ -1167,9 +1407,10 @@ function buildMonthlyCalendarHtml(studentFilterObj) {
   const [yr, mo] = calendarMonth.split('-').map(Number);
   const firstDay = new Date(yr, mo - 1, 1);
   const daysInMonth = new Date(yr, mo, 0).getDate();
-  const startWeekday = firstDay.getDay(); // 0 Sun .. 6 Sat
+  const startWeekday = firstDay.getDay();
   const monthLabel = firstDay.toLocaleString('default', { month: 'long', year: 'numeric' });
   const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const admDateStr = studentFilterObj ? (studentFilterObj.admissionDate || '2000-01-01') : null;
 
   let cells = '';
   for (let i = 0; i < startWeekday; i++) {
@@ -1183,9 +1424,21 @@ function buildMonthlyCalendarHtml(studentFilterObj) {
     const isSunday = new Date(yr, mo - 1, day).getDay() === 0;
 
     if (studentFilterObj) {
-      // Single Student Calendar View
+      const isBeforeAdmission = dt < admDateStr;
+      const isAdmissionDay = dt === admDateStr;
       const rec = appState.attendance[`${dt}_${studentFilterObj.id}`];
       let badge = '';
+
+      if (isBeforeAdmission) {
+        cells += `
+          <div class="h-20 p-1.5 border border-slate-100 bg-slate-50 rounded-lg flex flex-col justify-between opacity-50">
+            <span class="text-xs font-medium text-slate-400">${day}</span>
+            <span class="text-[8px] text-slate-400 text-center">Pre-Adm</span>
+          </div>
+        `;
+        continue;
+      }
+
       if (isHoliday) badge = `<span class="px-1.5 py-0.5 text-[9px] font-bold bg-purple-100 text-purple-800 rounded">HOLIDAY</span>`;
       else if (rec) {
         const map = {
@@ -1199,17 +1452,18 @@ function buildMonthlyCalendarHtml(studentFilterObj) {
         badge = `<span class="px-1.5 py-0.5 text-[9px] font-bold border rounded ${cls}">${lbl}</span>`;
       }
       cells += `
-        <div class="h-20 p-1.5 border rounded-lg flex flex-col justify-between ${isSelected ? 'border-[#0F172A] bg-slate-50' : 'border-slate-200 bg-white'}">
+        <div class="h-20 p-1.5 border rounded-lg flex flex-col justify-between ${isAdmissionDay ? 'border-indigo-600 bg-indigo-50/40' : isSelected ? 'border-[#0F172A] bg-slate-50' : 'border-slate-200 bg-white'}">
           <div class="flex justify-between items-center">
             <span class="text-xs font-bold ${isSunday ? 'text-red-600' : 'text-slate-700'}">${day}</span>
+            ${isAdmissionDay ? '<span class="px-1 text-[8px] font-bold bg-indigo-700 text-white rounded">ADM</span>' : ''}
           </div>
           <div class="text-center">${badge}</div>
         </div>
       `;
     } else {
-      // Admin Academy-Wide Calendar View
       let pCount = 0, aCount = 0, lCount = 0;
       appState.students.forEach(s => {
+        if (s.admissionDate && dt < s.admissionDate) return;
         const rec = appState.attendance[`${dt}_${s.id}`];
         if (rec) {
           if (rec.status === 'present' || rec.status === 'bonus_used') pCount++;
@@ -1243,7 +1497,10 @@ function buildMonthlyCalendarHtml(studentFilterObj) {
     <div class="bg-white p-4 rounded-xl border border-slate-200 space-y-3">
       <div class="flex items-center justify-between">
         <button type="button" onclick="shiftCalendarMonth(-1)" class="px-3 py-1.5 text-xs font-semibold border border-slate-300 rounded-lg hover:bg-slate-50">&larr; Prev</button>
-        <h3 class="text-sm font-bold text-[#0F172A] uppercase tracking-wide">${monthLabel}</h3>
+        <div class="text-center">
+          <h3 class="text-sm font-bold text-[#0F172A] uppercase tracking-wide">${monthLabel}</h3>
+          ${studentFilterObj ? `<p class="text-[10px] text-slate-500">Admission Start: <b>${studentFilterObj.admissionDate}</b></p>` : ''}
+        </div>
         <button type="button" onclick="shiftCalendarMonth(1)" class="px-3 py-1.5 text-xs font-semibold border border-slate-300 rounded-lg hover:bg-slate-50">Next &rarr;</button>
       </div>
       <div class="grid grid-cols-7 gap-1.5 text-center text-[11px] font-bold text-slate-500 uppercase">
@@ -1374,7 +1631,7 @@ function renderAttendanceTab(el) {
         <div class="bg-white rounded-xl border border-slate-200 divide-y divide-slate-200 overflow-x-auto">
           ${visibleStudents.map(s => {
             const rec = getAttendanceRecord(selectedDate, s.id);
-            const wk = getWeeklyStats(selectedDate, s.id);
+            const wk = getWeeklyStats(selectedDate, s);
             const isShort = rec.status === 'absent' || wk.hasShortFlag;
             const mod48 = s.genuineDays % 48;
             return `
@@ -1389,7 +1646,7 @@ function renderAttendanceTab(el) {
 
                 <div class="w-44 shrink-0">
                   <div class="text-[11px] font-medium text-slate-700 truncate">${s.batch}</div>
-                  <div class="text-[10px] text-slate-500 truncate">${s.isMinor ? 'Minor &bull; ' : ''}${s.guardian} ${s.pickupNote ? '('+s.pickupNote+')' : ''}</div>
+                  <div class="text-[10px] text-slate-500 truncate">Adm: ${s.admissionDate} ${s.pickupNote ? '&bull; ' + s.pickupNote : ''}</div>
                 </div>
 
                 <div class="flex items-center gap-1 shrink-0">
@@ -1427,7 +1684,7 @@ function renderAttendanceTab(el) {
 }
 
 // ==========================================
-// 9. COURSES, FEES, DISCOUNTS & BATCH CUSTOMIZATION
+// 10. COURSES, FEES, DISCOUNTS & BATCH CUSTOMIZATION
 // ==========================================
 function renderCoursesBatchesTab(el) {
   el.innerHTML = `
@@ -1586,7 +1843,7 @@ function deleteBatchTiming(idx) {
 }
 
 // ==========================================
-// 10. STUDENTS (MULTI-INSTRUMENT & SAME-PARENT LINKING), ID CARDS & CERTIFICATES
+// 11. STUDENTS (TSM-0001 FORMAT), ID CARDS & CERTIFICATES
 // ==========================================
 function renderStudentsTab(el) {
   el.innerHTML = `
@@ -1629,8 +1886,7 @@ function renderStudentsTab(el) {
                 </div>
                 <div class="mt-3 pt-3 border-t border-slate-100 text-[11px] text-slate-600 space-y-1">
                   <div><b>Batch:</b> ${s.batch}</div>
-                  <div><b>Parent:</b> ${s.guardian} (${s.parentPhone || s.phone})</div>
-                  <div><b>Admission:</b> ${s.admissionDate} (Mo #${months}) &bull; <b>Genuine Days:</b> ${s.genuineDays}</div>
+                  <div><b>Admission:</b> ${s.admissionDate} (Mo #${months}) &bull; <b>Genuine:</b> ${s.genuineDays} &bull; <b>Bonus:</b> ${s.bonusCredits}</div>
                   <div><b>Weekly Audio:</b> ${elig.weeklyAudioCount}/2 &bull; <b>Concession:</b> ₹${s.concession} (${s.concessionMonths > 0 ? s.concessionMonths + ' mos' : 'Permanent'})</div>
                 </div>
               </div>
@@ -1678,11 +1934,10 @@ function recalcMultiCourseFee(container) {
 }
 
 function openAddStudentModal() {
-  const nextNum = appState.students.length + 1;
-  const roll = `TSM-${String(nextNum).padStart(4, '0')}`;
+  const roll = getNextRollNumber();
   const firstCourse = appState.courses[0] || { name: 'Piano', fee: 1200, discount: 0 };
   showModal(`
-    <h3 class="text-base font-bold text-[#0F172A] mb-3">New Student Admission (Multi-Instrument &amp; Family Ready)</h3>
+    <h3 class="text-base font-bold text-[#0F172A] mb-3">New Student Admission</h3>
     <form onsubmit="saveNewStudent(event)" class="space-y-3 text-xs">
       <div class="grid grid-cols-2 gap-3">
         <div>
@@ -1700,13 +1955,13 @@ function openAddStudentModal() {
           <input name="name" class="w-full px-3 py-2 border border-slate-300 rounded-lg" required />
         </div>
         <div>
-          <label class="block font-semibold text-slate-700 mb-1">Student / Primary WhatsApp</label>
+          <label class="block font-semibold text-slate-700 mb-1">Student WhatsApp Mobile</label>
           <input name="phone" class="w-full px-3 py-2 border border-slate-300 rounded-lg" required />
         </div>
       </div>
 
       <div>
-        <label class="block font-semibold text-slate-700 mb-1">Select Instruments / Courses (Check 1 or Multiple)</label>
+        <label class="block font-semibold text-slate-700 mb-1">Select Instruments / Courses (1 or Multiple)</label>
         <div class="grid grid-cols-2 sm:grid-cols-3 gap-1.5 p-2.5 border border-slate-300 rounded-lg bg-slate-50 max-h-36 overflow-y-auto">
           ${appState.courses.map((c, idx) => `
             <label class="flex items-center gap-1.5 text-[11px] font-medium text-slate-800 cursor-pointer">
@@ -1761,21 +2016,18 @@ function openAddStudentModal() {
 
       <div class="grid grid-cols-3 gap-2 items-center">
         <div>
-          <label class="block font-semibold text-slate-700 mb-1">Parent / Guardian Name</label>
-          <input name="guardian" placeholder="Same name links siblings" class="w-full px-2.5 py-2 border border-slate-300 rounded-lg" />
+          <label class="block font-semibold text-slate-700 mb-1">Parent / Family Name</label>
+          <input name="guardian" placeholder="Links same-parent siblings" class="w-full px-2.5 py-2 border border-slate-300 rounded-lg" />
         </div>
         <div>
           <label class="block font-semibold text-slate-700 mb-1">Parent Mobile (Family Link)</label>
-          <input name="parentPhone" placeholder="Same mobile links siblings" class="w-full px-2.5 py-2 border border-slate-300 rounded-lg" />
+          <input name="parentPhone" placeholder="Links same-parent siblings" class="w-full px-2.5 py-2 border border-slate-300 rounded-lg" />
         </div>
         <div>
-          <label class="block font-semibold text-slate-700 mb-1">Pickup Safety Note</label>
-          <input name="pickupNote" placeholder="e.g. 7:30 PM Pickup" class="w-full px-2.5 py-2 border border-slate-300 rounded-lg" />
+          <label class="block font-semibold text-slate-700 mb-1">Notes / Pickup</label>
+          <input name="pickupNote" placeholder="Optional note" class="w-full px-2.5 py-2 border border-slate-300 rounded-lg" />
         </div>
       </div>
-      <label class="flex items-center gap-2 font-semibold text-slate-700">
-        <input type="checkbox" name="isMinor" checked /> Minor Student (Child Safety Pickup)
-      </label>
 
       <div class="flex justify-end gap-2 pt-3">
         <button type="button" onclick="closeModal()" class="px-4 py-2 border border-slate-300 rounded-lg font-semibold">Cancel</button>
@@ -1815,12 +2067,13 @@ function saveNewStudent(e) {
     feeStatus: 'Unpaid',
     lastPaymentMode: 'UPI',
     lastPaymentDate: '-',
-    isMinor: fd.get('isMinor') === 'on',
-    guardian: (fd.get('guardian') || 'Guardian').trim(),
+    isMinor: false,
+    guardian: (fd.get('guardian') || '').trim(),
     pickupNote: (fd.get('pickupNote') || '').trim(),
     photoDataUrl: ''
   };
   appState.students.push(newStu);
+  dispatchPushAlert(newStu.rollNo, "TIKARIYA'S SCHOOL OF MUSIC", `Welcome ${newStu.name} (${newStu.rollNo})! Admission confirmed for ${newStu.course}.`);
   saveState();
   closeModal();
   renderCurrentTab();
@@ -1863,7 +2116,7 @@ function openEditStudentModal(stuId) {
           </select>
         </div>
         <div>
-          <label class="block font-semibold text-slate-700 mb-1">Parent / Guardian Name</label>
+          <label class="block font-semibold text-slate-700 mb-1">Parent / Family Name</label>
           <input name="guardian" value="${s.guardian}" class="w-full px-3 py-2 border border-slate-300 rounded-lg" />
         </div>
         <div>
@@ -2081,7 +2334,7 @@ async function downloadLetterCertificatePdf(stuId) {
 }
 
 // ==========================================
-// 11. FEES & COMBINED FAMILY / MULTI-INSTRUMENT STANDARD RECEIPTS (A5)
+// 12. FEES & STUDENT-ADDRESSED COMPACT RECEIPTS (298 x 420 pt / A6 VOUCHER)
 // ==========================================
 function toggleReceiptSelection(stuId) {
   if (selectedReceiptIds.includes(stuId)) {
@@ -2125,7 +2378,7 @@ function renderFeesTab(el) {
           <thead>
             <tr class="bg-slate-50 border-b border-slate-200 text-[11px] font-semibold text-slate-600 uppercase">
               <th class="py-2.5 px-3 w-8">Sel</th>
-              <th class="py-2.5 px-3">Student &amp; Parent</th>
+              <th class="py-2.5 px-3">Student</th>
               <th class="py-2.5 px-3">Instruments / Courses</th>
               <th class="py-2.5 px-3">Fee - Conc. + ID/Cert</th>
               <th class="py-2.5 px-3">Net Payable</th>
@@ -2146,7 +2399,7 @@ function renderFeesTab(el) {
                   </td>
                   <td class="py-2.5 px-3">
                     <div class="font-bold text-[#0F172A]">${s.name} <span class="font-mono font-normal text-[10px] text-slate-500">(${s.rollNo})</span></div>
-                    <div class="text-[10px] text-slate-500">Parent: <b>${s.guardian}</b> (${s.parentPhone || s.phone})</div>
+                    <div class="text-[10px] text-slate-500">Mobile: ${s.phone} ${s.guardian ? `&bull; Family: ${s.guardian}` : ''}</div>
                   </td>
                   <td class="py-2.5 px-3">
                     <div class="font-semibold text-indigo-700">${s.course}</div>
@@ -2165,7 +2418,7 @@ function renderFeesTab(el) {
                   </td>
                   <td class="py-2.5 px-3 text-right space-x-1 whitespace-nowrap">
                     <button onclick="downloadCombinedStandardReceiptPdf(['${s.id}'])" class="px-2.5 py-1 bg-[#0F172A] text-white text-[11px] font-semibold rounded hover:bg-slate-800">Receipt PDF</button>
-                    ${siblings.length > 1 ? `<button onclick="downloadFamilyCombinedReceipt('${s.id}')" class="px-2.5 py-1 bg-indigo-50 text-indigo-700 border border-indigo-200 text-[11px] font-semibold rounded hover:bg-indigo-100">Family Receipt (${siblings.length})</button>` : ''}
+                    ${siblings.length > 1 ? `<button onclick="downloadFamilyCombinedReceipt('${s.id}')" class="px-2.5 py-1 bg-indigo-50 text-indigo-700 border border-indigo-200 text-[11px] font-semibold rounded hover:bg-indigo-100">Family (${siblings.length})</button>` : ''}
                     <button onclick="sendWhatsAppFeeAlert('${s.id}')" class="px-2 py-1 bg-emerald-50 text-emerald-800 border border-emerald-200 text-[11px] font-semibold rounded hover:bg-emerald-100">WA</button>
                   </td>
                 </tr>
@@ -2204,17 +2457,17 @@ async function downloadActiveBrochure() {
   const pdfDoc = await PDFDocument.create();
   const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
   const fontReg = await pdfDoc.embedFont(StandardFonts.Helvetica);
-  const p = pdfDoc.addPage([420, 595]);
+  const p = pdfDoc.addPage([298, 420]);
 
-  p.drawRectangle({ x: 24, y: 24, width: 372, height: 547, borderColor: rgb(0.8, 0.83, 0.88), borderWidth: 1 });
-  p.drawText('B. S. TIKARIYA CULTURAL FOUNDATION', { x: 105, y: 540, size: 8.5, font: fontBold, color: rgb(0.28, 0.33, 0.41) });
-  p.drawText('CIN: U88900MH2025NPL454435', { x: 140, y: 528, size: 7.5, font: fontReg, color: rgb(0.39, 0.45, 0.55) });
-  drawStyledAcademyTitlePdf(p, 88, 505, 14, fontBold);
+  p.drawRectangle({ x: 14, y: 14, width: 270, height: 392, borderColor: rgb(0.8, 0.83, 0.88), borderWidth: 1 });
+  p.drawText('B. S. TIKARIYA CULTURAL FOUNDATION', { x: 52, y: 382, size: 7, font: fontBold, color: rgb(0.28, 0.33, 0.41) });
+  p.drawText('CIN: U88900MH2025NPL454435', { x: 85, y: 372, size: 6.5, font: fontReg, color: rgb(0.39, 0.45, 0.55) });
+  drawStyledAcademyTitlePdf(p, 42, 354, 11.5, fontBold);
 
-  let y = 470;
+  let y = 328;
   appState.courses.forEach(c => {
-    p.drawText(`${c.name} (${c.category}) — INR ${c.fee}`, { x: 40, y, size: 8.5, font: fontBold, color: rgb(0.06, 0.09, 0.16) });
-    y -= 18;
+    p.drawText(`${c.name} (${c.category}) — INR ${c.fee}`, { x: 24, y, size: 7, font: fontBold, color: rgb(0.06, 0.09, 0.16) });
+    y -= 14;
   });
 
   const bytes = await pdfDoc.save();
@@ -2244,30 +2497,39 @@ async function downloadCombinedStandardReceiptPdf(studentIds) {
   const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
   const fontReg = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
-  const p = pdfDoc.addPage([420, 595]);
-  p.drawRectangle({ x: 18, y: 18, width: 384, height: 559, borderColor: rgb(0.75, 0.78, 0.84), borderWidth: 1 });
-  p.drawRectangle({ x: 18, y: 572, width: 384, height: 5, color: rgb(0.06, 0.09, 0.16) });
+  const pageHeight = Math.max(420, 260 + targets.length * 64);
+  const p = pdfDoc.addPage([298, pageHeight]);
+  p.drawRectangle({ x: 12, y: 12, width: 274, height: pageHeight - 24, borderColor: rgb(0.75, 0.78, 0.84), borderWidth: 1 });
+  p.drawRectangle({ x: 12, y: pageHeight - 16, width: 274, height: 4, color: rgb(0.06, 0.09, 0.16) });
 
-  p.drawText('B. S. TIKARIYA CULTURAL FOUNDATION', { x: 105, y: 548, size: 8.5, font: fontBold, color: rgb(0.28, 0.33, 0.41) });
-  p.drawText('CIN: U88900MH2025NPL454435', { x: 140, y: 537, size: 7.5, font: fontReg, color: rgb(0.39, 0.45, 0.55) });
-  drawStyledAcademyTitlePdf(p, 85, 515, 14.5, fontBold);
+  let topY = pageHeight - 32;
+  p.drawText('B. S. TIKARIYA CULTURAL FOUNDATION', { x: 52, y: topY, size: 7, font: fontBold, color: rgb(0.28, 0.33, 0.41) });
+  topY -= 10;
+  p.drawText('CIN: U88900MH2025NPL454435', { x: 86, y: topY, size: 6.5, font: fontReg, color: rgb(0.39, 0.45, 0.55) });
+  topY -= 18;
+  drawStyledAcademyTitlePdf(p, 42, topY, 11.5, fontBold);
+  topY -= 15;
 
-  const isFamily = targets.length > 1;
+  const isMulti = targets.length > 1;
   const receiptNo = `TSM-RCP-${Date.now().toString().slice(-6)}`;
-  p.drawText(isFamily ? 'CONSOLIDATED FAMILY FEE RECEIPT' : 'OFFICIAL FEE RECEIPT', {
-    x: isFamily ? 120 : 155, y: 496, size: 8.5, font: fontBold, color: rgb(0.28, 0.33, 0.41)
+  p.drawText(isMulti ? 'CONSOLIDATED FEE RECEIPT' : 'FEE RECEIPT', {
+    x: isMulti ? 88 : 118, y: topY, size: 7.5, font: fontBold, color: rgb(0.28, 0.33, 0.41)
   });
+  topY -= 16;
 
   const primary = targets[0];
-  p.drawText(`Receipt No: ${receiptNo}`, { x: 32, y: 476, size: 8, font: fontBold, color: rgb(0.06, 0.09, 0.16) });
-  p.drawText(`Date: ${selectedDate}`, { x: 310, y: 476, size: 8, font: fontReg, color: rgb(0.28, 0.33, 0.41) });
-  p.drawText(`Parent / Guardian: ${primary.guardian} (${primary.parentPhone || primary.phone})`, {
-    x: 32, y: 462, size: 8.5, font: fontBold, color: rgb(0.06, 0.09, 0.16)
+  const studentNamesHeader = targets.map(t => `${t.name} (${t.rollNo})`).join(', ');
+  p.drawText(`Receipt No: ${receiptNo}`, { x: 22, y: topY, size: 7, font: fontBold, color: rgb(0.06, 0.09, 0.16) });
+  p.drawText(`Date: ${selectedDate}`, { x: 212, y: topY, size: 7, font: fontReg, color: rgb(0.28, 0.33, 0.41) });
+  topY -= 13;
+  p.drawText(`To Student: ${studentNamesHeader.slice(0, 48)}`, {
+    x: 22, y: topY, size: 7.5, font: fontBold, color: rgb(0.06, 0.09, 0.16)
   });
+  topY -= 8;
 
-  p.drawLine({ start: { x: 32, y: 452 }, end: { x: 388, y: 452 }, thickness: 0.7, color: rgb(0.75, 0.78, 0.84) });
+  p.drawLine({ start: { x: 22, y: topY }, end: { x: 276, y: topY }, thickness: 0.6, color: rgb(0.75, 0.78, 0.84) });
+  topY -= 14;
 
-  let y = 436;
   let grandTotal = 0;
 
   targets.forEach((stu, index) => {
@@ -2276,43 +2538,43 @@ async function downloadCombinedStandardReceiptPdf(studentIds) {
     grandTotal += subTotal;
 
     p.drawText(`${index + 1}. ${stu.name} (${stu.rollNo}) — ${stu.grade}`, {
-      x: 32, y, size: 8.5, font: fontBold, color: rgb(0.06, 0.09, 0.16)
+      x: 22, y: topY, size: 7.5, font: fontBold, color: rgb(0.06, 0.09, 0.16)
     });
-    y -= 13;
+    topY -= 11;
 
     const courseList = Array.isArray(stu.courses) && stu.courses.length ? stu.courses : [stu.course];
     p.drawText(`   Courses: ${courseList.join(' + ')}`, {
-      x: 32, y, size: 8, font: fontReg, color: rgb(0.26, 0.22, 0.79)
+      x: 22, y: topY, size: 7, font: fontReg, color: rgb(0.26, 0.22, 0.79)
     });
-    y -= 13;
+    topY -= 11;
 
-    p.drawText(`   Fee: INR ${stu.monthlyFee} | Conc: -INR ${effConc} | ID/Cert: INR ${stu.idCardFee + stu.certFee} | ${stu.feeStatus} (${stu.lastPaymentMode})`, {
-      x: 32, y, size: 7.5, font: fontReg, color: rgb(0.28, 0.33, 0.41)
+    p.drawText(`   Fee: INR ${stu.monthlyFee} | Conc: -${effConc} | ID/Cert: ${stu.idCardFee + stu.certFee} | ${stu.feeStatus}`, {
+      x: 22, y: topY, size: 6.5, font: fontReg, color: rgb(0.28, 0.33, 0.41)
     });
-    p.drawText(`INR ${subTotal}`, { x: 342, y, size: 8.5, font: fontBold, color: rgb(0.06, 0.09, 0.16) });
-    y -= 18;
+    p.drawText(`INR ${subTotal}`, { x: 235, y: topY, size: 7.5, font: fontBold, color: rgb(0.06, 0.09, 0.16) });
+    topY -= 15;
   });
 
-  p.drawLine({ start: { x: 32, y: y + 4 }, end: { x: 388, y: y + 4 }, thickness: 0.8, color: rgb(0.06, 0.09, 0.16) });
-  y -= 12;
-  p.drawText('GRAND TOTAL:', { x: 32, y, size: 9.5, font: fontBold, color: rgb(0.06, 0.09, 0.16) });
-  p.drawText(`INR ${grandTotal}`, { x: 332, y, size: 10, font: fontBold, color: rgb(0.72, 0.11, 0.11) });
+  p.drawLine({ start: { x: 22, y: topY + 4 }, end: { x: 276, y: topY + 4 }, thickness: 0.7, color: rgb(0.06, 0.09, 0.16) });
+  topY -= 10;
+  p.drawText(`TOTAL (${primary.lastPaymentMode}):`, { x: 22, y: topY, size: 8, font: fontBold, color: rgb(0.06, 0.09, 0.16) });
+  p.drawText(`INR ${grandTotal}`, { x: 228, y: topY, size: 8.5, font: fontBold, color: rgb(0.72, 0.11, 0.11) });
 
-  y -= 24;
+  topY -= 18;
   targets.forEach(stu => {
-    p.drawText(`${stu.rollNo}: ${stu.genuineDays} Genuine Days (${stu.genuineDays % 48}/48) | Bonus Credits: ${stu.bonusCredits}`, {
-      x: 32, y, size: 7.5, font: fontReg, color: rgb(0.35, 0.4, 0.48)
+    p.drawText(`${stu.rollNo}: ${stu.genuineDays} Genuine Days (${stu.genuineDays % 48}/48) | Bonus: ${stu.bonusCredits}`, {
+      x: 22, y: topY, size: 6.5, font: fontReg, color: rgb(0.35, 0.4, 0.48)
     });
-    y -= 12;
+    topY -= 10;
   });
 
-  p.drawText("Authorized Signatory — TIKARIYA'S SCHOOL OF MUSIC", { x: 185, y: 34, size: 7.5, font: fontBold, color: rgb(0.28, 0.33, 0.41) });
+  p.drawText("Authorized Signatory — TIKARIYA'S SCHOOL OF MUSIC", { x: 96, y: 22, size: 6.5, font: fontBold, color: rgb(0.28, 0.33, 0.41) });
 
   const bytes = await pdfDoc.save({ useObjectStreams: true });
   const blob = new Blob([bytes], { type: 'application/pdf' });
   const link = document.createElement('a');
   link.href = URL.createObjectURL(blob);
-  link.download = isFamily ? `TSM_Family_Receipt_${primary.guardian.replace(/\s+/g, '_')}.pdf` : `TSM_Receipt_${primary.rollNo}.pdf`;
+  link.download = isMulti ? `TSM_Consolidated_Receipt_${primary.rollNo}.pdf` : `TSM_Receipt_${primary.rollNo}.pdf`;
   link.click();
 }
 
@@ -2320,16 +2582,17 @@ function sendWhatsAppFeeAlert(stuId) {
   const s = appState.students.find(x => x.id === stuId);
   const siblings = getFamilySiblings(s);
   const totalFamily = siblings.reduce((acc, item) => acc + getStudentNetPayable(item), 0);
-  const targetPhone = s.parentPhone || s.phone;
-  const namesStr = siblings.map(x => `${x.name} (${x.course})`).join(', ');
+  const targetPhone = s.phone || s.parentPhone;
+  const namesStr = siblings.map(x => `${x.name} (${x.rollNo} - ${x.course})`).join(', ');
   const msg = s.feeStatus === 'Paid'
-    ? `B. S. TIKARIYA CULTURAL FOUNDATION - TIKARIYA'S SCHOOL OF MUSIC. Consolidated Fee Receipt Confirmation for ${namesStr}: Total INR ${totalFamily} received via ${s.lastPaymentMode}. Thank you.`
-    : `B. S. TIKARIYA CULTURAL FOUNDATION - TIKARIYA'S SCHOOL OF MUSIC. Fee Reminder for ${namesStr}: Total payable INR ${totalFamily} is due. Kindly pay via UPI or Cash.`;
+    ? `Dear ${namesStr}, B. S. TIKARIYA CULTURAL FOUNDATION - TIKARIYA'S SCHOOL OF MUSIC confirms receipt of INR ${totalFamily} via ${s.lastPaymentMode}. Thank you.`
+    : `Dear ${namesStr}, gentle fee reminder from B. S. TIKARIYA CULTURAL FOUNDATION - TIKARIYA'S SCHOOL OF MUSIC. Amount INR ${totalFamily} is due. Kindly pay via UPI or Cash.`;
+  dispatchPushAlert(s.rollNo, "TIKARIYA'S SCHOOL OF MUSIC", msg);
   window.open(`https://wa.me/91${targetPhone}?text=${encodeURIComponent(msg)}`, '_blank');
 }
 
 // ==========================================
-// 12. IN-APP LOW-SIZE AUDIO RECORDER, AUTO-NAMING & 3-DAY AUTO-PURGE
+// 13. IN-APP LOW-SIZE AUDIO RECORDER, AUTO-NAMING & 3-DAY AUTO-PURGE
 // ==========================================
 function generateAutoAudioClipName(stu) {
   const sameDayCount = (appState.audioClips || []).filter(c => c.rollNo === stu.rollNo && c.date === selectedDate).length + 1;
@@ -2436,6 +2699,7 @@ function submitRecordedAudioClip(stuId) {
   recordedAudioDataUrl = '';
   recordedChunks = [];
   recordedDurationSec = 0;
+  dispatchPushAlert('ADMIN', "TIKARIYA'S SCHOOL OF MUSIC", `${stu.name} (${stu.rollNo}) submitted a practice audio clip.`);
   saveState();
   renderCurrentTab();
   showToast('Practice recording submitted');
@@ -2492,6 +2756,7 @@ function verifyAudioClip(clipId) {
   if (c && c.status !== 'Verified') {
     c.status = 'Verified';
     c.approvedAt = Date.now();
+    dispatchPushAlert(c.rollNo, "TIKARIYA'S SCHOOL OF MUSIC", `Dear ${c.studentName}, your practice audio "${c.title}" has been APPROVED.`);
     saveState();
     renderCurrentTab();
     showToast('APPROVED — audio will auto-delete after 3 days');
@@ -2499,7 +2764,7 @@ function verifyAudioClip(clipId) {
 }
 
 // ==========================================
-// 13. STUDY VAULT & PRIVATE SAREGAMA STUDIO
+// 14. STUDY VAULT & PRIVATE SAREGAMA STUDIO
 // ==========================================
 function renderVaultTab(el) {
   const sargamKeys = ['S', 'R', 'G', 'M', 'P', 'D', 'N', "S'", 'r', 'g', 'm', 'd', 'n', '|', '-'];
@@ -2740,7 +3005,7 @@ function addVaultEntryPrompt() {
 }
 
 // ==========================================
-// 14. MESSAGING & WHATSAPP TEMPLATES
+// 15. STUDENT-ADDRESSED MESSAGING & WHATSAPP TEMPLATES
 // ==========================================
 function renderMessagesTab(el) {
   const selectedStu = appState.students.find(s => s.rollNo === adminChatRoll) || appState.students[0];
@@ -2773,16 +3038,19 @@ function renderMessagesTab(el) {
       </div>
 
       <div class="bg-white p-4 rounded-xl border border-slate-200 space-y-3">
-        <h3 class="text-sm font-bold text-[#0F172A]">WhatsApp Notifications</h3>
+        <div class="flex items-center justify-between">
+          <h3 class="text-sm font-bold text-[#0F172A]">Student WhatsApp &amp; Push Alerts</h3>
+          <button onclick="enableFcmPushForCurrentUser(false)" class="px-2.5 py-1 text-[10px] font-semibold bg-slate-100 border border-slate-300 rounded-lg">Register Push Device</button>
+        </div>
         <select id="waStudentSelect" class="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg">
-          ${appState.students.map(s => `<option value="${s.id}">${s.name} (${s.rollNo}) — +91 ${s.parentPhone || s.phone}</option>`).join('')}
+          ${appState.students.map(s => `<option value="${s.id}">${s.name} (${s.rollNo}) — +91 ${s.phone || s.parentPhone}</option>`).join('')}
         </select>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
-          <button onclick="launchWaTemplate('welcome')" class="p-2.5 text-left text-xs font-semibold border border-slate-200 rounded-lg hover:bg-slate-50">1. Welcome Message</button>
-          <button onclick="launchWaTemplate('fee_due')" class="p-2.5 text-left text-xs font-semibold border border-slate-200 rounded-lg hover:bg-slate-50">2. Fee Due Reminder</button>
-          <button onclick="launchWaTemplate('fee_paid')" class="p-2.5 text-left text-xs font-semibold border border-slate-200 rounded-lg hover:bg-slate-50">3. Fee Paid Confirmation</button>
-          <button onclick="launchWaTemplate('short_att')" class="p-2.5 text-left text-xs font-semibold border border-slate-200 rounded-lg hover:bg-slate-50">4. Short Attendance (*) Notice</button>
-          <button onclick="launchWaTemplate('cert_ready')" class="p-2.5 text-left text-xs font-semibold border border-slate-200 rounded-lg hover:bg-slate-50">5. 48-Day Certificate Ready</button>
+          <button onclick="launchWaTemplate('welcome')" class="p-2.5 text-left text-xs font-semibold border border-slate-200 rounded-lg hover:bg-slate-50">1. Student Welcome</button>
+          <button onclick="launchWaTemplate('fee_due')" class="p-2.5 text-left text-xs font-semibold border border-slate-200 rounded-lg hover:bg-slate-50">2. Student Fee Reminder</button>
+          <button onclick="launchWaTemplate('fee_paid')" class="p-2.5 text-left text-xs font-semibold border border-slate-200 rounded-lg hover:bg-slate-50">3. Student Fee Confirmation</button>
+          <button onclick="launchWaTemplate('short_att')" class="p-2.5 text-left text-xs font-semibold border border-slate-200 rounded-lg hover:bg-slate-50">4. Student Attendance Notice</button>
+          <button onclick="launchWaTemplate('cert_ready')" class="p-2.5 text-left text-xs font-semibold border border-slate-200 rounded-lg hover:bg-slate-50">5. Student Certificate Ready</button>
         </div>
       </div>
     </div>
@@ -2792,13 +3060,15 @@ function renderMessagesTab(el) {
 function sendAdminMessage(e) {
   e.preventDefault();
   const inp = document.getElementById('adminMsgInput');
+  const txt = inp.value.trim();
   appState.messages.push({
     id: 'm_' + Date.now(),
     rollNo: adminChatRoll,
     sender: 'Admin',
-    text: inp.value.trim(),
+    text: txt,
     time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   });
+  dispatchPushAlert(adminChatRoll, "TIKARIYA'S SCHOOL OF MUSIC", `New message from Teacher: ${txt}`);
   inp.value = '';
   saveState();
   renderCurrentTab();
@@ -2807,19 +3077,20 @@ function sendAdminMessage(e) {
 function launchWaTemplate(type) {
   const s = appState.students.find(x => x.id === document.getElementById('waStudentSelect').value);
   if (!s) return;
-  const targetPhone = s.parentPhone || s.phone;
+  const targetPhone = s.phone || s.parentPhone;
   const templates = {
-    welcome: `B. S. TIKARIYA CULTURAL FOUNDATION - TIKARIYA'S SCHOOL OF MUSIC. Welcome ${s.name} (Roll No: ${s.rollNo}) to ${s.grade} - ${s.course}. Batch: ${s.batch}.`,
-    fee_due: `TIKARIYA'S SCHOOL OF MUSIC: Reminder that monthly tuition fee for ${s.name} (${s.rollNo}) is due as per admission date ${s.admissionDate}. Payment accepted via UPI or Cash.`,
-    fee_paid: `TIKARIYA'S SCHOOL OF MUSIC: Payment received for ${s.name} (${s.rollNo}). Your official receipt is ready in your Student Portal.`,
-    short_att: `TIKARIYA'S SCHOOL OF MUSIC: Attendance Notice for ${s.name} (${s.rollNo}). Weekly attendance is below the 3-day requirement (*).`,
-    cert_ready: `TIKARIYA'S SCHOOL OF MUSIC: Congratulations ${s.name} (${s.rollNo})! You have completed 48 genuine days and weekly practice audio submissions for your ${s.grade} Certificate.`
+    welcome: `Dear ${s.name} (Roll No: ${s.rollNo}), welcome to B. S. TIKARIYA CULTURAL FOUNDATION - TIKARIYA'S SCHOOL OF MUSIC for ${s.grade} - ${s.course}. Batch: ${s.batch}.`,
+    fee_due: `Dear ${s.name} (${s.rollNo}), reminder from TIKARIYA'S SCHOOL OF MUSIC that your monthly tuition fee is due as per admission date ${s.admissionDate}. Payment accepted via UPI or Cash.`,
+    fee_paid: `Dear ${s.name} (${s.rollNo}), payment received at TIKARIYA'S SCHOOL OF MUSIC. Your official fee receipt is ready in your Student Portal.`,
+    short_att: `Dear ${s.name} (${s.rollNo}), attendance notice from TIKARIYA'S SCHOOL OF MUSIC: your weekly attendance is below the 3-day requirement (*).`,
+    cert_ready: `Dear ${s.name} (${s.rollNo}), congratulations from TIKARIYA'S SCHOOL OF MUSIC! You have completed 48 genuine days and weekly practice audio submissions for your ${s.grade} Certificate.`
   };
+  dispatchPushAlert(s.rollNo, "TIKARIYA'S SCHOOL OF MUSIC", templates[type]);
   window.open(`https://wa.me/91${targetPhone}?text=${encodeURIComponent(templates[type])}`, '_blank');
 }
 
 // ==========================================
-// 15. INSTAGRAM PROMOTIONS & SETTINGS (BACKUP / RESTORE / DESKTOP APP ICON)
+// 16. INSTAGRAM PROMOTIONS & SETTINGS (BACKUP / RESTORE / FCM PUSH / APP ICON)
 // ==========================================
 function renderMarketingTab(el) {
   el.innerHTML = `
@@ -2865,12 +3136,14 @@ function addCampaignPrompt() {
 function renderSettingsTab(el) {
   const savedCfg = localStorage.getItem(CONFIG_KEY) || JSON.stringify(DEFAULT_FIREBASE_CONFIG, null, 2);
   const isConnected = cloudSyncStatus.includes('Cloud Synced');
+  const registeredDevices = Object.values(appState.fcmTokens || {}).reduce((acc, arr) => acc + (Array.isArray(arr) ? arr.length : 0), 0);
+
   el.innerHTML = `
     <div class="max-w-2xl space-y-5">
       <!-- Backup & Restore Section -->
       <div class="bg-white p-5 rounded-xl border border-slate-200 space-y-3">
         <div class="flex items-center justify-between">
-          <h2 class="text-sm font-bold text-[#0F172A]">Backup &amp; Restore Database (JSON)</h2>
+          <h2 class="text-sm font-bold text-[#0F172A]">Backup, Restore &amp; Standalone App Icon</h2>
           <span class="text-[11px] text-slate-500">${appState.students.length} Students Loaded</span>
         </div>
         <p class="text-xs text-slate-600">Compatible with <code>Tikariya_Backup_YYYY-MM-DD.json</code>. Restoring imports all students, photos, roll numbers, attendance history, fee logs, and syncs to Firebase Cloud.</p>
@@ -2880,7 +3153,24 @@ function renderSettingsTab(el) {
             Restore Backup JSON
             <input type="file" accept=".json,application/json" onchange="handleRestoreBackupFile(event)" class="hidden" />
           </label>
-          <button onclick="triggerPwaInstall()" class="px-4 py-2 border border-slate-300 text-slate-800 text-xs font-semibold rounded-lg hover:bg-slate-50">Install / Desktop Icon</button>
+          <button onclick="triggerPwaInstall()" class="px-4 py-2 border border-slate-300 text-slate-800 text-xs font-semibold rounded-lg hover:bg-slate-50">Install Separate TSM App</button>
+        </div>
+      </div>
+
+      <!-- Firebase FCM Closed-App Push Configuration -->
+      <div class="bg-white p-5 rounded-xl border border-slate-200 space-y-3">
+        <div class="flex items-center justify-between">
+          <h2 class="text-sm font-bold text-[#0F172A]">Closed-App Firebase Push Notifications (FCM)</h2>
+          <span class="px-2 py-0.5 text-[10px] font-mono bg-slate-100 border border-slate-200 rounded">${registeredDevices} Device(s) Registered</span>
+        </div>
+        <p class="text-xs text-slate-600">VAPID Key wired. Upload <code>firebase-messaging-sw.js</code> beside <code>index.html</code> in your GitHub repo, and optionally paste your free Cloudflare Push Relay URL below to wake devices when the app is completely closed:</p>
+        <div class="flex gap-2">
+          <input id="pushRelayUrlInput" value="${appState.pushRelayUrl || ''}" placeholder="https://tsm-push-relay.yourname.workers.dev" class="flex-1 px-3 py-2 text-xs font-mono border border-slate-300 rounded-lg" />
+          <button onclick="savePushRelayUrl()" class="px-3.5 py-2 bg-[#0F172A] text-white text-xs font-semibold rounded-lg">Save URL</button>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <button onclick="enableFcmPushForCurrentUser(false)" class="px-3.5 py-2 bg-emerald-700 text-white text-xs font-semibold rounded-lg hover:bg-emerald-800">Register This Device for Push</button>
+          <button onclick="dispatchPushAlert('ALL', 'TIKARIYA\\'S SCHOOL OF MUSIC', 'Test broadcast push notification')" class="px-3.5 py-2 border border-slate-300 text-slate-800 text-xs font-semibold rounded-lg hover:bg-slate-50">Send Test Push</button>
         </div>
       </div>
 
@@ -2914,6 +3204,13 @@ function renderSettingsTab(el) {
       </div>
     </div>
   `;
+}
+
+function savePushRelayUrl() {
+  const val = document.getElementById('pushRelayUrlInput').value.trim();
+  appState.pushRelayUrl = val;
+  saveState();
+  showToast('Push relay URL saved');
 }
 
 function saveFirebaseConfig() {
@@ -2950,7 +3247,7 @@ function resetDemoData() {
 }
 
 // ==========================================
-// 16. STUDENT PORTAL (WITH MONTHLY ATTENDANCE CALENDAR)
+// 17. STUDENT PORTAL (WITH ADMISSION-CUSTOMIZED CALENDAR & PUSH OPT-IN)
 // ==========================================
 function renderStudentPortal(el, tab) {
   const s = appState.students.find(x => x.id === currentUser.studentId);
@@ -2965,7 +3262,7 @@ function renderStudentPortal(el, tab) {
   const feeBanner = s.feeStatus === 'Unpaid' ? `
     <div class="max-w-xl mx-auto mb-4 bg-amber-50 border border-amber-200 rounded-xl p-3.5 text-xs flex items-center justify-between gap-2">
       <div>
-        <div class="font-bold text-amber-900">Fee Reminder (Month #${months})</div>
+        <div class="font-bold text-amber-900">Dear ${s.name}, Fee Reminder (Month #${months})</div>
         <div class="text-amber-800">Amount INR ${netFee} due for cycle starting ${nextDue} (UPI / Cash).</div>
       </div>
       <button onclick="switchTab('student_fees')" class="px-3 py-1.5 bg-amber-800 text-white font-semibold rounded-lg shrink-0">View</button>
@@ -2991,15 +3288,18 @@ function renderStudentPortal(el, tab) {
               <div class="font-mono font-bold text-indigo-700">${s.rollNo}</div>
               <div class="text-base font-bold text-[#0F172A]">${s.name}</div>
               <div class="font-semibold text-slate-700">${s.grade} &mdash; ${s.course}</div>
-              <div class="text-slate-500">Batch: ${s.batch} &bull; Month #${months}</div>
-              <div class="text-slate-500">Genuine Days: <b>${s.genuineDays}</b> (${mod48}/48) &bull; Weekly Audio: <b>${elig.weeklyAudioCount}/2</b></div>
+              <div class="text-slate-500">Batch: ${s.batch} &bull; Admitted: ${s.admissionDate}</div>
+              <div class="text-slate-500">Genuine Days: <b>${s.genuineDays}</b> (${mod48}/48) &bull; Bonus: <b>${s.bonusCredits}</b> &bull; Audio: <b>${elig.weeklyAudioCount}/2</b></div>
             </div>
             <div id="stuPortalQr" class="p-1.5 bg-white border border-slate-300 rounded shrink-0"></div>
           </div>
         </div>
 
         <div class="bg-white p-4 rounded-xl border border-slate-200 space-y-3">
-          <h3 class="text-sm font-bold text-[#0F172A]">Customize Profile</h3>
+          <div class="flex items-center justify-between">
+            <h3 class="text-sm font-bold text-[#0F172A]">Customize Profile</h3>
+            <button onclick="enableFcmPushForCurrentUser(false)" class="px-2.5 py-1 text-[10px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-lg">Enable Push Alerts</button>
+          </div>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
             <div>
               <label class="block font-semibold text-slate-700 mb-1">Update Photo</label>
@@ -3014,7 +3314,7 @@ function renderStudentPortal(el, tab) {
               <input type="text" value="${s.phone}" onchange="updateStudentField('${s.id}', 'phone', this.value)" class="w-full px-3 py-1.5 border border-slate-300 rounded-lg" />
             </div>
             <div>
-              <label class="block font-semibold text-slate-700 mb-1">Guardian / Pickup Contact</label>
+              <label class="block font-semibold text-slate-700 mb-1">Emergency / Family Contact</label>
               <input type="text" value="${s.guardian}" onchange="updateStudentField('${s.id}', 'guardian', this.value)" class="w-full px-3 py-1.5 border border-slate-300 rounded-lg" />
             </div>
           </div>
@@ -3026,7 +3326,7 @@ function renderStudentPortal(el, tab) {
       if (box) new QRCode(box, { text: `https://tikariyas.github.io/tsm-gem/?verify=${s.rollNo}`, width: 72, height: 72 });
     }, 50);
   } else if (tab === 'student_attendance') {
-    const wk = getWeeklyStats(selectedDate, s.id);
+    const wk = getWeeklyStats(selectedDate, s);
     el.innerHTML = `
       ${feeBanner}
       <div class="max-w-3xl mx-auto space-y-4">
@@ -3042,11 +3342,11 @@ function renderStudentPortal(el, tab) {
               <div class="text-xl font-bold text-indigo-800 mt-1">${mod48}/48</div>
             </div>
             <div class="p-3 bg-amber-50 rounded-lg border border-amber-200">
-              <div class="text-[11px] text-amber-700">Bonus Credits</div>
+              <div class="text-[11px] text-amber-700">Bonus Bank</div>
               <div class="text-xl font-bold text-amber-800 mt-1">${s.bonusCredits}</div>
             </div>
           </div>
-          <div class="text-xs text-slate-600 pt-1">This Week Sessions: <b>${wk.totalWeekSessions}/3</b> &bull; Weekly Audio Clips: <b>${elig.weeklyAudioCount}/2</b> (48 genuine days required; bonus days do not count toward certificate).</div>
+          <div class="text-xs text-slate-600 pt-1">Active Week Sessions: <b>${wk.totalWeekSessions}/3</b> &bull; Weekly Audio Clips: <b>${elig.weeklyAudioCount}/2</b> (Extra 4th+ weekly attendance banks as Bonus Days and converts automatically on pre-planned Teacher or Student Leave).</div>
         </div>
         ${buildMonthlyCalendarHtml(s)}
       </div>
@@ -3113,7 +3413,7 @@ function renderStudentPortal(el, tab) {
           </div>
           <div class="flex gap-1.5">
             <button onclick="downloadCombinedStandardReceiptPdf(['${s.id}'])" class="px-3 py-2 bg-[#0F172A] text-white font-semibold rounded-lg">My Receipt PDF</button>
-            ${siblings.length > 1 ? `<button onclick="downloadFamilyCombinedReceipt('${s.id}')" class="px-3 py-2 bg-indigo-700 text-white font-semibold rounded-lg">Family Receipt (${siblings.length})</button>` : ''}
+            ${siblings.length > 1 ? `<button onclick="downloadFamilyCombinedReceipt('${s.id}')" class="px-3 py-2 bg-indigo-700 text-white font-semibold rounded-lg">Consolidated (${siblings.length})</button>` : ''}
           </div>
         </div>
       </div>
@@ -3184,13 +3484,16 @@ function updateStudentField(stuId, field, val) {
 function sendStudentMessage(e, rollNo) {
   e.preventDefault();
   const inp = document.getElementById('stuMsgInput');
+  const txt = inp.value.trim();
+  const s = appState.students.find(x => x.rollNo === rollNo);
   appState.messages.push({
     id: 'm_' + Date.now(),
     rollNo,
     sender: 'Student',
-    text: inp.value.trim(),
+    text: txt,
     time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   });
+  dispatchPushAlert('ADMIN', "TIKARIYA'S SCHOOL OF MUSIC", `Message from ${s ? s.name : rollNo}: ${txt}`);
   inp.value = '';
   saveState();
   renderCurrentTab();
@@ -3210,7 +3513,7 @@ async function exportDailyAttendancePdf() {
   let y = 720;
   getFilteredStudents().forEach(s => {
     const rec = getAttendanceRecord(selectedDate, s.id);
-    const wk = getWeeklyStats(selectedDate, s.id);
+    const wk = getWeeklyStats(selectedDate, s);
     page.drawText(`${s.rollNo} | ${s.name} | ${s.course} | ${rec.status.toUpperCase()} | Wk:${wk.totalWeekSessions}/3${wk.hasShortFlag?'*':''} | Gen:${s.genuineDays % 48}/48`, {
       x: 50, y, size: 9, font: fontReg, color: rgb(0.1, 0.12, 0.18)
     });
@@ -3226,7 +3529,7 @@ async function exportDailyAttendancePdf() {
 }
 
 // ==========================================
-// 17. MODAL HELPERS & BOOTSTRAP
+// 18. MODAL HELPERS & BOOTSTRAP
 // ==========================================
 function showModal(html) {
   document.getElementById('modalBox').innerHTML = html;
