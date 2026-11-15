@@ -52,6 +52,12 @@
           <button type="submit" class="w-full py-2.5 bg-[#0F172A] hover:bg-slate-800 text-white text-sm font-semibold rounded-lg transition">Sign In</button>
         </form>
 
+        <div class="mt-4 pt-4 border-t border-slate-100 text-center">
+          <button type="button" onclick="downloadActiveBrochure()" class="text-xs font-semibold text-indigo-700 hover:text-indigo-900 hover:underline">
+            Download Academy Brochure (PDF)
+          </button>
+        </div>
+
         <div id="loginError" class="hidden mt-3 p-2.5 bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg text-center"></div>
       </div>
     </div>
@@ -65,21 +71,17 @@
   <!-- MAIN APPLICATION SHELL -->
   <div id="appShell" class="hidden flex-1 flex flex-col">
     <header class="bg-white border-b border-slate-200 sticky top-0 z-30">
-      <div class="max-w-7xl mx-auto px-3 sm:px-6 py-2 flex flex-wrap items-center justify-between gap-2">
-        <div class="flex items-center gap-2.5 min-w-0 flex-1">
-          <div class="w-8 h-8 rounded-lg bg-[#0F172A] text-white flex items-center justify-center font-extrabold text-xs tracking-tight shrink-0">TS<span class="text-[#EF4444]">M</span></div>
+      <div class="max-w-7xl mx-auto px-3 sm:px-6 py-2.5 flex items-start sm:items-center justify-between gap-3">
+        <div class="flex items-start sm:items-center gap-2.5 min-w-0 flex-1">
+          <div class="w-8 h-8 rounded-lg bg-[#0F172A] text-white flex items-center justify-center font-extrabold text-xs tracking-tight shrink-0 mt-0.5 sm:mt-0">TS<span class="text-[#EF4444]">M</span></div>
           <div class="min-w-0 flex-1">
-            <div class="flex flex-wrap items-center gap-1.5">
-              <span class="font-extrabold text-xs sm:text-base text-[#0F172A] uppercase tracking-tight leading-tight break-words">TIKARIYA'S SCHOOL OF <span class="text-[#B91C1C]">M</span>USIC</span>
-              <span id="roleBadge" class="px-1.5 py-0.5 text-[9px] sm:text-[10px] font-semibold uppercase rounded bg-slate-100 text-slate-800 border border-slate-300 shrink-0">Admin</span>
-            </div>
-            <p class="text-[9px] sm:text-[10px] text-slate-500 truncate">B. S. TIKARIYA CULTURAL FOUNDATION &bull; CIN: U88900MH2025NPL454435</p>
+            <div class="font-extrabold text-xs sm:text-base text-[#0F172A] uppercase tracking-tight leading-snug break-words">TIKARIYA'S SCHOOL OF <span class="text-[#B91C1C]">M</span>USIC</div>
+            <p class="text-[9px] sm:text-[10px] text-slate-500 leading-normal mt-0.5 break-words">B. S. TIKARIYA CULTURAL FOUNDATION &bull; CIN: U88900MH2025NPL454435</p>
           </div>
         </div>
 
-        <div class="flex items-center gap-1.5 shrink-0">
-          <button onclick="downloadActiveBrochure()" class="hidden md:inline-block px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:text-slate-900 border border-slate-300 rounded-lg">Brochure</button>
-          <button onclick="confirmLogout()" class="px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-lg transition">Sign Out</button>
+        <div class="flex items-center shrink-0 self-start sm:self-center pt-0.5 sm:pt-0">
+          <a href="javascript:void(0)" onclick="confirmLogout()" class="text-xs font-semibold text-slate-600 hover:text-[#B91C1C] hover:underline">Sign Out</a>
         </div>
       </div>
 
@@ -465,6 +467,7 @@ const DEFAULT_BATCHES = [
 const DEFAULT_STATE = {
   adminRollNo: 'MUSICSNSOUNDS',
   adminPin: '1995',
+  upiId: '9823011223@upi',
   pushRelayUrl: '',
   fcmTokens: {},
   courses: DEFAULT_COURSES,
@@ -1278,13 +1281,6 @@ function enterApp() {
   document.getElementById('loginView').classList.add('hidden');
   document.getElementById('loginError').classList.add('hidden');
   document.getElementById('appShell').classList.remove('hidden');
-  const badge = document.getElementById('roleBadge');
-  if (currentUser.role === 'admin') {
-    badge.textContent = 'Admin';
-  } else {
-    const stu = appState.students.find(s => s.id === currentUser.studentId);
-    badge.textContent = stu ? stu.rollNo : 'Student';
-  }
   renderNavTabs();
   renderCurrentTab();
 }
@@ -1317,23 +1313,23 @@ function renderNavTabs() {
   const container = document.getElementById('navTabsContainer');
   const adminTabs = [
     { id: 'dashboard', label: 'Overview' },
-    { id: 'attendance', label: 'Attendance & Calendar' },
-    { id: 'students', label: 'Students & ID/Certs' },
-    { id: 'courses', label: 'Courses & Batches' },
-    { id: 'fees', label: 'Fees & Receipts' },
-    { id: 'audio', label: 'Practice Audio' },
-    { id: 'vault', label: 'Study Vault' },
-    { id: 'messages', label: 'Messages & WhatsApp' },
+    { id: 'attendance', label: 'Attendance' },
+    { id: 'students', label: 'Students' },
+    { id: 'courses', label: 'Courses' },
+    { id: 'fees', label: 'Fees' },
+    { id: 'audio', label: 'Audio' },
+    { id: 'vault', label: 'Studio' },
+    { id: 'messages', label: 'Massages' },
     { id: 'marketing', label: 'Instagram' },
-    { id: 'settings', label: 'Settings & Backup' }
+    { id: 'settings', label: 'Settings' }
   ];
   const studentTabs = [
-    { id: 'student_home', label: 'My Profile & ID Card' },
-    { id: 'student_attendance', label: 'My Attendance Calendar' },
-    { id: 'student_audio', label: 'Record Audio Clip' },
-    { id: 'student_fees', label: 'Fees & Receipts' },
+    { id: 'student_home', label: 'Profile & ID' },
+    { id: 'student_attendance', label: 'Attendance' },
+    { id: 'student_audio', label: 'Audio' },
+    { id: 'student_fees', label: 'Fees' },
     { id: 'student_vault', label: 'Study Material' },
-    { id: 'student_messages', label: 'Message Teacher' }
+    { id: 'student_messages', label: 'Massages' }
   ];
   const tabs = currentUser.role === 'admin' ? adminTabs : studentTabs;
   container.innerHTML = tabs.map(t => `
@@ -1351,6 +1347,10 @@ function renderNavTabs() {
 function switchTab(id) {
   stopQrCamera();
   stopAudioRecording(true);
+  if (id === 'vault' && currentUser && currentUser.role === 'admin') {
+    window.location.href = 'studio.html';
+    return;
+  }
   activeTab = id;
   renderNavTabs();
   renderCurrentTab();
@@ -1514,8 +1514,31 @@ function updateAttendanceField(studentId, field, value) {
   saveState();
 }
 
+function parseBatchMinutes(batchStr) {
+  if (!batchStr) return 9999;
+  const idx = (appState.batches || []).indexOf(batchStr);
+  if (idx !== -1) return idx * 10;
+  const m = String(batchStr).match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+  if (!m) return 9999;
+  let hr = parseInt(m[1], 10);
+  const min = parseInt(m[2], 10);
+  const ampm = m[3].toUpperCase();
+  if (ampm === 'PM' && hr !== 12) hr += 12;
+  if (ampm === 'AM' && hr === 12) hr = 0;
+  return hr * 60 + min;
+}
+
+function sortStudentsByBatch(list) {
+  return [...(list || [])].sort((a, b) => {
+    const diff = parseBatchMinutes(a.batch) - parseBatchMinutes(b.batch);
+    if (diff !== 0) return diff;
+    return String(a.rollNo || '').localeCompare(String(b.rollNo || ''));
+  });
+}
+
 function getFilteredStudents() {
-  return appState.students.filter(s => filterBatch === 'ALL' || s.batch === filterBatch);
+  const filtered = appState.students.filter(s => filterBatch === 'ALL' || s.batch === filterBatch);
+  return sortStudentsByBatch(filtered);
 }
 
 function applyBatchStatus(status) {
@@ -2494,11 +2517,13 @@ function downloadFamilyCombinedReceipt(stuId) {
 }
 
 function renderFeesTab(el) {
+  const sortedStudents = sortStudentsByBatch(appState.students);
   el.innerHTML = `
     <div class="space-y-4">
       <div class="bg-white p-4 rounded-xl border border-slate-200 flex flex-wrap items-center justify-between gap-2">
         <div>
           <h2 class="text-sm font-bold text-[#0F172A]">Fees, Combined Family Receipts &amp; Multi-Instrument Billing</h2>
+          <p class="text-[11px] text-slate-500">Sorted by Batch Timings</p>
         </div>
         <div class="flex flex-wrap gap-2">
           ${selectedReceiptIds.length > 0 ? `
@@ -2506,11 +2531,6 @@ function renderFeesTab(el) {
               Combined Receipt PDF (${selectedReceiptIds.length} Selected)
             </button>
           ` : ''}
-          <label class="px-3 py-1.5 border border-slate-300 text-xs font-semibold rounded-lg cursor-pointer hover:bg-slate-50">
-            ${appState.customBrochureName ? `Brochure: ${appState.customBrochureName}` : 'Upload Custom Brochure'}
-            <input type="file" accept="application/pdf" onchange="uploadCustomBrochure(event)" class="hidden" />
-          </label>
-          <button onclick="downloadActiveBrochure()" class="px-3 py-1.5 bg-[#0F172A] text-white text-xs font-semibold rounded-lg">Brochure PDF</button>
         </div>
       </div>
 
@@ -2519,6 +2539,7 @@ function renderFeesTab(el) {
           <thead>
             <tr class="bg-slate-50 border-b border-slate-200 text-[11px] font-semibold text-slate-600 uppercase">
               <th class="py-2.5 px-3 w-8">Sel</th>
+              <th class="py-2.5 px-3">Batch</th>
               <th class="py-2.5 px-3">Student</th>
               <th class="py-2.5 px-3">Instruments / Courses</th>
               <th class="py-2.5 px-3">Fee - Conc. + ID/Cert</th>
@@ -2528,7 +2549,7 @@ function renderFeesTab(el) {
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-200">
-            ${appState.students.map(s => {
+            ${sortedStudents.map(s => {
               const effConc = getEffectiveConcession(s);
               const net = getStudentNetPayable(s);
               const siblings = getFamilySiblings(s);
@@ -2539,7 +2560,10 @@ function renderFeesTab(el) {
                     <input type="checkbox" ${isChecked ? 'checked' : ''} onchange="toggleReceiptSelection('${s.id}')" />
                   </td>
                   <td class="py-2.5 px-3">
-                    <div class="font-bold text-[#0F172A]">${s.name} <span class="font-mono font-normal text-[10px] text-slate-500">(${s.rollNo})</span></div>
+                    <span class="px-2 py-0.5 text-[10px] font-bold bg-slate-100 text-slate-800 border border-slate-200 rounded whitespace-nowrap">${s.batch}</span>
+                  </td>
+                  <td class="py-2.5 px-3">
+                    <div class="font-bold text-[#0F172A] cursor-pointer hover:text-indigo-700 hover:underline" onclick="openStudentMonthlyCalendarModal('${s.id}')">${s.name} <span class="font-mono font-normal text-[10px] text-slate-500">(${s.rollNo})</span></div>
                     <div class="text-[10px] text-slate-500">Mobile: ${s.phone} ${s.guardian ? `&bull; Family: ${s.guardian}` : ''}</div>
                   </td>
                   <td class="py-2.5 px-3">
@@ -2919,62 +2943,7 @@ function renderVaultTab(el) {
     </div>
   `;
 }
-async function exportProtectedNotationPdf() {
-  const { PDFDocument, StandardFonts, rgb, degrees } = PDFLib;
-  const pdfDoc = await PDFDocument.create();
-  const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-  const fontReg = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
-  const stuId = document.getElementById('sheetStudentSelect')?.value || (currentUser?.studentId || appState.students[0].id);
-  const s = appState.students.find(x => x.id === stuId) || appState.students[0];
-  const title = document.getElementById('sheetTitleInput')?.value || 'Sargam Notation Sheet';
-
-  const p1 = pdfDoc.addPage([595.28, 841.89]);
-  p1.drawRectangle({ x: 36, y: 36, width: 523.28, height: 769.89, borderColor: rgb(0.8, 0.83, 0.88), borderWidth: 1 });
-  p1.drawRectangle({ x: 36, y: 799.89, width: 523.28, height: 6, color: rgb(0.06, 0.09, 0.16) });
-  p1.drawText('B. S. TIKARIYA CULTURAL FOUNDATION', { x: 185, y: 765, size: 10, font: fontBold, color: rgb(0.28, 0.33, 0.41) });
-  p1.drawText('CIN: U88900MH2025NPL454435', { x: 225, y: 750, size: 8.5, font: fontReg, color: rgb(0.39, 0.45, 0.55) });
-  drawStyledAcademyTitlePdf(p1, 148, 724, 18, fontBold);
-  p1.drawText('OFFICIAL STUDY MATERIAL', { x: 220, y: 690, size: 9, font: fontBold, color: rgb(0.28, 0.33, 0.41) });
-  p1.drawText(title, { x: 64, y: 640, size: 16, font: fontBold, color: rgb(0.06, 0.09, 0.16) });
-  p1.drawText(`Issued To: ${s.name} (${s.rollNo})`, { x: 64, y: 600, size: 12, font: fontBold, color: rgb(0.06, 0.09, 0.16) });
-  p1.drawText(`${s.grade} - ${s.course}`, { x: 64, y: 580, size: 10.5, font: fontReg, color: rgb(0.26, 0.22, 0.79) });
-
-  if (uploadedBasePdfBytes) {
-    const baseDoc = await PDFDocument.load(uploadedBasePdfBytes);
-    const copiedPages = await pdfDoc.copyPages(baseDoc, baseDoc.getPageIndices());
-    copiedPages.forEach(cp => {
-      cp.drawText(`${s.name} (${s.rollNo}) - TIKARIYA'S SCHOOL OF MUSIC`, {
-        x: 110, y: 380, size: 16, font: fontBold, color: rgb(0.75, 0.78, 0.82), opacity: 0.35, rotate: degrees(35)
-      });
-      pdfDoc.addPage(cp);
-    });
-  } else {
-    const p2 = pdfDoc.addPage([595.28, 841.89]);
-    const canvas = document.getElementById('sargamPreviewCanvas');
-    if (canvas) {
-      const pngDataUrl = canvas.toDataURL('image/png');
-      const pngImage = await pdfDoc.embedPng(pngDataUrl);
-      p2.drawImage(pngImage, { x: 48, y: 450, width: 500, height: 272 });
-    }
-    p2.drawText(`Personal Copy for ${s.name} (${s.rollNo})`, { x: 64, y: 50, size: 8.5, font: fontReg, color: rgb(0.4, 0.45, 0.55) });
-  }
-
-  const bytes = await pdfDoc.save();
-  const blob = new Blob([bytes], { type: 'application/pdf' });
-  const link = document.createElement('a');
-  link.href = URL.createObjectURL(blob);
-  link.download = `TSM_StudyMaterial_${s.rollNo}.pdf`;
-  link.click();
-}
-
-function addVaultEntryPrompt() {
-  const title = prompt('Workbook / Sheet Title:');
-  if (!title) return;
-  appState.vaultItems.push({ id: 'v_' + Date.now(), title, course: 'Piano', grade: 'Elementary Grade 1', pages: 12, date: selectedDate });
-  saveState();
-  renderCurrentTab();
-}
 
 // ==========================================
 // 15. STUDENT-ADDRESSED MESSAGING & WHATSAPP TEMPLATES
@@ -3105,6 +3074,13 @@ function addCampaignPrompt() {
   renderCurrentTab();
 }
 
+function saveAcademyUpiId() {
+  const val = document.getElementById('academyUpiIdInput')?.value.trim() || '';
+  appState.upiId = val;
+  saveState();
+  showToast('Academy UPI ID saved');
+}
+
 function renderSettingsTab(el) {
   const savedCfg = localStorage.getItem(CONFIG_KEY) || JSON.stringify(DEFAULT_FIREBASE_CONFIG, null, 2);
   const isConnected = cloudSyncStatus.includes('Cloud Synced');
@@ -3112,6 +3088,26 @@ function renderSettingsTab(el) {
 
   el.innerHTML = `
     <div class="max-w-2xl space-y-5">
+      <!-- Custom Brochure & UPI Wallet Configuration -->
+      <div class="bg-white p-5 rounded-xl border border-slate-200 space-y-3">
+        <h2 class="text-sm font-bold text-[#0F172A]">Academy Brochure &amp; Student UPI Wallet Settings</h2>
+        <p class="text-xs text-slate-600">Upload a custom academy brochure PDF here (available on Overview and the Sign-In screen), and set your UPI ID for student fee payments.</p>
+        <div class="flex flex-wrap items-center gap-2 pt-1">
+          <label class="px-3.5 py-2 bg-indigo-50 text-indigo-800 border border-indigo-200 text-xs font-semibold rounded-lg cursor-pointer hover:bg-indigo-100">
+            ${appState.customBrochureName ? `Custom Brochure: ${appState.customBrochureName}` : 'Upload Custom Brochure PDF'}
+            <input type="file" accept="application/pdf" onchange="uploadCustomBrochure(event)" class="hidden" />
+          </label>
+          <button onclick="downloadActiveBrochure()" class="px-3.5 py-2 border border-slate-300 text-slate-800 text-xs font-semibold rounded-lg hover:bg-slate-50">Preview Active Brochure</button>
+        </div>
+        <div class="pt-3 border-t border-slate-100">
+          <label class="block text-[11px] font-semibold text-slate-600 mb-1">Academy UPI ID (for Student UPI Wallet Fee Payments)</label>
+          <div class="flex gap-2">
+            <input id="academyUpiIdInput" value="${appState.upiId || '9823011223@upi'}" placeholder="e.g. yourname@okaxis or 9823011223@upi" class="flex-1 px-3 py-2 text-xs font-mono border border-slate-300 rounded-lg" />
+            <button onclick="saveAcademyUpiId()" class="px-4 py-2 bg-[#0F172A] text-white text-xs font-semibold rounded-lg">Save UPI ID</button>
+          </div>
+        </div>
+      </div>
+
       <!-- Backup & Restore Section -->
       <div class="bg-white p-5 rounded-xl border border-slate-200 space-y-3">
         <div class="flex items-center justify-between">
@@ -3135,14 +3131,14 @@ function renderSettingsTab(el) {
           <h2 class="text-sm font-bold text-[#0F172A]">Closed-App Firebase Push Notifications (FCM)</h2>
           <span class="px-2 py-0.5 text-[10px] font-mono bg-slate-100 border border-slate-200 rounded">${registeredDevices} Device(s) Registered</span>
         </div>
-        <p class="text-xs text-slate-600">VAPID Key wired. Upload <code>firebase-messaging-sw.js</code> beside <code>index.html</code> in your GitHub repo, and optionally paste your free Cloudflare Push Relay URL below to wake devices when the app is completely closed:</p>
+        <p class="text-xs text-slate-600">VAPID Key wired. Upload <code>firebase-messaging-sw.js</code> beside <code>index.html</code> in your GitHub repo, and paste your Cloudflare Push Relay URL below to wake devices when the app is closed:</p>
         <div class="flex gap-2">
-          <input id="pushRelayUrlInput" value="${appState.pushRelayUrl || ''}" placeholder="https://tsm-push-relay.yourname.workers.dev" class="flex-1 px-3 py-2 text-xs font-mono border border-slate-300 rounded-lg" />
+          <input id="pushRelayUrlInput" value="${appState.pushRelayUrl || ''}" placeholder="https://tsm-push-relay.musicsnsounds.workers.dev" class="flex-1 px-3 py-2 text-xs font-mono border border-slate-300 rounded-lg" />
           <button onclick="savePushRelayUrl()" class="px-3.5 py-2 bg-[#0F172A] text-white text-xs font-semibold rounded-lg">Save URL</button>
         </div>
         <div class="flex flex-wrap gap-2">
           <button onclick="enableFcmPushForCurrentUser(false)" class="px-3.5 py-2 bg-emerald-700 text-white text-xs font-semibold rounded-lg hover:bg-emerald-800">Register This Device for Push</button>
-          <button onclick="dispatchPushAlert('ALL', 'TIKARIYA\\'S SCHOOL OF MUSIC', 'Test broadcast push notification')" class="px-3.5 py-2 border border-slate-300 text-slate-800 text-xs font-semibold rounded-lg hover:bg-slate-50">Send Test Push</button>
+          <button onclick="dispatchPushAlert('ALL', 'TIKARIYA\'S SCHOOL OF MUSIC', 'Test broadcast push notification')" class="px-3.5 py-2 border border-slate-300 text-slate-800 text-xs font-semibold rounded-lg hover:bg-slate-50">Send Test Push</button>
         </div>
       </div>
 
@@ -3219,8 +3215,65 @@ function resetDemoData() {
 }
 
 // ==========================================
-// 17. STUDENT PORTAL (WITH ADMISSION-CUSTOMIZED CALENDAR & PUSH OPT-IN)
+// 17. STUDENT PORTAL (WITH UPI WALLET, COURSE-FILTERED VAULT & WATERMARK ON DOWNLOAD)
 // ==========================================
+async function downloadStudentWatermarkedVaultPdf(vaultId, stuId) {
+  const s = appState.students.find(x => x.id === stuId) || appState.students[0];
+  const v = (appState.vaultItems || []).find(x => x.id === vaultId);
+  if (!v || !s) return;
+
+  showToast('Wrapping cover & applying student watermark...');
+  const { PDFDocument, StandardFonts, rgb, degrees } = PDFLib;
+  const outDoc = await PDFDocument.create();
+  const fontBold = await outDoc.embedFont(StandardFonts.HelveticaBold);
+  const fontReg = await outDoc.embedFont(StandardFonts.Helvetica);
+
+  // 1. Official Personalized Cover Page
+  const cover = outDoc.addPage([595.28, 841.89]);
+  cover.drawRectangle({ x: 36, y: 36, width: 523.28, height: 769.89, borderColor: rgb(0.06, 0.09, 0.16), borderWidth: 1.5 });
+  cover.drawRectangle({ x: 36, y: 799.89, width: 523.28, height: 6, color: rgb(0.06, 0.09, 0.16) });
+  cover.drawText('B. S. TIKARIYA CULTURAL FOUNDATION', { x: 185, y: 755, size: 10, font: fontBold, color: rgb(0.28, 0.33, 0.41) });
+  cover.drawText('CIN: U88900MH2025NPL454435', { x: 225, y: 740, size: 8.5, font: fontReg, color: rgb(0.39, 0.45, 0.55) });
+  drawStyledAcademyTitlePdf(cover, 148, 710, 18, fontBold);
+  cover.drawText((v.category || 'OFFICIAL STUDY MATERIAL').toUpperCase(), { x: 215, y: 675, size: 9.5, font: fontBold, color: rgb(0.26, 0.22, 0.79) });
+  cover.drawText(v.title, { x: 64, y: 615, size: 18, font: fontBold, color: rgb(0.06, 0.09, 0.16) });
+  cover.drawText(`Course: ${v.targetCourse || v.course || 'All Courses'}`, { x: 64, y: 585, size: 11, font: fontBold, color: rgb(0.26, 0.22, 0.79) });
+  cover.drawText(`Issued To Student: ${s.name} (Roll No: ${s.rollNo})`, { x: 64, y: 550, size: 12, font: fontBold, color: rgb(0.06, 0.09, 0.16) });
+  cover.drawText(`Grade: ${s.grade} — ${s.course} | Batch: ${s.batch}`, { x: 64, y: 530, size: 10, font: fontReg, color: rgb(0.28, 0.33, 0.41) });
+  cover.drawText(`${s.name} (${s.rollNo}) — TIKARIYA'S SCHOOL OF MUSIC`, {
+    x: 95, y: 320, size: 16, font: fontBold, color: rgb(0.75, 0.78, 0.82), opacity: 0.32, rotate: degrees(35)
+  });
+
+  // 2. Load Stored PDF Pages & Apply Student Watermark on Each Page
+  let pdfDataUrl = v.pdfDataUrl || localStorage.getItem('tsm_pdf_' + vaultId) || '';
+  if (!pdfDataUrl && db) {
+    try {
+      const doc = await db.collection('tsm_vault_files').doc(vaultId).get();
+      if (doc.exists && doc.data().pdfDataUrl) pdfDataUrl = doc.data().pdfDataUrl;
+    } catch (e) {}
+  }
+
+  if (pdfDataUrl) {
+    try {
+      const srcDoc = await PDFDocument.load(pdfDataUrl);
+      const copiedPages = await outDoc.copyPages(srcDoc, srcDoc.getPageIndices());
+      copiedPages.forEach(cp => {
+        cp.drawText(`${s.name} (${s.rollNo}) — TIKARIYA'S SCHOOL OF MUSIC`, {
+          x: 95, y: 360, size: 16, font: fontBold, color: rgb(0.72, 0.75, 0.80), opacity: 0.32, rotate: degrees(35)
+        });
+        outDoc.addPage(cp);
+      });
+    } catch (e) {}
+  }
+
+  const bytes = await outDoc.save();
+  const blob = new Blob([bytes], { type: 'application/pdf' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = `TSM_${v.title.replace(/\s+/g, '_')}_${s.rollNo}.pdf`;
+  link.click();
+}
+
 function renderStudentPortal(el, tab) {
   const s = appState.students.find(x => x.id === currentUser.studentId);
   if (!s) return;
@@ -3237,7 +3290,7 @@ function renderStudentPortal(el, tab) {
         <div class="font-bold text-amber-900">Dear ${s.name}, Fee Reminder (Month #${months})</div>
         <div class="text-amber-800">Amount INR ${netFee} due for cycle starting ${nextDue} (UPI / Cash).</div>
       </div>
-      <button onclick="switchTab('student_fees')" class="px-3 py-1.5 bg-amber-800 text-white font-semibold rounded-lg shrink-0">View</button>
+      <button onclick="switchTab('student_fees')" class="px-3 py-1.5 bg-amber-800 text-white font-semibold rounded-lg shrink-0">Pay Now</button>
     </div>
   ` : '';
 
@@ -3295,7 +3348,7 @@ function renderStudentPortal(el, tab) {
     `;
     setTimeout(() => {
       const box = document.getElementById('stuPortalQr');
-      if (box) new QRCode(box, { text: `https://tikariyas.github.io/tsm-gem/?verify=${s.rollNo}`, width: 72, height: 72 });
+      if (box) new QRCode(box, { text: `https://tikariyas.github.io/tsm-gem/?verify=${s.rollNo}`, width: 88, height: 88, correctLevel: QRCode.CorrectLevel.H });
     }, 50);
   } else if (tab === 'student_attendance') {
     const wk = getWeeklyStats(selectedDate, s);
@@ -3375,44 +3428,71 @@ function renderStudentPortal(el, tab) {
       </div>
     `;
   } else if (tab === 'student_fees') {
+    const upiId = appState.upiId || '9823011223@upi';
+    const upiUri = `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent("TIKARIYAS SCHOOL OF MUSIC")}&am=${netFee}&cu=INR&tn=${encodeURIComponent(`Fee ${s.rollNo} ${s.name}`)}`;
     el.innerHTML = `
-      <div class="max-w-xl mx-auto bg-white p-5 rounded-xl border border-slate-200 space-y-3 text-xs">
-        <h3 class="text-sm font-bold text-[#0F172A]">Fees &amp; Receipts</h3>
-        <div class="p-3 bg-slate-50 rounded-lg border border-slate-200 flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <div class="font-bold text-[#0F172A]">${s.course} &mdash; INR ${netFee}</div>
-            <div class="text-slate-500">Admitted: ${s.admissionDate} (Month #${months}) &bull; Status: <b>${s.feeStatus}</b></div>
+      <div class="max-w-xl mx-auto bg-white p-5 rounded-xl border border-slate-200 space-y-4 text-xs">
+        <h3 class="text-sm font-bold text-[#0F172A]">Fees, UPI Wallet Payment &amp; Receipts</h3>
+        <div class="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <div class="text-sm font-bold text-[#0F172A]">${s.course} &mdash; <span class="text-indigo-700">₹${netFee}</span></div>
+              <div class="text-slate-500 mt-0.5">Batch: <b>${s.batch}</b> &bull; Admitted: ${s.admissionDate} (Month #${months}) &bull; Status: <b>${s.feeStatus}</b></div>
+            </div>
+            <div class="flex flex-wrap gap-1.5">
+              <a href="${upiUri}" class="px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-lg shadow-sm transition">
+                Pay ₹${netFee} via UPI Wallet
+              </a>
+              <button onclick="downloadCombinedStandardReceiptPdf(['${s.id}'])" class="px-3 py-2 bg-[#0F172A] text-white font-semibold rounded-lg">My Receipt PDF</button>
+              ${siblings.length > 1 ? `<button onclick="downloadFamilyCombinedReceipt('${s.id}')" class="px-3 py-2 bg-indigo-700 text-white font-semibold rounded-lg">Consolidated (${siblings.length})</button>` : ''}
+            </div>
           </div>
-          <div class="flex gap-1.5">
-            <button onclick="downloadCombinedStandardReceiptPdf(['${s.id}'])" class="px-3 py-2 bg-[#0F172A] text-white font-semibold rounded-lg">My Receipt PDF</button>
-            ${siblings.length > 1 ? `<button onclick="downloadFamilyCombinedReceipt('${s.id}')" class="px-3 py-2 bg-indigo-700 text-white font-semibold rounded-lg">Consolidated (${siblings.length})</button>` : ''}
+          <div class="pt-3 border-t border-slate-200 flex items-center justify-between gap-3">
+            <div class="text-[11px] text-slate-600 space-y-0.5">
+              <div class="font-bold text-[#0F172A]">Pay via Any UPI App (GPay / PhonePe / Paytm)</div>
+              <div>Tap the green button above on mobile or scan QR with amount <b>₹${netFee}</b> pre-filled.</div>
+              <div>UPI ID: <span class="font-mono font-semibold text-slate-800">${upiId}</span></div>
+            </div>
+            <div id="stuUpiQrBox" class="p-1.5 bg-white border border-slate-300 rounded shrink-0"></div>
           </div>
         </div>
       </div>
     `;
+    setTimeout(() => {
+      const qBox = document.getElementById('stuUpiQrBox');
+      if (qBox) new QRCode(qBox, { text: upiUri, width: 88, height: 88, correctLevel: QRCode.CorrectLevel.M });
+    }, 50);
   } else if (tab === 'student_vault') {
+    const stuCourses = Array.isArray(s.courses) && s.courses.length ? s.courses : String(s.course || '').split(',').map(x => x.trim());
+    const visibleVault = (appState.vaultItems || []).filter(v => {
+      const target = v.targetCourse || v.course || 'All Courses';
+      if (target === 'All Courses') return true;
+      return stuCourses.some(c => c.toLowerCase() === target.toLowerCase());
+    });
     el.innerHTML = `
       <div class="max-w-xl mx-auto bg-white p-5 rounded-xl border border-slate-200 space-y-3 text-xs">
         <div class="flex items-center justify-between">
-          <h3 class="text-sm font-bold text-[#0F172A]">Study Material &amp; Brochure</h3>
-          <button onclick="downloadActiveBrochure()" class="px-2.5 py-1 border border-slate-300 font-semibold rounded-lg">Brochure PDF</button>
+          <div>
+            <h3 class="text-sm font-bold text-[#0F172A]">My Course Study Material (${s.course})</h3>
+            <p class="text-[11px] text-slate-500">Cover page &amp; personal student watermark applied automatically on download</p>
+          </div>
         </div>
-        ${appState.vaultItems.map(v => `
-          <div class="p-3 border border-slate-200 rounded-lg flex items-center justify-between">
+        ${visibleVault.length ? visibleVault.map(v => `
+          <div class="p-3 border border-slate-200 rounded-lg flex items-center justify-between gap-2 hover:bg-slate-50">
             <div>
               <div class="font-bold text-[#0F172A]">${v.title}</div>
-              <div class="text-slate-500">${v.course} &bull; ${v.pages} Pages</div>
+              <div class="text-[11px] text-indigo-700 font-semibold">${v.targetCourse || v.course || 'All Courses'} &bull; <span class="text-slate-500">${v.category || 'Study Material'} &bull; ${v.pages || 1} Page(s)</span></div>
             </div>
-            <button onclick="exportProtectedNotationPdf()" class="px-3 py-1.5 bg-[#0F172A] text-white font-semibold rounded-lg">Download PDF</button>
+            <button onclick="downloadStudentWatermarkedVaultPdf('${v.id}', '${s.id}')" class="px-3 py-1.5 bg-[#0F172A] text-white font-semibold rounded-lg shrink-0">Download PDF</button>
           </div>
-        `).join('')}
+        `).join('') : '<p class="text-slate-400 text-center py-6">No study materials uploaded for your course yet.</p>'}
       </div>
     `;
   } else if (tab === 'student_messages') {
     const myMsgs = appState.messages.filter(m => m.rollNo === s.rollNo);
     el.innerHTML = `
       <div class="max-w-xl mx-auto bg-white p-4 rounded-xl border border-slate-200 space-y-3">
-        <h3 class="text-sm font-bold text-[#0F172A]">Messages</h3>
+        <h3 class="text-sm font-bold text-[#0F172A]">Massages</h3>
         <div class="space-y-2 max-h-64 overflow-y-auto p-2 bg-slate-50 rounded-lg border border-slate-200">
           ${myMsgs.map(m => `
             <div class="p-2.5 rounded-lg text-xs ${m.sender === 'Student' ? 'bg-[#0F172A] text-white ml-8' : 'bg-white border border-slate-200 mr-8'}">
