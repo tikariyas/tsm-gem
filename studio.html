@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#0F172A" />
+  <title>Saregama Notation Studio & Vault — TIKARIYA'S SCHOOL OF MUSIC</title>
+  <link rel="icon" type="image/png" href="" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/opentype.js@1.3.4/dist/opentype.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+    body { font-family: 'Inter', sans-serif; background-color: #F8FAFC; color: #0F172A; }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+  <!-- TOP HEADER -->
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-30">
+    <div class="max-w-7xl mx-auto px-4 py-2.5 flex flex-wrap items-center justify-between gap-3">
+      <div class="flex items-center gap-2.5">
+        <div class="w-8 h-8 rounded-lg bg-[#0F172A] text-white flex items-center justify-center font-extrabold text-xs tracking-tight shrink-0">TS<span class="text-[#EF4444]">M</span></div>
+        <div>
+          <h1 class="font-extrabold text-sm sm:text-base text-[#0F172A] uppercase tracking-tight">SAREGAMA NOTATION STUDIO &amp; VAULT</h1>
+          <p class="text-[10px] text-slate-500">B. S. TIKARIYA CULTURAL FOUNDATION &bull; CIN: U88900MH2025NPL454435</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <a href="index.html" class="px-3 py-1.5 text-xs font-semibold text-slate-700 hover:text-slate-900 border border-slate-300 rounded-lg bg-slate-50">&larr; Back to Portal</a>
+      </div>
+    </div>
+  </header>
+
+  <!-- MAIN WORKSPACE -->
+  <main class="flex-1 max-w-7xl w-full mx-auto px-4 py-5 grid grid-cols-1 lg:grid-cols-12 gap-5">
+    
+    <!-- LEFT PANE: CONTROLS & EDITORS (Cols 1-6) -->
+    <div class="lg:col-span-6 space-y-4">
+      
+      <!-- METADATA & CLASSIFICATION -->
+      <div class="bg-white p-4 rounded-xl border border-slate-200 space-y-3">
+        <h2 class="text-xs font-bold uppercase tracking-wide text-slate-700">1. Document Metadata &amp; Course Targeting</h2>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+          <div>
+            <label class="block font-semibold text-slate-700 mb-1">Sheet / Workbook Title</label>
+            <input id="sheetTitleInput" value="Raag Bhupaali — Alankaars & Bandish" class="w-full px-3 py-2 border border-slate-300 rounded-lg font-semibold" oninput="renderStudioCanvas()" />
+          </div>
+          <div>
+            <label class="block font-semibold text-slate-700 mb-1">Target Instrument / Course</label>
+            <select id="targetCourseSelect" class="w-full px-3 py-2 border border-slate-300 rounded-lg font-medium" onchange="renderStudioCanvas()">
+              <option value="All Courses">All Courses (Universal)</option>
+              <option value="Piano">Piano</option>
+              <option value="Guitar">Guitar</option>
+              <option value="Violin">Violin</option>
+              <option value="Flute">Flute</option>
+              <option value="Harmonium">Harmonium</option>
+              <option value="Tabla">Tabla</option>
+              <option value="Vocals">Vocals</option>
+              <option value="Octopad">Octopad</option>
+              <option value="Sound Recordist">Sound Recordist</option>
+              <option value="Karaoke Singing">Karaoke Singing</option>
+            </select>
+          </div>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+          <div>
+            <label class="block font-semibold text-slate-700 mb-1">Category</label>
+            <select id="docCategorySelect" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+              <option value="Study Material">Study Material (Vault)</option>
+              <option value="Information">Information / Notice</option>
+              <option value="Brochure">Academy Brochure</option>
+            </select>
+          </div>
+          <div>
+            <label class="block font-semibold text-slate-700 mb-1">Assign to Specific Student (Watermark)</label>
+            <select id="sheetStudentSelect" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+              <!-- Populated dynamically -->
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- FONT SWITCHER & FORMATTING TOOLBAR -->
+      <div class="bg-white p-4 rounded-xl border border-slate-200 space-y-3">
+        <div class="flex items-center justify-between">
+          <h2 class="text-xs font-bold uppercase tracking-wide text-slate-700">2. Typography &amp; Notation Mode</h2>
+          <div class="flex gap-1">
+            <button type="button" onclick="setFontMode('plain')" id="btnFontPlain" class="px-2.5 py-1 text-[11px] font-semibold bg-[#0F172A] text-white rounded">Plain / Lyrics</button>
+            <button type="button" onclick="setFontMode('sargam')" id="btnFontSargam" class="px-2.5 py-1 text-[11px] font-semibold bg-slate-100 text-slate-700 border border-slate-300 rounded">Sargam Font</button>
+            <button type="button" onclick="setFontMode('staff')" id="btnFontStaff" class="px-2.5 py-1 text-[11px] font-semibold bg-slate-100 text-slate-700 border border-slate-300 rounded">Staff Notation</button>
+          </div>
+        </div>
+
+        <div class="flex flex-wrap gap-1.5 pt-1">
+          <span class="text-[11px] font-bold text-slate-500 self-center mr-1">Sargam Keys:</span>
+          ['S', 'R', 'G', 'M', 'P', 'D', 'N', "S'", 'r', 'g', 'm', 'd', 'n', '|', '-'].forEach(k => {
+            // Rendered via JS
+          })
+          <div id="sargamKeysContainer" class="flex flex-wrap gap-1"></div>
+        </div>
+
+        <div class="flex flex-wrap gap-2 pt-1">
+          <button type="button" onclick="insertSymbol('---')" class="px-2.5 py-1 text-xs font-mono font-bold bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded">[—] Horizontal Line</button>
+          <button type="button" onclick="insertSymbol('| |')" class="px-2.5 py-1 text-xs font-mono font-bold bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded">[ | ] Vertical Line</button>
+          <button type="button" onclick="insertSymbol('[Tempo: 108 BPM — Tintaal]')" class="px-2.5 py-1 text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200 rounded">+ BPM Tag</button>
+          <button type="button" onclick="toggleSplitColumn()" id="splitColBtn" class="px-2.5 py-1 text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-300 rounded">Split Page Vertically</button>
+        </div>
+      </div>
+
+      <!-- TEXT EDITOR BUFFERS -->
+      <div class="bg-white p-4 rounded-xl border border-slate-200 space-y-3">
+        <div class="flex items-center justify-between">
+          <h2 class="text-xs font-bold uppercase tracking-wide text-slate-700">3. Notation &amp; Text Buffer</h2>
+          <span class="text-[10px] text-slate-500">Live rendered on US Letter Canvas</span>
+        </div>
+
+        <div id="singleBufferContainer">
+          <label class="block text-[11px] font-semibold text-slate-600 mb-1">Main Sheet Content</label>
+          <textarea id="sargamTextArea" rows="7" oninput="renderStudioCanvas()" class="w-full p-3 text-sm font-mono border border-slate-300 rounded-lg focus:outline-none focus:border-[#0F172A]">S R G P D S' | S' D P G R S
+G P D S' R' S' D P | G R S
+[Tempo: 108 BPM — Teentaal]
+Dha Dhin Dhin Dha | Dha Dhin Dhin Dha</textarea>
+        </div>
+
+        <div id="splitBufferContainer" class="hidden grid grid-cols-2 gap-2">
+          <div>
+            <label class="block text-[10px] font-semibold text-slate-600 mb-1">Left Column Buffer</label>
+            <textarea id="leftColTextArea" rows="6" oninput="renderStudioCanvas()" class="w-full p-2.5 text-xs font-mono border border-slate-300 rounded-lg">Left Column Exercises...</textarea>
+          </div>
+          <div>
+            <label class="block text-[10px] font-semibold text-slate-600 mb-1">Right Column Buffer</label>
+            <textarea id="rightColTextArea" rows="6" oninput="renderStudioCanvas()" class="w-full p-2.5 text-xs font-mono border border-slate-300 rounded-lg">Right Column Exercises...</textarea>
+          </div>
+        </div>
+      </div>
+
+      <!-- ASSETS, FONTS & DIAGRAMS -->
+      <div class="bg-white p-4 rounded-xl border border-slate-200 space-y-3 text-xs">
+        <h2 class="text-xs font-bold uppercase tracking-wide text-slate-700">4. Fonts, Base PDFs &amp; Visual Diagrams</h2>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          <label class="px-3 py-2 bg-slate-50 hover:bg-slate-100 border border-slate-300 rounded-lg font-semibold cursor-pointer text-center">
+            <span id="fontUploadLabel">Load .ttf Font</span>
+            <input type="file" accept=".ttf,.otf" onchange="handleStudioFontUpload(event)" class="hidden" />
+          </label>
+          <label class="px-3 py-2 bg-slate-50 hover:bg-slate-100 border border-slate-300 rounded-lg font-semibold cursor-pointer text-center">
+            <span id="pdfUploadLabel">Wrap Base PDF</span>
+            <input type="file" accept="application/pdf" onchange="handleStudioPdfUpload(event)" class="hidden" />
+          </label>
+          <label class="px-3 py-2 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 rounded-lg font-semibold cursor-pointer text-center">
+            + Add Diagram Image
+            <input type="file" accept="image/png,image/jpeg" onchange="handleStudioImageUpload(event)" class="hidden" />
+          </label>
+        </div>
+      </div>
+
+      <!-- ACTIONS & EXPORT -->
+      <div class="flex flex-wrap gap-2 pt-2">
+        <button type="button" onclick="saveToCourseVault()" class="flex-1 py-2.5 bg-indigo-700 hover:bg-indigo-800 text-white text-xs font-semibold rounded-lg shadow-sm">Save to Course Vault</button>
+        <button type="button" onclick="exportStudioPdf()" class="flex-1 py-2.5 bg-[#0F172A] hover:bg-slate-800 text-white text-xs font-semibold rounded-lg shadow-sm">Export Watermarked PDF</button>
+      </div>
+
+    </div>
+
+    <!-- RIGHT PANE: LIVE US LETTER CANVAS PREVIEW (Cols 7-12) -->
+    <div class="lg:col-span-6 bg-slate-100 p-4 rounded-xl border border-slate-200 flex flex-col items-center justify-start min-h-[720px]">
+      <div class="flex items-center justify-between w-full mb-3 px-2">
+        <span class="text-xs font-bold uppercase tracking-wide text-slate-600">Live US Letter Canvas Preview (595 &times; 841 pt)</span>
+        <span id="canvasStatusBadge" class="px-2 py-0.5 text-[10px] font-semibold bg-emerald-100 text-emerald-800 rounded">Ready</span>
+      </div>
+      <div class="bg-white shadow-lg border border-slate-300 rounded overflow-hidden max-w-full">
+        <canvas id="studioPreviewCanvas" width="595" height="841" class="w-full h-auto max-w-[500px]"></canvas>
+      </div>
+    </div>
+
+  </main>
+
+  <div id="toast" class="hidden fixed bottom-4 right-4 z-50 bg-slate-900 text-white text-xs font-medium px-4 py-2.5 rounded-lg shadow-lg"></div>
+
+<script>
+// ==========================================
+// STUDIO LOGIC & STATE ROUTING
+// ==========================================
+const STORAGE_KEY = 'tsm_pwa_state_v8';
+const SESSION_KEY = 'tsm_active_session_v8';
+
+function loadState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch (e) {}
+  return { students: [], vaultItems: [], courses: [] };
+}
+
+function saveState() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(appState));
+  } catch (e) {}
+}
+
+let appState = loadState();
+let currentUser = null;
+try {
+  currentUser = JSON.parse(localStorage.getItem(SESSION_KEY));
+} catch (e) {}
+
+if (!currentUser || currentUser.role !== 'admin') {
+  window.location.href = 'index.html';
+}
+
+let loadedCustomFont = null;
+let currentFontMode = 'plain'; // 'plain', 'sargam', 'staff'
+let isSplitColumnActive = false;
+let uploadedPdfBytes = null;
+let uploadedPdfName = '';
+let attachedImages = [];
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.remove('hidden');
+  setTimeout(() => t.classList.add('hidden'), 2600);
+}
+
+// Populate student select dropdown
+function initStudioStudents() {
+  const sel = document.getElementById('sheetStudentSelect');
+  if (!sel) return;
+  sel.innerHTML = appState.students.map(s => `<option value="${s.id}">${s.name} (${s.rollNo})</option>`).join('');
+}
+
+// Sargam quick keys
+const sargamKeys = ['S', 'R', 'G', 'M', 'P', 'D', 'N', "S'", 'r', 'g', 'm', 'd', 'n', '|', '-'];
+function initSargamKeysBar() {
+  const bar = document.getElementById('sargamKeysContainer');
+  if (!bar) return;
+  bar.innerHTML = sargamKeys.map(k => `
+    <button type="button" onclick="insertKey('${k}')" class="px-2 py-1 text-xs font-mono font-bold bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded">${k}</button>
+  `).join('');
+}
+
+function insertKey(k) {
+  const ta = isSplitColumnActive ? document.getElementById('leftColTextArea') : document.getElementById('sargamTextArea');
+  if (!ta) return;
+  ta.value += (ta.value.endsWith(' ') || ta.value.endsWith('\n') || ta.value === '' ? '' : ' ') + k + ' ';
+  renderStudioCanvas();
+}
+
+function insertSymbol(sym) {
+  const ta = isSplitColumnActive ? document.getElementById('leftColTextArea') : document.getElementById('sargamTextArea');
+  if (!ta) return;
+  ta.value += '\n' + sym + '\n';
+  renderStudioCanvas();
+}
+
+function setFontMode(mode) {
+  currentFontMode = mode;
+  document.getElementById('btnFontPlain').className = `px-2.5 py-1 text-[11px] font-semibold rounded ${mode==='plain'?'bg-[#0F172A] text-white':'bg-slate-100 text-slate-700 border border-slate-300'}`;
+  document.getElementById('btnFontSargam').className = `px-2.5 py-1 text-[11px] font-semibold rounded ${mode==='sargam'?'bg-[#0F172A] text-white':'bg-slate-100 text-slate-700 border border-slate-300'}`;
+  document.getElementById('btnFontStaff').className = `px-2.5 py-1 text-[11px] font-semibold rounded ${mode==='staff'?'bg-[#0F172A] text-white':'bg-slate-100 text-slate-700 border border-slate-300'}`;
+  renderStudioCanvas();
+}
+
+function toggleSplitColumn() {
+  isSplitColumnActive = !isSplitColumnActive;
+  document.getElementById('splitColBtn').className = `px-2.5 py-1 text-xs font-semibold rounded ${isSplitColumnActive?'bg-indigo-700 text-white':'bg-slate-100 text-slate-700 border border-slate-300'}`;
+  document.getElementById('singleBufferContainer').classList.toggle('hidden', isSplitColumnActive);
+  document.getElementById('splitBufferContainer').classList.toggle('hidden', !isSplitColumnActive);
+  renderStudioCanvas();
+}
+
+function handleStudioFontUpload(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  document.getElementById('fontUploadLabel').textContent = file.name;
+  const reader = new FileReader();
+  reader.onload = function(ev) {
+    try {
+      loadedCustomFont = opentype.parse(ev.target.result);
+      showToast(`Loaded font: ${file.name}`);
+      renderStudioCanvas();
+    } catch (err) {
+      showToast('Failed to parse font file');
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function handleStudioPdfUpload(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  uploadedPdfName = file.name;
+  document.getElementById('pdfUploadLabel').textContent = file.name;
+  const reader = new FileReader();
+  reader.onload = function(ev) {
+    uploadedPdfBytes = ev.target.result;
+    showToast(`Loaded base PDF: ${file.name}`);
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function handleStudioImageUpload(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(ev) {
+    attachedImages.push({ url: ev.target.result, x: 50, y: 400, w: 200, h: 140 });
+    renderStudioCanvas();
+    showToast('Diagram image attached');
+  };
+  reader.readAsDataURL(file);
+}
+
+function renderStudioCanvas() {
+  const canvas = document.getElementById('studioPreviewCanvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Background
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Outer border & header banner
+  ctx.strokeStyle = '#CBD5E1';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(24, 24, canvas.width - 48, canvas.height - 48);
+
+  ctx.fillStyle = '#0F172A';
+  ctx.fillRect(24, 24, canvas.width - 48, 6));
+
+  // Academy Header
+  ctx.font = 'bold 11px Inter, sans-serif';
+  ctx.fillStyle = '#475569';
+  ctx.fillText("B. S. TIKARIYA CULTURAL FOUNDATION — CIN: U88900MH2025NPL454435", 48, 52);
+
+  ctx.font = '900 18px Inter, sans-serif';
+  ctx.fillStyle = '#0F172A';
+  ctx.fillText("TIKARIYA'S SCHOOL OF ", 48, 76);
+  const w1 = ctx.measureText("TIKARIYA'S SCHOOL OF ").width;
+  ctx.fillStyle = '#B91C1C';
+  ctx.fillText("M", 48 + w1, 76);
+  const w2 = ctx.measureText("M").width;
+  ctx.fillStyle = '#0F172A';
+  ctx.fillText("USIC", 48 + w1 + w2, 76);
+
+  // Target Course Badge
+  const targetCourse = document.getElementById('targetCourseSelect').value;
+  ctx.fillStyle = '#EEF2FF';
+  ctx.fillRect(canvas.width - 180, 42, 132, 24);
+  ctx.fillStyle = '#3730A3';
+  ctx.font = 'bold 10px Inter, sans-serif';
+  ctx.fillText(`COURSE: ${targetCourse.toUpperCase()}`, canvas.width - 172, 58);
+
+  // Divider line
+  ctx.strokeStyle = '#E2E8F0';
+  ctx.beginPath();
+  ctx.moveTo(48, 92);
+  ctx.lineTo(canvas.width - 48, 92);
+  ctx.stroke();
+
+  // Document Title
+  const title = document.getElementById('sheetTitleInput').value || 'Notation Sheet';
+  ctx.font = 'bold 16px Inter, sans-serif';
+  ctx.fillStyle = '#0F172A';
+  ctx.fillText(title, 48, 124);
+
+  // Content rendering
+  ctx.font = currentFontMode === 'sargam' ? '18px monospace' : '14px Inter, sans-serif';
+  ctx.fillStyle = '#1E293B';
+
+  if (isSplitColumnActive) {
+    const leftText = document.getElementById('leftColTextArea').value || '';
+    const rightText = document.getElementById('rightColTextArea').value || '';
+    
+    // Left column
+    let yL = 160;
+    leftText.split('\n').forEach(line => {
+      ctx.fillText(line, 48, yL);
+      yL += 22;
+    });
+
+    // Vertical divider
+    ctx.strokeStyle = '#CBD5E1';
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.moveTo(canvas.width / 2, 140);
+    ctx.lineTo(canvas.width / 2, canvas.height - 80);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Right column
+    let yR = 160;
+    rightText.split('\n').forEach(line => {
+      ctx.fillText(line, canvas.width / 2 + 24, yR);
+      yR += 22;
+    });
+  } else {
+    const text = document.getElementById('sargamTextArea').value || '';
+    let y = 160;
+    text.split('\n').forEach(line => {
+      if (line.trim().startsWith('---')) {
+        ctx.strokeStyle = '#0F172A';
+        ctx.beginPath();
+        ctx.moveTo(48, y - 6);
+        ctx.lineTo(canvas.width - 48, y - 6);
+        ctx.stroke();
+      } else if (line.trim().startsWith('| |')) {
+        ctx.strokeStyle = '#0F172A';
+        ctx.beginPath();
+        ctx.moveTo(canvas.width / 2, y - 16);
+        ctx.lineTo(canvas.width / 2, y + 6);
+        ctx.stroke();
+      } else {
+        ctx.fillText(line, 48, y);
+      }
+      y += 24;
+    });
+  }
+
+  // Render attached diagram images
+  attachedImages.forEach(imgObj => {
+    const img = new Image();
+    img.onload = () => ctx.drawImage(img, imgObj.x, imgObj.y, imgObj.w, imgObj.h);
+    img.src = imgObj.url;
+  });
+
+  // Footer metadata
+  ctx.font = '10px Inter, sans-serif';
+  ctx.fillStyle = '#64748B';
+  ctx.fillText("Official Study Material — TIKARIYA'S SCHOOL OF MUSIC", 48, canvas.height - 38);
+}
+
+function saveToCourseVault() {
+  const title = document.getElementById('sheetTitleInput').value.trim();
+  const targetCourse = document.getElementById('targetCourseSelect').value;
+  const category = document.getElementById('docCategorySelect').value;
+  if (!title) {
+    showToast('Please enter a sheet title');
+    return;
+  }
+
+  const vaultEntry = {
+    id: 'v_' + Date.now(),
+    title,
+    targetCourse,
+    category,
+    grade: 'Elementary Grade 1',
+    pages: 1,
+    date: new Date().toISOString().split('T')[0]
+  };
+
+  if (!Array.isArray(appState.vaultItems)) appState.vaultItems = [];
+  appState.vaultItems.unshift(vaultEntry);
+  saveState();
+  showToast(`Saved "${title}" to Course Vault (${targetCourse})`);
+}
+
+async function exportStudioPdf() {
+  const { PDFDocument, StandardFonts, rgb, degrees } = PDFLib;
+  const pdfDoc = await PDFDocument.create();
+  const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  const fontReg = await pdfDoc.embedFont(StandardFonts.Helvetica);
+
+  const title = document.getElementById('sheetTitleInput').value || 'Notation Sheet';
+  const targetCourse = document.getElementById('targetCourseSelect').value;
+  const stuId = document.getElementById('sheetStudentSelect').value;
+  const s = appState.students.find(x => x.id === stuId) || { name: 'Student', rollNo: 'TSM-0001', grade: 'Grade 1', course: targetCourse };
+
+  if (uploadedPdfBytes) {
+    const baseDoc = await PDFDocument.load(uploadedPdfBytes);
+    const copiedPages = await pdfDoc.copyPages(baseDoc, baseDoc.getPageIndices());
+    copiedPages.forEach(cp => {
+      // Apply diagonal student watermark on download only
+      cp.drawText(`${s.name} (${s.rollNo}) — TIKARIYA'S SCHOOL OF MUSIC`, {
+        x: 100, y: 380, size: 16, font: fontBold, color: rgb(0.75, 0.78, 0.82), opacity: 0.35, rotate: degrees(35)
+      });
+      pdfDoc.addPage(cp);
+    });
+  } else {
+    const p1 = pdfDoc.addPage([595.28, 841.89]);
+    p1.drawRectangle({ x: 36, y: 36, width: 523.28, height: 769.89, borderColor: rgb(0.8, 0.83, 0.88), borderWidth: 1 });
+    p1.drawRectangle({ x: 36, y: 799.89, width: 523.28, height: 6, color: rgb(0.06, 0.09, 0.16) });
+    p1.drawText('B. S. TIKARIYA CULTURAL FOUNDATION', { x: 185, y: 765, size: 10, font: fontBold, color: rgb(0.28, 0.33, 0.41) });
+    p1.drawText('CIN: U88900MH2025NPL454435', { x: 225, y: 750, size: 8.5, font: fontReg, color: rgb(0.39, 0.45, 0.55) });
+    p1.drawText(title, { x: 64, y: 680, size: 16, font: fontBold, color: rgb(0.06, 0.09, 0.16) });
+    p1.drawText(`Target Course: ${targetCourse} | Issued To: ${s.name} (${s.rollNo})`, { x: 64, y: 640, size: 11, font: fontBold, color: rgb(0.26, 0.22, 0.79) });
+
+    const canvas = document.getElementById('studioPreviewCanvas');
+    if (canvas) {
+      const pngDataUrl = canvas.toDataURL('image/png');
+      const pngImage = await pdfDoc.embedPng(pngDataUrl);
+      p1.drawImage(pngImage, { x: 48, y: 150, width: 500, height: 472 });
+    }
+
+    p1.drawText(`${s.name} (${s.rollNo}) - TIKARIYA'S SCHOOL OF MUSIC`, {
+      x: 120, y: 400, size: 18, font: fontBold, color: rgb(0.75, 0.78, 0.82), opacity: 0.3, rotate: degrees(35)
+    });
+  }
+
+  const bytes = await pdfDoc.save();
+  const blob = new Blob([bytes], { type: 'application/pdf' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = `TSM_Studio_${s.rollNo}_${targetCourse}.pdf`;
+  link.click();
+  showToast('Downloaded watermarked study PDF');
+}
+
+initStudioStudents();
+initSargamKeysBar();
+setTimeout(renderStudioCanvas, 50);
+</script>
+</body>
+</html>
