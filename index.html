@@ -71,18 +71,12 @@
   <!-- MAIN APPLICATION SHELL -->
   <div id="appShell" class="hidden flex-1 flex flex-col">
     <header class="bg-white border-b border-slate-200 sticky top-0 z-30">
-      <div class="max-w-7xl mx-auto px-3 sm:px-6 py-2.5 flex items-start sm:items-center justify-between gap-3">
-        <div class="flex items-start sm:items-center gap-2.5 min-w-0 flex-1">
-          <div class="w-8 h-8 rounded-lg bg-[#0F172A] text-white flex items-center justify-center font-extrabold text-xs tracking-tight shrink-0 mt-0.5 sm:mt-0">TS<span class="text-[#EF4444]">M</span></div>
-          <div class="min-w-0 flex-1">
-            <div class="font-extrabold text-xs sm:text-base text-[#0F172A] uppercase tracking-tight leading-snug break-words">TIKARIYA'S SCHOOL OF <span class="text-[#B91C1C]">M</span>USIC</div>
-            <p class="text-[9px] sm:text-[10px] text-slate-500 leading-normal mt-0.5 break-words">B. S. TIKARIYA CULTURAL FOUNDATION &bull; CIN: U88900MH2025NPL454435</p>
-          </div>
+      <div class="max-w-7xl mx-auto px-3 sm:px-6 py-2.5 flex items-center justify-between gap-2">
+        <div class="min-w-0">
+          <div class="font-extrabold text-sm sm:text-lg text-[#0F172A] uppercase tracking-tight whitespace-nowrap">TIKARIYA'S SCHOOL OF <span class="text-[#B91C1C]">M</span>USIC</div>
+          <p class="text-[9px] sm:text-[11px] text-slate-500 whitespace-nowrap mt-0.5">B. S. TIKARIYA CULTURAL FOUNDATION &bull; <span class="whitespace-nowrap">CIN: U88900MH2025NPL454435</span></p>
         </div>
-
-        <div class="flex items-center shrink-0 self-start sm:self-center pt-0.5 sm:pt-0">
-          <a href="javascript:void(0)" onclick="confirmLogout()" class="text-xs font-semibold text-slate-600 hover:text-[#B91C1C] hover:underline">Sign Out</a>
-        </div>
+        <a href="javascript:void(0)" onclick="confirmLogout()" class="text-xs font-semibold text-slate-600 hover:text-[#B91C1C] hover:underline shrink-0">Sign Out</a>
       </div>
 
       <nav id="mainNav" class="bg-slate-50 border-t border-slate-200 overflow-x-auto no-scrollbar">
@@ -127,7 +121,7 @@ function openStudentMonthlyCalendarModal(stuId, monthParam) {
     const dt = `${yr}-${String(mo).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     const isBeforeAdmission = dt < admDateStr;
     const isAdmissionDay = dt === admDateStr;
-    const isHoliday = Boolean(appState.holidays && appState.holidays[dt]);
+    const isHoliday = isDateHoliday(dt);
     const rec = getAttendanceRecord(dt, s.id);
     const status = isBeforeAdmission ? 'pre' : (isHoliday ? 'holiday' : rec.status);
 
@@ -725,11 +719,21 @@ function dispatchPushAlert(targetRoll, title, body) {
   appState.pushAlerts = [alertObj, ...appState.pushAlerts.slice(0, 19)];
   saveState();
 
-  // If Push Relay Webhook (Cloudflare Worker) is configured, send real closed-app FCM push to target tokens
   const tokensMap = appState.fcmTokens || {};
   let targetTokens = [];
+
   if (targetRoll === 'ALL') {
     Object.values(tokensMap).forEach(arr => { if (Array.isArray(arr)) targetTokens.push(...arr); });
+  } else if (String(targetRoll).startsWith('BATCH:')) {
+    const bName = targetRoll.slice(6);
+    appState.students.filter(s => s.batch === bName).forEach(s => {
+      if (Array.isArray(tokensMap[s.rollNo])) targetTokens.push(...tokensMap[s.rollNo]);
+    });
+  } else if (String(targetRoll).startsWith('COURSE:')) {
+    const cName = targetRoll.slice(7).toLowerCase();
+    appState.students.filter(s => (s.courses || [s.course]).some(c => String(c).toLowerCase() === cName)).forEach(s => {
+      if (Array.isArray(tokensMap[s.rollNo])) targetTokens.push(...tokensMap[s.rollNo]);
+    });
   } else if (Array.isArray(tokensMap[targetRoll])) {
     targetTokens = [...tokensMap[targetRoll]];
   }
@@ -749,11 +753,20 @@ function checkIncomingPushAlerts() {
   const latest = appState.pushAlerts[0];
   if (!latest || latest.id === lastSeenPushId) return;
 
-  const myRoll = currentUser.role === 'admin'
-    ? 'ADMIN'
-    : (appState.students.find(x => x.id === currentUser.studentId)?.rollNo || '');
+  const stuObj = currentUser.role === 'admin' ? null : appState.students.find(x => x.id === currentUser.studentId);
+  const myRoll = currentUser.role === 'admin' ? 'ADMIN' : (stuObj?.rollNo || '');
 
+  let isMatch = false;
   if (latest.targetRoll === 'ALL' || latest.targetRoll === myRoll) {
+    isMatch = true;
+  } else if (stuObj && String(latest.targetRoll).startsWith('BATCH:')) {
+    isMatch = stuObj.batch === latest.targetRoll.slice(6);
+  } else if (stuObj && String(latest.targetRoll).startsWith('COURSE:')) {
+    const cTarget = latest.targetRoll.slice(7).toLowerCase();
+    isMatch = (stuObj.courses || [stuObj.course]).some(c => String(c).toLowerCase() === cTarget);
+  }
+
+  if (isMatch) {
     lastSeenPushId = latest.id;
     localStorage.setItem('tsm_last_push_id', latest.id);
     if (Notification.permission === 'granted') {
@@ -1392,10 +1405,18 @@ function renderAdminDashboard(el) {
           <p class="text-xs text-slate-500">48 Genuine Days + 3 Days/Wk + 2 Audio Clips/Wk for Certification</p>
         </div>
         <div class="flex flex-wrap gap-2">
-          <button onclick="downloadActiveBrochure()" class="px-3 py-1.5 border border-slate-300 text-slate-800 text-xs font-semibold rounded-lg hover:bg-slate-50">Brochure PDF</button>
-          <button onclick="switchTab('attendance')" class="px-3 py-1.5 bg-[#0F172A] text-white text-xs font-semibold rounded-lg hover:bg-slate-800">Attendance &amp; Calendar</button>
-          <button onclick="openAddStudentModal()" class="px-3 py-1.5 bg-indigo-700 text-white text-xs font-semibold rounded-lg hover:bg-indigo-800">+ New Admission</button>
+          <button onclick="downloadActiveBrochure()" class="px-3 py-2 border border-slate-300 text-slate-800 text-xs font-semibold rounded-lg hover:bg-slate-50">Brochure PDF</button>
+          <button onclick="switchTab('attendance')" class="px-3 py-2 bg-[#0F172A] text-white text-xs font-semibold rounded-lg hover:bg-slate-800">Attendance</button>
+          <button onclick="openAddStudentModal()" class="px-3 py-2 bg-indigo-700 text-white text-xs font-semibold rounded-lg hover:bg-indigo-800">+ New Admission</button>
         </div>
+      </div>
+
+      <!-- BIG ONE-HANDED SCAN I CARD BUTTON ON FIRST OPENING PAGE -->
+      <div class="w-full">
+        <button type="button" onclick="openCameraQrScanner()" class="w-full py-4 px-6 bg-indigo-700 hover:bg-indigo-800 active:scale-[0.99] text-white text-base sm:text-lg font-extrabold tracking-wide rounded-xl shadow-md flex items-center justify-center gap-3 transition">
+          <svg class="w-6 h-6 shrink-0" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 7V5a2 2 0 012-2h2m10 0h2a2 2 0 012 2v2m0 10v2a2 2 0 01-2 2h-2M7 21H5a2 2 0 01-2-2v-2M7 12h10"/></svg>
+          <span>Scan I Card</span>
+        </button>
       </div>
 
       ${unpaidStudents.length > 0 ? `
@@ -1583,7 +1604,7 @@ function buildMonthlyCalendarHtml(studentFilterObj) {
 
   for (let day = 1; day <= daysInMonth; day++) {
     const dt = `${yr}-${String(mo).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-    const isHoliday = Boolean(appState.holidays && appState.holidays[dt]);
+    const isHoliday = isDateHoliday(dt);
     const isSelected = dt === selectedDate;
     const isSunday = new Date(yr, mo - 1, day).getDay() === 0;
 
@@ -1708,7 +1729,7 @@ function openCameraQrScanner() {
   showModal(`
     <div class="space-y-3">
       <div class="flex items-center justify-between">
-        <h3 class="text-sm font-bold text-[#0F172A]">Camera QR Attendance Scanner</h3>
+        <h3 class="text-sm font-bold text-[#0F172A]">Scan I Card — QR Attendance</h3>
         <button onclick="stopQrCamera(); closeModal();" class="text-xs font-semibold text-slate-500 hover:text-slate-900">Close</button>
       </div>
       <div id="qrReaderBox" class="w-full rounded-lg overflow-hidden border border-slate-300 bg-slate-900 min-h-[260px]"></div>
@@ -1744,6 +1765,28 @@ function stopQrCamera() {
   }
 }
 
+function isDateHoliday(dateStr) {
+  if (appState.holidays && Object.prototype.hasOwnProperty.call(appState.holidays, dateStr)) {
+    return Boolean(appState.holidays[dateStr]);
+  }
+  // Automatically mark Sunday as Holiday unless explicitly marked as a Special Class (false)
+  const parts = String(dateStr).split('-').map(Number);
+  if (parts.length === 3) {
+    const d = new Date(parts[0], parts[1] - 1, parts[2]);
+    if (d.getDay() === 0) return true;
+  }
+  return false;
+}
+
+function toggleHolidayForSelectedDate() {
+  if (!appState.holidays) appState.holidays = {};
+  const currentlyHol = isDateHoliday(selectedDate);
+  appState.holidays[selectedDate] = !currentlyHol;
+  saveState();
+  renderCurrentTab();
+  showToast(!currentlyHol ? `Marked ${selectedDate} as Holiday` : `Enabled Classes / Special Class on ${selectedDate}`);
+}
+
 function renderAttendanceTab(el) {
   const statuses = [
     { id: 'present', label: 'Present', activeClass: 'bg-emerald-700 text-white border-emerald-700' },
@@ -1753,15 +1796,14 @@ function renderAttendanceTab(el) {
     { id: 'excused_leave', label: 'Excused Leave', activeClass: 'bg-slate-700 text-white border-slate-700' }
   ];
   const visibleStudents = getFilteredStudents();
+  const isHol = isDateHoliday(selectedDate);
+  const parts = selectedDate.split('-').map(Number);
+  const isSunday = parts.length === 3 && new Date(parts[0], parts[1] - 1, parts[2]).getDay() === 0;
 
   el.innerHTML = `
     <div class="space-y-4">
       <div class="bg-white p-3.5 rounded-xl border border-slate-200 flex flex-wrap items-end justify-between gap-3">
         <div class="flex flex-wrap items-end gap-2.5">
-          <div class="flex p-1 bg-slate-100 rounded-lg">
-            <button type="button" onclick="attendanceSubView='register'; renderCurrentTab();" class="px-3 py-1 text-xs font-semibold rounded-md ${attendanceSubView==='register' ? 'bg-white text-[#0F172A] shadow-sm' : 'text-slate-600'}">Daily Register</button>
-            <button type="button" onclick="attendanceSubView='calendar'; renderCurrentTab();" class="px-3 py-1 text-xs font-semibold rounded-md ${attendanceSubView==='calendar' ? 'bg-white text-[#0F172A] shadow-sm' : 'text-slate-600'}">Monthly Calendar</button>
-          </div>
           <div>
             <label class="block text-[10px] font-bold uppercase text-slate-500 mb-0.5">Date</label>
             <input type="date" value="${selectedDate}" onchange="selectedDate=this.value; calendarMonth=this.value.slice(0,7); renderCurrentTab();" class="px-2.5 py-1.5 text-xs font-semibold border border-slate-300 rounded-lg" />
@@ -1773,76 +1815,84 @@ function renderAttendanceTab(el) {
               ${appState.batches.map(b => `<option value="${b}" ${filterBatch===b?'selected':''}>${b}</option>`).join('')}
             </select>
           </div>
-          ${attendanceSubView === 'register' ? `
-            <div class="flex flex-wrap gap-1.5">
-              <button onclick="applyBatchStatus('present')" class="px-2.5 py-1.5 text-[11px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-lg hover:bg-emerald-100">All Present</button>
-              <button onclick="applyBatchStatus('teacher_leave')" class="px-2.5 py-1.5 text-[11px] font-semibold bg-amber-50 text-amber-800 border border-amber-200 rounded-lg hover:bg-amber-100">Teacher Leave</button>
-            </div>
-          ` : ''}
+          <div class="flex flex-wrap gap-1.5">
+            <button type="button" onclick="toggleHolidayForSelectedDate()"
+              class="px-3 py-1.5 text-[11px] font-bold rounded-lg border transition ${
+                isHol
+                  ? 'bg-purple-700 text-white border-purple-700 hover:bg-purple-800'
+                  : 'bg-purple-50 text-purple-800 border-purple-200 hover:bg-purple-100'
+              }">
+              ${isHol ? (isSunday ? 'Sunday Holiday (Click for Special Class)' : 'Holiday Active (Click to Reopen)') : (isSunday ? 'Special Class Active (Mark Sunday Holiday)' : 'Mark Holiday')}
+            </button>
+            <button onclick="applyBatchStatus('present')" class="px-2.5 py-1.5 text-[11px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-lg hover:bg-emerald-100">All Present</button>
+            <button onclick="applyBatchStatus('teacher_leave')" class="px-2.5 py-1.5 text-[11px] font-semibold bg-amber-50 text-amber-800 border border-amber-200 rounded-lg hover:bg-amber-100">Teacher Leave</button>
+          </div>
         </div>
 
-        <div class="flex flex-wrap items-center gap-1.5">
-          <button type="button" onclick="openCameraQrScanner()" class="px-3 py-1.5 bg-indigo-700 text-white text-xs font-semibold rounded-lg hover:bg-indigo-800">Scan QR Camera</button>
-          <form onsubmit="handleQuickQrCheckIn(event)" class="flex items-center gap-1">
-            <input id="qrQuickScanInput" placeholder="Roll No (e.g. 001)" class="px-2.5 py-1.5 text-xs font-mono uppercase border border-slate-300 rounded-lg w-36" />
-            <button type="submit" class="px-2.5 py-1.5 bg-slate-800 text-white text-xs font-semibold rounded-lg">Mark</button>
-          </form>
-          <button type="button" onclick="exportDailyAttendancePdf()" class="px-2.5 py-1.5 border border-slate-300 text-slate-800 text-xs font-semibold rounded-lg hover:bg-slate-50">PDF</button>
+        <div class="flex items-center gap-1.5">
+          <button type="button" onclick="exportDailyAttendancePdf()" class="px-3 py-1.5 border border-slate-300 text-slate-800 text-xs font-semibold rounded-lg hover:bg-slate-50">PDF</button>
         </div>
       </div>
 
-      ${attendanceSubView === 'calendar' ? buildMonthlyCalendarHtml(null) : `
-        <div class="bg-white rounded-xl border border-slate-200 divide-y divide-slate-200 overflow-x-auto">
-          ${visibleStudents.map(s => {
-            const rec = getAttendanceRecord(selectedDate, s.id);
-            const wk = getWeeklyStats(selectedDate, s);
-            const isShort = rec.status === 'absent' || wk.hasShortFlag;
-            const mod48 = s.genuineDays % 48;
-            return `
-              <div class="px-3 py-2 flex items-center justify-between gap-3 min-w-[960px] hover:bg-slate-50/80 transition">
-                <div class="flex items-center gap-2.5 w-56 shrink-0">
-                  <span class="px-1.5 py-0.5 text-[10px] font-mono font-semibold bg-slate-100 border border-slate-200 rounded text-slate-700">${s.rollNo}</span>
-                  <div class="truncate">
-                    <div class="text-xs font-bold text-[#0F172A] truncate cursor-pointer hover:text-indigo-700 hover:underline" onclick="openStudentMonthlyCalendarModal('${s.id}')">${s.name} ${isShort ? '<span class="text-red-600 font-bold">*</span>' : ''}</div>
-                    <div class="text-[10px] text-indigo-700 truncate">${s.grade} &mdash; ${s.course}</div>
-                  </div>
-                </div>
-
-                <div class="w-44 shrink-0">
-                  <div class="text-[11px] font-medium text-slate-700 truncate">${s.batch}</div>
-                  <div class="text-[10px] text-slate-500 truncate">Adm: ${s.admissionDate} ${s.pickupNote ? '&bull; ' + s.pickupNote : ''}</div>
-                </div>
-
-                <div class="flex items-center gap-1 shrink-0">
-                  ${statuses.map(st => `
-                    <button onclick="setStudentAttendanceStatus('${s.id}', '${st.id}')"
-                      class="px-2 py-1 text-[10px] font-semibold rounded border transition ${
-                        rec.status === st.id
-                          ? st.activeClass
-                          : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
-                      }">
-                      ${st.label}
-                    </button>
-                  `).join('')}
-                </div>
-
-                <input type="text" value="${rec.time}" onchange="updateAttendanceField('${s.id}', 'time', this.value)"
-                  class="w-20 px-2 py-1 text-[11px] font-mono border border-slate-200 rounded text-center shrink-0" />
-
-                <div class="w-32 shrink-0 text-right tabular-nums">
-                  <span class="inline-block px-1.5 py-0.5 text-[10px] font-semibold rounded ${isShort ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}">
-                    Wk: ${wk.totalWeekSessions}/3 ${isShort ? '*' : ''}
-                  </span>
-                  <div class="text-[10px] text-slate-600 mt-0.5">Gen: <b>${mod48}/48</b> &bull; B:<b>${s.bonusCredits}</b></div>
-                </div>
-
-                <input type="text" value="${rec.note || ''}" placeholder="Remark" onchange="updateAttendanceField('${s.id}', 'note', this.value)"
-                  class="w-32 px-2 py-1 text-[11px] border border-slate-200 rounded shrink-0" />
-              </div>
-            `;
-          }).join('')}
+      ${isHol ? `
+        <div class="bg-purple-50 border border-purple-200 rounded-xl p-4 flex flex-wrap items-center justify-between gap-2 text-xs text-purple-900">
+          <div>
+            <span class="font-bold">${isSunday ? 'Sunday Weekly Off / Holiday' : 'Academy Holiday'} (${selectedDate}):</span>
+            <span>Regular attendance is paused. Click <b>${isSunday ? 'Sunday Holiday (Click for Special Class)' : 'Holiday Active (Click to Reopen)'}</b> above to conduct special classes on this day.</span>
+          </div>
         </div>
-      `}
+      ` : ''}
+
+      <div class="bg-white rounded-xl border border-slate-200 divide-y divide-slate-200 overflow-x-auto">
+        ${visibleStudents.map(s => {
+          const rec = getAttendanceRecord(selectedDate, s.id);
+          const wk = getWeeklyStats(selectedDate, s);
+          const isShort = rec.status === 'absent' || wk.hasShortFlag;
+          const mod48 = s.genuineDays % 48;
+          return `
+            <div class="px-3 py-2 flex items-center justify-between gap-3 min-w-[960px] hover:bg-slate-50/80 transition">
+              <div class="flex items-center gap-2.5 w-56 shrink-0">
+                <span class="px-1.5 py-0.5 text-[10px] font-mono font-semibold bg-slate-100 border border-slate-200 rounded text-slate-700">${s.rollNo}</span>
+                <div class="truncate">
+                  <div class="text-xs font-bold text-[#0F172A] truncate cursor-pointer hover:text-indigo-700 hover:underline" onclick="openStudentMonthlyCalendarModal('${s.id}')">${s.name} ${isShort ? '<span class="text-red-600 font-bold">*</span>' : ''}</div>
+                  <div class="text-[10px] text-indigo-700 truncate">${s.grade} &mdash; ${s.course}</div>
+                </div>
+              </div>
+
+              <div class="w-44 shrink-0">
+                <div class="text-[11px] font-medium text-slate-700 truncate">${s.batch}</div>
+                <div class="text-[10px] text-slate-500 truncate">Adm: ${s.admissionDate} ${s.pickupNote ? '&bull; ' + s.pickupNote : ''}</div>
+              </div>
+
+              <div class="flex items-center gap-1 shrink-0">
+                ${statuses.map(st => `
+                  <button onclick="setStudentAttendanceStatus('${s.id}', '${st.id}')"
+                    class="px-2 py-1 text-[10px] font-semibold rounded border transition ${
+                      rec.status === st.id
+                        ? st.activeClass
+                        : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
+                    }">
+                    ${st.label}
+                  </button>
+                `).join('')}
+              </div>
+
+              <input type="text" value="${rec.time}" onchange="updateAttendanceField('${s.id}', 'time', this.value)"
+                class="w-20 px-2 py-1 text-[11px] font-mono border border-slate-200 rounded text-center shrink-0" />
+
+              <div class="w-32 shrink-0 text-right tabular-nums">
+                <span class="inline-block px-1.5 py-0.5 text-[10px] font-semibold rounded ${isShort ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}">
+                  Wk: ${wk.totalWeekSessions}/3 ${isShort ? '*' : ''}
+                </span>
+                <div class="text-[10px] text-slate-600 mt-0.5">Gen: <b>${mod48}/48</b> &bull; B:<b>${s.bonusCredits}</b></div>
+              </div>
+
+              <input type="text" value="${rec.note || ''}" placeholder="Remark" onchange="updateAttendanceField('${s.id}', 'note', this.value)"
+                class="w-32 px-2 py-1 text-[11px] border border-slate-200 rounded shrink-0" />
+            </div>
+          `;
+        }).join('')}
+      </div>
     </div>
   `;
 }
@@ -2272,7 +2322,13 @@ function openEditStudentModal(stuId) {
         </div>
       </div>
 
-      <div class="grid grid-cols-3 gap-3">
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Batch Timing</label>
+          <select name="batch" class="w-full px-3 py-2 border border-slate-300 rounded-lg font-semibold">
+            ${appState.batches.map(b => `<option value="${b}" ${s.batch===b?'selected':''}>${b}</option>`).join('')}
+          </select>
+        </div>
         <div>
           <label class="block font-semibold text-slate-700 mb-1">Grade Level</label>
           <select name="grade" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
@@ -2338,6 +2394,7 @@ function saveEditedStudent(e, stuId) {
   s.phone = fd.get('phone').trim();
   s.parentPhone = (fd.get('parentPhone') || s.phone).trim();
   s.guardian = (fd.get('guardian') || s.guardian).trim();
+  if (fd.get('batch')) s.batch = fd.get('batch');
   s.grade = fd.get('grade');
   s.genuineDays = Number(fd.get('genuineDays') || 0);
   s.monthlyFee = Number(fd.get('monthlyFee') || 0);
@@ -2662,39 +2719,45 @@ async function downloadCombinedStandardReceiptPdf(studentIds) {
   const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
   const fontReg = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
-  const pageHeight = Math.max(420, 260 + targets.length * 64);
-  const p = pdfDoc.addPage([298, pageHeight]);
-  p.drawRectangle({ x: 12, y: 12, width: 274, height: pageHeight - 24, borderColor: rgb(0.75, 0.78, 0.84), borderWidth: 1 });
-  p.drawRectangle({ x: 12, y: pageHeight - 16, width: 274, height: 4, color: rgb(0.06, 0.09, 0.16) });
+  // Landscape A6/A5 Voucher: 595 pt wide x 420 pt tall (Landscape)
+  const pageWidth = 595.28;
+  const pageHeight = Math.max(420, 250 + targets.length * 44);
+  const p = pdfDoc.addPage([pageWidth, pageHeight]);
 
-  let topY = pageHeight - 32;
-  p.drawText('B. S. TIKARIYA CULTURAL FOUNDATION', { x: 52, y: topY, size: 7, font: fontBold, color: rgb(0.28, 0.33, 0.41) });
-  topY -= 10;
-  p.drawText('CIN: U88900MH2025NPL454435', { x: 86, y: topY, size: 6.5, font: fontReg, color: rgb(0.39, 0.45, 0.55) });
-  topY -= 18;
-  drawStyledAcademyTitlePdf(p, 42, topY, 11.5, fontBold);
-  topY -= 15;
+  p.drawRectangle({ x: 18, y: 18, width: pageWidth - 36, height: pageHeight - 36, borderColor: rgb(0.75, 0.78, 0.84), borderWidth: 1.2 });
+  p.drawRectangle({ x: 18, y: pageHeight - 24, width: pageWidth - 36, height: 6, color: rgb(0.06, 0.09, 0.16) });
+
+  let topY = pageHeight - 44;
+  p.drawText('B. S. TIKARIYA CULTURAL FOUNDATION  |  CIN: U88900MH2025NPL454435', { x: 32, y: topY, size: 8, font: fontBold, color: rgb(0.28, 0.33, 0.41) });
 
   const isMulti = targets.length > 1;
   const receiptNo = `TSM-RCP-${Date.now().toString().slice(-6)}`;
-  p.drawText(isMulti ? 'CONSOLIDATED FEE RECEIPT' : 'FEE RECEIPT', {
-    x: isMulti ? 88 : 118, y: topY, size: 7.5, font: fontBold, color: rgb(0.28, 0.33, 0.41)
+  p.drawText(isMulti ? 'CONSOLIDATED FEE RECEIPT' : 'OFFICIAL FEE RECEIPT', {
+    x: pageWidth - 175, y: topY, size: 9, font: fontBold, color: rgb(0.26, 0.22, 0.79)
   });
-  topY -= 16;
 
+  topY -= 20;
+  drawStyledAcademyTitlePdf(p, 32, topY, 15, fontBold);
+  p.drawText(`Receipt No: ${receiptNo}   |   Date: ${selectedDate}`, {
+    x: pageWidth - 220, y: topY + 2, size: 8.5, font: fontBold, color: rgb(0.06, 0.09, 0.16)
+  });
+
+  topY -= 16;
   const primary = targets[0];
   const studentNamesHeader = targets.map(t => `${t.name} (${t.rollNo})`).join(', ');
-  p.drawText(`Receipt No: ${receiptNo}`, { x: 22, y: topY, size: 7, font: fontBold, color: rgb(0.06, 0.09, 0.16) });
-  p.drawText(`Date: ${selectedDate}`, { x: 212, y: topY, size: 7, font: fontReg, color: rgb(0.28, 0.33, 0.41) });
-  topY -= 13;
-  p.drawText(`To Student: ${studentNamesHeader.slice(0, 48)}`, {
-    x: 22, y: topY, size: 7.5, font: fontBold, color: rgb(0.06, 0.09, 0.16)
+  p.drawText(`To Student: ${studentNamesHeader.slice(0, 82)}`, {
+    x: 32, y: topY, size: 9, font: fontBold, color: rgb(0.06, 0.09, 0.16)
   });
-  topY -= 8;
 
-  p.drawLine({ start: { x: 22, y: topY }, end: { x: 276, y: topY }, thickness: 0.6, color: rgb(0.75, 0.78, 0.84) });
-  topY -= 14;
+  topY -= 12;
+  // Table Header Row in Landscape
+  p.drawRectangle({ x: 32, y: topY - 14, width: pageWidth - 64, height: 18, color: rgb(0.95, 0.96, 0.98) });
+  p.drawText('Student & Roll No', { x: 38, y: topY - 9, size: 8, font: fontBold, color: rgb(0.2, 0.25, 0.32) });
+  p.drawText('Course(s) & Batch', { x: 185, y: topY - 9, size: 8, font: fontBold, color: rgb(0.2, 0.25, 0.32) });
+  p.drawText('Fee / Conc / Add-ons', { x: 345, y: topY - 9, size: 8, font: fontBold, color: rgb(0.2, 0.25, 0.32) });
+  p.drawText('Net Paid', { x: pageWidth - 85, y: topY - 9, size: 8, font: fontBold, color: rgb(0.2, 0.25, 0.32) });
 
+  topY -= 28;
   let grandTotal = 0;
 
   targets.forEach((stu, index) => {
@@ -2702,44 +2765,39 @@ async function downloadCombinedStandardReceiptPdf(studentIds) {
     const subTotal = getStudentNetPayable(stu);
     grandTotal += subTotal;
 
-    p.drawText(`${index + 1}. ${stu.name} (${stu.rollNo}) — ${stu.grade}`, {
-      x: 22, y: topY, size: 7.5, font: fontBold, color: rgb(0.06, 0.09, 0.16)
+    p.drawText(`${index + 1}. ${stu.name} (${stu.rollNo})`, {
+      x: 38, y: topY, size: 8.5, font: fontBold, color: rgb(0.06, 0.09, 0.16)
     });
-    topY -= 11;
-
     const courseList = Array.isArray(stu.courses) && stu.courses.length ? stu.courses : [stu.course];
-    p.drawText(`   Courses: ${courseList.join(' + ')}`, {
-      x: 22, y: topY, size: 7, font: fontReg, color: rgb(0.26, 0.22, 0.79)
+    p.drawText(`${courseList.join(' + ')} (${stu.batch})`, {
+      x: 185, y: topY, size: 8, font: fontReg, color: rgb(0.26, 0.22, 0.79)
     });
-    topY -= 11;
+    p.drawText(`INR ${stu.monthlyFee} - ${effConc} + ${stu.idCardFee + stu.certFee} [${stu.feeStatus}]`, {
+      x: 345, y: topY, size: 7.5, font: fontReg, color: rgb(0.28, 0.33, 0.41)
+    });
+    p.drawText(`INR ${subTotal}`, {
+      x: pageWidth - 85, y: topY, size: 8.5, font: fontBold, color: rgb(0.06, 0.09, 0.16)
+    });
 
-    p.drawText(`   Fee: INR ${stu.monthlyFee} | Conc: -${effConc} | ID/Cert: ${stu.idCardFee + stu.certFee} | ${stu.feeStatus}`, {
-      x: 22, y: topY, size: 6.5, font: fontReg, color: rgb(0.28, 0.33, 0.41)
+    topY -= 12;
+    p.drawText(`   Progress: ${stu.genuineDays} Genuine Days (${stu.genuineDays % 48}/48) | Bonus Bank: ${stu.bonusCredits}`, {
+      x: 38, y: topY, size: 7, font: fontReg, color: rgb(0.4, 0.45, 0.55)
     });
-    p.drawText(`INR ${subTotal}`, { x: 235, y: topY, size: 7.5, font: fontBold, color: rgb(0.06, 0.09, 0.16) });
-    topY -= 15;
+    topY -= 18;
   });
 
-  p.drawLine({ start: { x: 22, y: topY + 4 }, end: { x: 276, y: topY + 4 }, thickness: 0.7, color: rgb(0.06, 0.09, 0.16) });
-  topY -= 10;
-  p.drawText(`TOTAL (${primary.lastPaymentMode}):`, { x: 22, y: topY, size: 8, font: fontBold, color: rgb(0.06, 0.09, 0.16) });
-  p.drawText(`INR ${grandTotal}`, { x: 228, y: topY, size: 8.5, font: fontBold, color: rgb(0.72, 0.11, 0.11) });
+  p.drawLine({ start: { x: 32, y: topY + 6 }, end: { x: pageWidth - 32, y: topY + 6 }, thickness: 0.9, color: rgb(0.06, 0.09, 0.16) });
+  topY -= 12;
+  p.drawText(`TOTAL AMOUNT (${primary.lastPaymentMode}):`, { x: 38, y: topY, size: 9.5, font: fontBold, color: rgb(0.06, 0.09, 0.16) });
+  p.drawText(`INR ${grandTotal}`, { x: pageWidth - 95, y: topY, size: 10.5, font: fontBold, color: rgb(0.72, 0.11, 0.11) });
 
-  topY -= 18;
-  targets.forEach(stu => {
-    p.drawText(`${stu.rollNo}: ${stu.genuineDays} Genuine Days (${stu.genuineDays % 48}/48) | Bonus: ${stu.bonusCredits}`, {
-      x: 22, y: topY, size: 6.5, font: fontReg, color: rgb(0.35, 0.4, 0.48)
-    });
-    topY -= 10;
-  });
-
-  p.drawText("Authorized Signatory — TIKARIYA'S SCHOOL OF MUSIC", { x: 96, y: 22, size: 6.5, font: fontBold, color: rgb(0.28, 0.33, 0.41) });
+  p.drawText("Authorized Signatory — TIKARIYA'S SCHOOL OF MUSIC", { x: pageWidth - 235, y: 30, size: 7.5, font: fontBold, color: rgb(0.28, 0.33, 0.41) });
 
   const bytes = await pdfDoc.save({ useObjectStreams: true });
   const blob = new Blob([bytes], { type: 'application/pdf' });
   const link = document.createElement('a');
   link.href = URL.createObjectURL(blob);
-  link.download = isMulti ? `TSM_Consolidated_Receipt_${primary.rollNo}.pdf` : `TSM_Receipt_${primary.rollNo}.pdf`;
+  link.download = isMulti ? `TSM_Consolidated_Receipt_Landscape_${primary.rollNo}.pdf` : `TSM_Receipt_Landscape_${primary.rollNo}.pdf`;
   link.click();
 }
 
@@ -2948,50 +3006,123 @@ function renderVaultTab(el) {
 // ==========================================
 // 15. STUDENT-ADDRESSED MESSAGING & WHATSAPP TEMPLATES
 // ==========================================
+function updateCustomPushTargetOptions() {
+  const scope = document.getElementById('customPushScope')?.value || 'ALL';
+  const subWrap = document.getElementById('customPushSubTargetWrap');
+  const subSel = document.getElementById('customPushSubTarget');
+  if (!subWrap || !subSel) return;
+
+  if (scope === 'ALL') {
+    subWrap.classList.add('hidden');
+  } else if (scope === 'BATCH') {
+    subWrap.classList.remove('hidden');
+    subSel.innerHTML = appState.batches.map(b => `<option value="${b}">${b}</option>`).join('');
+  } else if (scope === 'COURSE') {
+    subWrap.classList.remove('hidden');
+    subSel.innerHTML = appState.courses.map(c => `<option value="${c.name}">${c.name}</option>`).join('');
+  }
+}
+
+function sendCustomPushBroadcast(e) {
+  e.preventDefault();
+  const scope = document.getElementById('customPushScope').value;
+  const subVal = document.getElementById('customPushSubTarget')?.value || '';
+  const msgBody = document.getElementById('customPushMessageText').value.trim();
+  if (!msgBody) return;
+
+  let targetCode = 'ALL';
+  let label = 'All Students';
+  if (scope === 'BATCH') {
+    targetCode = `BATCH:${subVal}`;
+    label = `Batch (${subVal})`;
+  } else if (scope === 'COURSE') {
+    targetCode = `COURSE:${subVal}`;
+    label = `Course (${subVal})`;
+  }
+
+  dispatchPushAlert(targetCode, "TIKARIYA'S SCHOOL OF MUSIC", msgBody);
+  document.getElementById('customPushMessageText').value = '';
+  showToast(`Custom push sent to ${label}`);
+}
+
 function renderMessagesTab(el) {
   const selectedStu = appState.students.find(s => s.rollNo === adminChatRoll) || appState.students[0];
   if (selectedStu) adminChatRoll = selectedStu.rollNo;
   const thread = appState.messages.filter(m => m.rollNo === adminChatRoll);
 
   el.innerHTML = `
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-      <div class="bg-white p-4 rounded-xl border border-slate-200 flex flex-col justify-between">
-        <div>
-          <div class="flex items-center justify-between gap-2 mb-3">
-            <h3 class="text-sm font-bold text-[#0F172A]">Student Chat Thread</h3>
-            <select onchange="adminChatRoll=this.value; renderCurrentTab();" class="px-2.5 py-1 text-xs font-semibold border border-slate-300 rounded-lg">
-              ${appState.students.map(s => `<option value="${s.rollNo}" ${s.rollNo===adminChatRoll?'selected':''}>${s.name} (${s.rollNo})</option>`).join('')}
+    <div class="space-y-4">
+      <!-- CUSTOM PUSH NOTIFICATION BROADCAST (ALL, BATCH, COURSE) -->
+      <div class="bg-white p-4 rounded-xl border border-slate-200 space-y-3">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h3 class="text-sm font-bold text-[#0F172A]">Custom Push Notification Broadcast</h3>
+            <p class="text-[11px] text-slate-500">Send instant push alerts to All Students, a specific Batch timing, or a specific Course.</p>
+          </div>
+          <button onclick="enableFcmPushForCurrentUser(false)" class="px-2.5 py-1 text-[10px] font-semibold bg-slate-100 border border-slate-300 rounded-lg">Register Push Device</button>
+        </div>
+
+        <form onsubmit="sendCustomPushBroadcast(event)" class="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end text-xs">
+          <div class="sm:col-span-3">
+            <label class="block font-semibold text-slate-700 mb-1">Target Audience</label>
+            <select id="customPushScope" onchange="updateCustomPushTargetOptions()" class="w-full px-3 py-2 border border-slate-300 rounded-lg font-semibold">
+              <option value="ALL">All Students</option>
+              <option value="BATCH">Specific Batch</option>
+              <option value="COURSE">Specific Course</option>
             </select>
           </div>
-          <div class="space-y-2 max-h-72 overflow-y-auto p-2 bg-slate-50 rounded-lg border border-slate-200">
-            ${thread.length ? thread.map(m => `
-              <div class="p-2.5 rounded-lg text-xs ${m.sender === 'Admin' ? 'bg-[#0F172A] text-white ml-8' : 'bg-white border border-slate-200 mr-8'}">
-                <div class="text-[10px] opacity-75 font-semibold mb-0.5">${m.sender} &bull; ${m.time}</div>
-                <div>${m.text}</div>
-              </div>
-            `).join('') : '<p class="text-xs text-slate-400 text-center py-6">No messages yet.</p>'}
+          <div id="customPushSubTargetWrap" class="hidden sm:col-span-3">
+            <label class="block font-semibold text-slate-700 mb-1">Select Batch / Course</label>
+            <select id="customPushSubTarget" class="w-full px-3 py-2 border border-slate-300 rounded-lg font-semibold text-indigo-800"></select>
           </div>
-        </div>
-        <form onsubmit="sendAdminMessage(event)" class="mt-3 flex gap-2">
-          <input id="adminMsgInput" class="flex-1 px-3 py-2 text-xs border border-slate-300 rounded-lg" required />
-          <button type="submit" class="px-4 py-2 bg-[#0F172A] text-white text-xs font-semibold rounded-lg">Send</button>
+          <div class="sm:col-span-4">
+            <label class="block font-semibold text-slate-700 mb-1">Push Message Text</label>
+            <input id="customPushMessageText" placeholder="Type announcement or reminder..." class="w-full px-3 py-2 border border-slate-300 rounded-lg" required />
+          </div>
+          <div class="sm:col-span-2">
+            <button type="submit" class="w-full py-2 px-3 bg-indigo-700 hover:bg-indigo-800 text-white font-bold rounded-lg">Send Push</button>
+          </div>
         </form>
       </div>
 
-      <div class="bg-white p-4 rounded-xl border border-slate-200 space-y-3">
-        <div class="flex items-center justify-between">
-          <h3 class="text-sm font-bold text-[#0F172A]">Student WhatsApp &amp; Push Alerts</h3>
-          <button onclick="enableFcmPushForCurrentUser(false)" class="px-2.5 py-1 text-[10px] font-semibold bg-slate-100 border border-slate-300 rounded-lg">Register Push Device</button>
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div class="bg-white p-4 rounded-xl border border-slate-200 flex flex-col justify-between">
+          <div>
+            <div class="flex items-center justify-between gap-2 mb-3">
+              <h3 class="text-sm font-bold text-[#0F172A]">Student Chat Thread</h3>
+              <select onchange="adminChatRoll=this.value; renderCurrentTab();" class="px-2.5 py-1 text-xs font-semibold border border-slate-300 rounded-lg">
+                ${appState.students.map(s => `<option value="${s.rollNo}" ${s.rollNo===adminChatRoll?'selected':''}>${s.name} (${s.rollNo})</option>`).join('')}
+              </select>
+            </div>
+            <div class="space-y-2 max-h-72 overflow-y-auto p-2 bg-slate-50 rounded-lg border border-slate-200">
+              ${thread.length ? thread.map(m => `
+                <div class="p-2.5 rounded-lg text-xs ${m.sender === 'Admin' ? 'bg-[#0F172A] text-white ml-8' : 'bg-white border border-slate-200 mr-8'}">
+                  <div class="text-[10px] opacity-75 font-semibold mb-0.5">${m.sender} &bull; ${m.time}</div>
+                  <div>${m.text}</div>
+                </div>
+              `).join('') : '<p class="text-xs text-slate-400 text-center py-6">No messages yet.</p>'}
+            </div>
+          </div>
+          <form onsubmit="sendAdminMessage(event)" class="mt-3 flex gap-2">
+            <input id="adminMsgInput" placeholder="Write reply..." class="flex-1 px-3 py-2 text-xs border border-slate-300 rounded-lg" required />
+            <button type="submit" class="px-4 py-2 bg-[#0F172A] text-white text-xs font-semibold rounded-lg">Send</button>
+          </form>
         </div>
-        <select id="waStudentSelect" class="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg">
-          ${appState.students.map(s => `<option value="${s.id}">${s.name} (${s.rollNo}) — +91 ${s.phone || s.parentPhone}</option>`).join('')}
-        </select>
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
-          <button onclick="launchWaTemplate('welcome')" class="p-2.5 text-left text-xs font-semibold border border-slate-200 rounded-lg hover:bg-slate-50">1. Student Welcome</button>
-          <button onclick="launchWaTemplate('fee_due')" class="p-2.5 text-left text-xs font-semibold border border-slate-200 rounded-lg hover:bg-slate-50">2. Student Fee Reminder</button>
-          <button onclick="launchWaTemplate('fee_paid')" class="p-2.5 text-left text-xs font-semibold border border-slate-200 rounded-lg hover:bg-slate-50">3. Student Fee Confirmation</button>
-          <button onclick="launchWaTemplate('short_att')" class="p-2.5 text-left text-xs font-semibold border border-slate-200 rounded-lg hover:bg-slate-50">4. Student Attendance Notice</button>
-          <button onclick="launchWaTemplate('cert_ready')" class="p-2.5 text-left text-xs font-semibold border border-slate-200 rounded-lg hover:bg-slate-50">5. Student Certificate Ready</button>
+
+        <div class="bg-white p-4 rounded-xl border border-slate-200 space-y-3">
+          <div class="flex items-center justify-between">
+            <h3 class="text-sm font-bold text-[#0F172A]">Student WhatsApp &amp; Push Alerts</h3>
+          </div>
+          <select id="waStudentSelect" class="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg">
+            ${appState.students.map(s => `<option value="${s.id}">${s.name} (${s.rollNo}) — +91 ${s.phone || s.parentPhone}</option>`).join('')}
+          </select>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+            <button onclick="launchWaTemplate('welcome')" class="p-2.5 text-left text-xs font-semibold border border-slate-200 rounded-lg hover:bg-slate-50">1. Student Welcome</button>
+            <button onclick="launchWaTemplate('fee_due')" class="p-2.5 text-left text-xs font-semibold border border-slate-200 rounded-lg hover:bg-slate-50">2. Student Fee Reminder</button>
+            <button onclick="launchWaTemplate('fee_paid')" class="p-2.5 text-left text-xs font-semibold border border-slate-200 rounded-lg hover:bg-slate-50">3. Student Fee Confirmation</button>
+            <button onclick="launchWaTemplate('short_att')" class="p-2.5 text-left text-xs font-semibold border border-slate-200 rounded-lg hover:bg-slate-50">4. Student Attendance Notice</button>
+            <button onclick="launchWaTemplate('cert_ready')" class="p-2.5 text-left text-xs font-semibold border border-slate-200 rounded-lg hover:bg-slate-50">5. Student Certificate Ready</button>
+          </div>
         </div>
       </div>
     </div>
@@ -3493,16 +3624,16 @@ function renderStudentPortal(el, tab) {
     el.innerHTML = `
       <div class="max-w-xl mx-auto bg-white p-4 rounded-xl border border-slate-200 space-y-3">
         <h3 class="text-sm font-bold text-[#0F172A]">Massages</h3>
-        <div class="space-y-2 max-h-64 overflow-y-auto p-2 bg-slate-50 rounded-lg border border-slate-200">
-          ${myMsgs.map(m => `
+        <div class="space-y-2 max-h-64 overflow-y-auto p-3 bg-slate-50 rounded-lg border border-slate-200">
+          ${myMsgs.length ? myMsgs.map(m => `
             <div class="p-2.5 rounded-lg text-xs ${m.sender === 'Student' ? 'bg-[#0F172A] text-white ml-8' : 'bg-white border border-slate-200 mr-8'}">
               <div class="text-[10px] opacity-75 font-semibold">${m.sender} &bull; ${m.time}</div>
               <div>${m.text}</div>
             </div>
-          `).join('')}
+          `).join('') : '<p class="text-xs text-slate-400 text-center py-4">No messages yet. Type your message to the teacher below.</p>'}
         </div>
         <form onsubmit="sendStudentMessage(event, '${s.rollNo}')" class="flex gap-2">
-          <input id="stuMsgInput" class="flex-1 px-3 py-2 text-xs border border-slate-300 rounded-lg" required />
+          <input id="stuMsgInput" placeholder="Type your message to teacher..." class="flex-1 px-3 py-2 text-xs border border-slate-300 rounded-lg" required />
           <button type="submit" class="px-4 py-2 bg-[#0F172A] text-white text-xs font-semibold rounded-lg">Send</button>
         </form>
       </div>
