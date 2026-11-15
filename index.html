@@ -669,6 +669,120 @@ function purgeExpiredAudioData(stateObj) {
   return purgedAny;
 }
 
+
+// ==========================================
+// UNIFIED INDEXEDDB + FIRESTORE BLOB ENGINE (FOR LARGE PDFs & BROCHURES)
+// ==========================================
+function openTsmBlobDb() {
+  return new Promise((resolve, reject) => {
+    if (!window.indexedDB) return reject('No IndexedDB');
+    const req = indexedDB.open('TSM_BlobDB_v1', 1);
+    req.onupgradeneeded = (e) => {
+      const idb = e.target.result;
+      if (!idb.objectStoreNames.contains('blobs')) {
+        idb.createObjectStore('blobs');
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function tsmSaveBlob(key, dataUrl) {
+  if (!dataUrl) return;
+  // 1. Save to IndexedDB (unlimited local capacity)
+  try {
+    const idb = await openTsmBlobDb();
+    await new Promise((res, rej) => {
+      const tx = idb.transaction('blobs', 'readwrite');
+      tx.objectStore('blobs').put(dataUrl, key);
+      tx.oncomplete = () => res();
+      tx.onerror = () => rej(tx.error);
+    });
+  } catch (e) { console.warn('IDB save warning:', e); }
+
+  // 2. Save to Firestore `tsm_blobs` (chunked at 650KB so any PDF size syncs across all devices)
+  if (db) {
+    try {
+      const CHUNK_SIZE = 650000;
+      const totalChunks = Math.ceil(dataUrl.length / CHUNK_SIZE);
+      await db.collection('tsm_blobs').doc(key).set({
+        key,
+        totalChunks,
+        data: dataUrl.slice(0, CHUNK_SIZE),
+        updatedAt: Date.now()
+      });
+      for (let i = 1; i < totalChunks; i++) {
+        await db.collection('tsm_blobs').doc(`${key}_part_${i}`).set({
+          key,
+          part: i,
+          data: dataUrl.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE)
+        });
+      }
+    } catch (e) { console.warn('Cloud blob sync warning:', e); }
+  }
+}
+
+async function tsmLoadBlob(key) {
+  // 1. Try IndexedDB first
+  try {
+    const idb = await openTsmBlobDb();
+    const localVal = await new Promise((res, rej) => {
+      const tx = idb.transaction('blobs', 'readonly');
+      const req = tx.objectStore('blobs').get(key);
+      req.onsuccess = () => res(req.result || '');
+      req.onerror = () => rej(req.error);
+    });
+    if (localVal) return localVal;
+  } catch (e) {}
+
+  // 2. Fallback to Firestore `tsm_blobs`
+  if (db) {
+    try {
+      const snap = await db.collection('tsm_blobs').doc(key).get();
+      if (snap.exists) {
+        const meta = snap.data();
+        let fullData = meta.data || '';
+        const totalChunks = Number(meta.totalChunks || 1);
+        for (let i = 1; i < totalChunks; i++) {
+          const partSnap = await db.collection('tsm_blobs').doc(`${key}_part_${i}`).get();
+          if (partSnap.exists) fullData += (partSnap.data().data || '');
+        }
+        if (fullData) {
+          // Cache in IndexedDB for instant subsequent loads
+          try {
+            const idb = await openTsmBlobDb();
+            const tx = idb.transaction('blobs', 'readwrite');
+            tx.objectStore('blobs').put(fullData, key);
+          } catch (e) {}
+          return fullData;
+        }
+      }
+    } catch (e) { console.warn('Cloud blob read warning:', e); }
+  }
+  return '';
+}
+
+async function triggerSafeDownloadFromDataUrl(dataUrl, fileName) {
+  try {
+    const res = await fetch(dataUrl);
+    const blob = await res.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = blobUrl;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
+  } catch (e) {
+    const link = document.createElement('a');
+    link.href = dataUrl;
+    link.download = fileName;
+    link.click();
+  }
+}
+
 function loadState() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY) || localStorage.getItem('tsm_pwa_state_v7') || localStorage.getItem('tsm_pwa_state_v6');
@@ -694,14 +808,23 @@ function loadState() {
 
 function saveState() {
   purgeExpiredAudioData(appState);
+  // Create a lightweight state copy for localStorage & Firestore master_state (large PDFs live in IndexedDB + tsm_blobs)
+  const slimState = {
+    ...appState,
+    customBrochureDataUrl: (appState.customBrochureDataUrl && appState.customBrochureDataUrl.length < 150000) ? appState.customBrochureDataUrl : '',
+    vaultItems: (appState.vaultItems || []).map(v => ({
+      ...v,
+      pdfDataUrl: (v.pdfDataUrl && v.pdfDataUrl.length < 150000) ? v.pdfDataUrl : ''
+    }))
+  };
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(appState));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(slimState));
   } catch (e) {
-    showToast('Storage notice: Keep attachments compact');
+    console.warn('localStorage slim write note:', e);
   }
   if (db) {
     db.collection('tsm_system').doc('master_state').set({
-      ...appState,
+      ...slimState,
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     }).catch(err => console.warn('Cloud sync error:', err));
   }
@@ -2654,23 +2777,29 @@ function renderFeesTab(el) {
 function uploadCustomBrochure(e) {
   const file = e.target.files[0];
   if (!file) return;
+  showToast('Uploading custom brochure...');
   const reader = new FileReader();
-  reader.onload = function(ev) {
-    appState.customBrochureDataUrl = ev.target.result;
+  reader.onload = async function(ev) {
+    const dataUrl = ev.target.result;
+    appState.customBrochureDataUrl = dataUrl.length < 150000 ? dataUrl : '';
     appState.customBrochureName = file.name;
+    appState.hasCustomBrochure = true;
+    await tsmSaveBlob('custom_brochure', dataUrl);
     saveState();
     renderCurrentTab();
-    showToast(`Uploaded brochure: ${file.name}`);
+    showToast(`Uploaded & synced brochure: ${file.name}`);
   };
   reader.readAsDataURL(file);
 }
 
 async function downloadActiveBrochure() {
-  if (appState.customBrochureDataUrl) {
-    const link = document.createElement('a');
-    link.href = appState.customBrochureDataUrl;
-    link.download = appState.customBrochureName || 'TSM_Brochure.pdf';
-    link.click();
+  let brochureData = appState.customBrochureDataUrl || '';
+  if (!brochureData && (appState.customBrochureName || appState.hasCustomBrochure)) {
+    showToast('Loading custom brochure...');
+    brochureData = await tsmLoadBlob('custom_brochure');
+  }
+  if (brochureData) {
+    await triggerSafeDownloadFromDataUrl(brochureData, appState.customBrochureName || 'TSM_Brochure.pdf');
     return;
   }
   const { PDFDocument, StandardFonts, rgb } = PDFLib;
@@ -3203,6 +3332,23 @@ function addCampaignPrompt() {
   renderCurrentTab();
 }
 
+
+async function removeCustomBrochure() {
+  if (!confirm('Remove custom brochure and revert to default generated brochure?')) return;
+  appState.customBrochureDataUrl = '';
+  appState.customBrochureName = '';
+  appState.hasCustomBrochure = false;
+  try {
+    const idb = await openTsmBlobDb();
+    const tx = idb.transaction('blobs', 'readwrite');
+    tx.objectStore('blobs').delete('custom_brochure');
+  } catch (e) {}
+  if (db) db.collection('tsm_blobs').doc('custom_brochure').delete().catch(() => {});
+  saveState();
+  renderCurrentTab();
+  showToast('Custom brochure removed');
+}
+
 function saveAcademyUpiId() {
   const val = document.getElementById('academyUpiIdInput')?.value.trim() || '';
   appState.upiId = val;
@@ -3227,6 +3373,7 @@ function renderSettingsTab(el) {
             <input type="file" accept="application/pdf" onchange="uploadCustomBrochure(event)" class="hidden" />
           </label>
           <button onclick="downloadActiveBrochure()" class="px-3.5 py-2 border border-slate-300 text-slate-800 text-xs font-semibold rounded-lg hover:bg-slate-50">Preview Active Brochure</button>
+          ${appState.customBrochureName ? `<button onclick="removeCustomBrochure()" class="px-3 py-2 border border-red-200 text-red-700 bg-red-50 text-xs font-semibold rounded-lg hover:bg-red-100">Remove</button>` : ''}
         </div>
         <div class="pt-3 border-t border-slate-100">
           <label class="block text-[11px] font-semibold text-slate-600 mb-1">Academy UPI ID (for Student UPI Wallet Fee Payments)</label>
@@ -3373,8 +3520,8 @@ async function downloadStudentWatermarkedVaultPdf(vaultId, stuId) {
     x: 95, y: 320, size: 16, font: fontBold, color: rgb(0.75, 0.78, 0.82), opacity: 0.32, rotate: degrees(35)
   });
 
-  // 2. Load Stored PDF Pages & Apply Student Watermark on Each Page
-  let pdfDataUrl = v.pdfDataUrl || localStorage.getItem('tsm_pdf_' + vaultId) || '';
+  // 2. Load Stored PDF Pages from IndexedDB / Firestore Blob Store & Apply Student Watermark on Each Page
+  let pdfDataUrl = v.pdfDataUrl || (await tsmLoadBlob(vaultId)) || localStorage.getItem('tsm_pdf_' + vaultId) || '';
   if (!pdfDataUrl && db) {
     try {
       const doc = await db.collection('tsm_vault_files').doc(vaultId).get();
@@ -3392,7 +3539,9 @@ async function downloadStudentWatermarkedVaultPdf(vaultId, stuId) {
         });
         outDoc.addPage(cp);
       });
-    } catch (e) {}
+    } catch (e) { console.warn('PDF merge warning:', e); }
+  } else {
+    showToast('Notice: PDF body not found in cloud cache; downloaded cover sheet.');
   }
 
   const bytes = await outDoc.save();
@@ -3400,7 +3549,9 @@ async function downloadStudentWatermarkedVaultPdf(vaultId, stuId) {
   const link = document.createElement('a');
   link.href = URL.createObjectURL(blob);
   link.download = `TSM_${v.title.replace(/\s+/g, '_')}_${s.rollNo}.pdf`;
+  document.body.appendChild(link);
   link.click();
+  document.body.removeChild(link);
 }
 
 function renderStudentPortal(el, tab) {
