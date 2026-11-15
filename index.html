@@ -2235,7 +2235,7 @@ function openIdCardModal(stuId) {
   `);
   setTimeout(() => {
     const box = document.getElementById('modalQrBox');
-    if (box) new QRCode(box, { text: `https://tikariyas.github.io/tsm-gem/?verify=${s.rollNo}`, width: 42, height: 42 });
+    if (box) new QRCode(box, { text: `https://tikariyas.github.io/tsm-gem/?verify=${s.rollNo}`, width: 88, height: 88, correctLevel: QRCode.CorrectLevel.H });
   }, 50);
 }
 
