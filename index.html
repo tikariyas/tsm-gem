@@ -920,26 +920,36 @@ async function initFirebaseAuto() {
       cloudSyncStatus = 'Cloud Synced (tikariya-music---foundation)';
       if (doc.exists) {
         const remote = doc.data();
-        if (remote && remote.students) {
-          if (!remote.adminRollNo) remote.adminRollNo = 'MUSICSNSOUNDS';
-          if (!remote.courses) remote.courses = DEFAULT_COURSES;
-          if (!remote.batches) remote.batches = DEFAULT_BATCHES;
-          if (!remote.audioClips) remote.audioClips = [];
-          if (!remote.holidays) remote.holidays = {};
-          if (!remote.certs) remote.certs = [];
-          if (!remote.pushAlerts) remote.pushAlerts = [];
-          if (!remote.fcmTokens) remote.fcmTokens = {};
-          remote.students = purgeTestStudent(remote.students.map(normalizeStudent));
-          const didPurge = purgeExpiredAudioData(remote);
-          appState = remote;
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(appState));
-          if (didPurge) saveState();
-          checkIncomingPushAlerts();
-          if (currentUser) {
-            if (currentDeviceFcmToken) saveDeviceTokenToState(currentDeviceFcmToken);
-            renderCurrentTab();
+        if (remote && Array.isArray(remote.students)) {
+          // Prevent empty or stale remote state from overwriting a richer local state
+          if (remote.students.length > 0 || (appState.students || []).length === 0) {
+            if (!remote.adminRollNo) remote.adminRollNo = 'MUSICSNSOUNDS';
+            if (!remote.courses) remote.courses = DEFAULT_COURSES;
+            if (!remote.batches) remote.batches = DEFAULT_BATCHES;
+            if (!remote.audioClips) remote.audioClips = [];
+            if (!remote.holidays) remote.holidays = {};
+            if (!remote.certs) remote.certs = [];
+            if (!remote.pushAlerts) remote.pushAlerts = [];
+            if (!remote.fcmTokens) remote.fcmTokens = {};
+            remote.students = purgeTestStudent(remote.students.map(normalizeStudent));
+            
+            // If local has more students than remote, keep local and push to cloud instead!
+            if ((appState.students || []).length > remote.students.length) {
+              saveState();
+              return;
+            }
+
+            const didPurge = purgeExpiredAudioData(remote);
+            appState = remote;
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(appState));
+            if (didPurge) saveState();
+            checkIncomingPushAlerts();
+            if (currentUser) {
+              if (currentDeviceFcmToken) saveDeviceTokenToState(currentDeviceFcmToken);
+              renderCurrentTab();
+            }
+            checkPublicQrVerify();
           }
-          checkPublicQrVerify();
         }
       } else {
         saveState();
