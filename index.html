@@ -473,35 +473,7 @@ const DEFAULT_STATE = {
   holidays: {},
   certs: [],
   pushAlerts: [],
-  students: [
-    {
-      id: 'stu_1',
-      rollNo: 'TSM-0001',
-      pin: '1234',
-      name: 'Aarav Sharma',
-      courses: ['Guitar', 'Vocals'],
-      course: 'Guitar, Vocals',
-      grade: 'Elementary Grade 2',
-      batch: '6:00 PM',
-      phone: '9823011223',
-      parentPhone: '9823011223',
-      isMinor: true,
-      guardian: 'Rajesh Sharma',
-      pickupNote: '7:30 PM Pickup',
-      admissionDate: '2026-07-14',
-      genuineDays: 48,
-      bonusCredits: 1,
-      monthlyFee: 2200,
-      concession: 200,
-      concessionMonths: 0,
-      idCardFee: 150,
-      certFee: 300,
-      feeStatus: 'Paid',
-      lastPaymentMode: 'UPI',
-      lastPaymentDate: '2026-11-10',
-      photoDataUrl: ''
-    }
-  ],
+  students: [],
   attendance: {},
   audioClips: [],
   messages: [],
@@ -553,6 +525,16 @@ function getNextRollNumber() {
     }
   });
   return `TSM-${String(maxNum + 1).padStart(4, '0')}`;
+}
+
+
+function purgeTestStudent(students) {
+  if (!Array.isArray(students)) return [];
+  // Remove default test student 'Aarav Sharma' (TSM-0001) if there are other real students
+  if (students.length > 1) {
+    return students.filter(s => !(s.name === 'Aarav Sharma' && s.rollNo === 'TSM-0001'));
+  }
+  return students;
 }
 
 function normalizeStudent(s) {
@@ -797,7 +779,7 @@ function loadState() {
         if (!parsed.certs) parsed.certs = [];
         if (!parsed.pushAlerts) parsed.pushAlerts = [];
         if (!parsed.fcmTokens) parsed.fcmTokens = {};
-        parsed.students = parsed.students.map(normalizeStudent);
+        parsed.students = purgeTestStudent(parsed.students.map(normalizeStudent));
         purgeExpiredAudioData(parsed);
         return parsed;
       }
@@ -947,7 +929,7 @@ async function initFirebaseAuto() {
           if (!remote.certs) remote.certs = [];
           if (!remote.pushAlerts) remote.pushAlerts = [];
           if (!remote.fcmTokens) remote.fcmTokens = {};
-          remote.students = remote.students.map(normalizeStudent);
+          remote.students = purgeTestStudent(remote.students.map(normalizeStudent));
           const didPurge = purgeExpiredAudioData(remote);
           appState = remote;
           localStorage.setItem(STORAGE_KEY, JSON.stringify(appState));
