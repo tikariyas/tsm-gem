@@ -1,5 +1,5 @@
 {
   "name": "Tikariya's School of Music",
   "description": "Music school management portal, attendance tracker, QR verification, and notation studio for B. S. Tikariya Cultural Foundation.",
-  "requestFramePermissions": []
+  "requestFramePermissions": ["camera"]
 }

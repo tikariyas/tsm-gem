@@ -361,64 +361,269 @@ async function decodeImageFileForCanvas(file) {
   };
 }
 
+function cropSourceToIdPhotoDataUrl(source, rawW, rawH, maxTargetChars = 36000, mirrorHorizontal = false) {
+  const srcW = Math.max(1, rawW);
+  const srcH = Math.max(1, rawH);
+  const targetAspect = 5 / 6; // Standard portrait ID card aspect ratio (w-20 h-24)
+  const srcAspect = srcW / srcH;
+
+  let sx = 0, sy = 0, sW = srcW, sH = srcH;
+  if (srcAspect > targetAspect) {
+    // Landscape or wider image: center-crop horizontally
+    sW = Math.round(srcH * targetAspect);
+    sx = Math.round((srcW - sW) / 2);
+  } else if (srcAspect < targetAspect) {
+    // Tall portrait image: upper-center crop so head/face isn't cut off
+    sH = Math.round(srcW / targetAspect);
+    sy = Math.round((srcH - sH) * 0.22);
+  }
+
+  const sizeSteps = [
+    [300, 360],
+    [250, 300],
+    [200, 240],
+    [160, 192]
+  ];
+  const qualitySteps = [0.82, 0.72, 0.62, 0.52, 0.44, 0.36];
+
+  let bestUrl = '';
+  let bestW = 300;
+  let bestH = 360;
+
+  for (const [outW, outH] of sizeSteps) {
+    const canvas = document.createElement('canvas');
+    canvas.width = outW;
+    canvas.height = outH;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, outW, outH);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    if (mirrorHorizontal) {
+      ctx.save();
+      ctx.translate(outW, 0);
+      ctx.scale(-1, 1);
+      ctx.drawImage(source, sx, sy, sW, sH, 0, 0, outW, outH);
+      ctx.restore();
+    } else {
+      ctx.drawImage(source, sx, sy, sW, sH, 0, 0, outW, outH);
+    }
+
+    for (const q of qualitySteps) {
+      const candidate = canvas.toDataURL('image/jpeg', q);
+      bestUrl = candidate;
+      bestW = outW;
+      bestH = outH;
+      if (candidate.length <= maxTargetChars) {
+        const kb = Math.max(1, Math.round((candidate.length * 0.75) / 1024));
+        return { dataUrl: candidate, width: outW, height: outH, kb };
+      }
+    }
+  }
+
+  const kb = Math.max(1, Math.round((bestUrl.length * 0.75) / 1024));
+  return { dataUrl: bestUrl, width: bestW, height: bestH, kb };
+}
+
 async function autoCropAndResizeIdPhoto(file, maxTargetChars = 36000) {
   const decoded = await decodeImageFileForCanvas(file);
   try {
-    const srcW = Math.max(1, decoded.width);
-    const srcH = Math.max(1, decoded.height);
-    const targetAspect = 5 / 6; // Standard portrait ID card aspect ratio (w-20 h-24)
-    const srcAspect = srcW / srcH;
-
-    let sx = 0, sy = 0, sW = srcW, sH = srcH;
-    if (srcAspect > targetAspect) {
-      // Landscape or wider image: center-crop horizontally
-      sW = Math.round(srcH * targetAspect);
-      sx = Math.round((srcW - sW) / 2);
-    } else if (srcAspect < targetAspect) {
-      // Tall portrait image: upper-center crop so head/face isn't cut off
-      sH = Math.round(srcW / targetAspect);
-      sy = Math.round((srcH - sH) * 0.22);
-    }
-
-    const sizeSteps = [
-      [300, 360],
-      [250, 300],
-      [200, 240],
-      [160, 192]
-    ];
-    const qualitySteps = [0.82, 0.72, 0.62, 0.52, 0.44, 0.36];
-
-    let bestUrl = '';
-    let bestW = 300;
-    let bestH = 360;
-
-    for (const [outW, outH] of sizeSteps) {
-      const canvas = document.createElement('canvas');
-      canvas.width = outW;
-      canvas.height = outH;
-      const ctx = canvas.getContext('2d');
-      ctx.fillStyle = '#FFFFFF';
-      ctx.fillRect(0, 0, outW, outH);
-      ctx.imageSmoothingEnabled = true;
-      ctx.imageSmoothingQuality = 'high';
-      ctx.drawImage(decoded.source, sx, sy, sW, sH, 0, 0, outW, outH);
-
-      for (const q of qualitySteps) {
-        const candidate = canvas.toDataURL('image/jpeg', q);
-        bestUrl = candidate;
-        bestW = outW;
-        bestH = outH;
-        if (candidate.length <= maxTargetChars) {
-          const kb = Math.max(1, Math.round((candidate.length * 0.75) / 1024));
-          return { dataUrl: candidate, width: outW, height: outH, kb };
-        }
-      }
-    }
-
-    const kb = Math.max(1, Math.round((bestUrl.length * 0.75) / 1024));
-    return { dataUrl: bestUrl, width: bestW, height: bestH, kb };
+    return cropSourceToIdPhotoDataUrl(decoded.source, decoded.width, decoded.height, maxTargetChars, false);
   } finally {
     decoded.cleanup();
+  }
+}
+
+let photoCameraStream = null;
+let photoCameraState = { stuId: '', previewElId: 'profilePhotoPreview', facingMode: 'user' };
+
+function stopPhotoCamera() {
+  if (photoCameraStream) {
+    try {
+      photoCameraStream.getTracks().forEach(t => t.stop());
+    } catch (_) {}
+    photoCameraStream = null;
+  }
+  const existing = document.getElementById('photoCameraOverlay');
+  if (existing) existing.remove();
+}
+
+async function startPhotoCameraStream() {
+  const video = document.getElementById('photoCameraVideo');
+  const statusBox = document.getElementById('photoCameraStatus');
+  const captureBtn = document.getElementById('photoCameraCaptureBtn');
+  if (!video || !statusBox) return;
+
+  if (photoCameraStream) {
+    try { photoCameraStream.getTracks().forEach(t => t.stop()); } catch (_) {}
+    photoCameraStream = null;
+  }
+
+  if (captureBtn) captureBtn.disabled = true;
+  statusBox.className = 'text-xs text-slate-300 text-center py-1';
+  statusBox.textContent = 'Starting camera...';
+
+  const isFront = photoCameraState.facingMode === 'user';
+  video.style.transform = isFront ? 'scaleX(-1)' : 'none';
+
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    statusBox.className = 'text-xs text-amber-300 bg-amber-950/60 border border-amber-700/60 rounded-lg px-3 py-2 text-center';
+    statusBox.textContent = 'Live browser camera is unavailable in this view. Use "Device Camera / Gallery" below to pick or take a photo.';
+    return;
+  }
+
+  try {
+    let stream = null;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { ideal: photoCameraState.facingMode },
+          width: { ideal: 1280 },
+          height: { ideal: 960 }
+        },
+        audio: false
+      });
+    } catch (constraintErr) {
+      stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+    }
+
+    // Check if user closed the camera overlay while awaiting permission
+    if (!document.getElementById('photoCameraOverlay')) {
+      stream.getTracks().forEach(t => t.stop());
+      return;
+    }
+
+    photoCameraStream = stream;
+    video.srcObject = stream;
+    video.setAttribute('playsinline', 'true');
+    video.muted = true;
+    await video.play();
+
+    if (captureBtn) captureBtn.disabled = false;
+    statusBox.className = 'text-xs text-emerald-300 text-center py-1';
+    statusBox.textContent = 'Align face inside the portrait frame and tap Capture Photo.';
+  } catch (err) {
+    console.warn('In-app photo camera error:', err);
+    const msg = (err && (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError'))
+      ? 'Camera permission was denied. Allow camera access in browser settings, or tap "Device Camera / Gallery" below.'
+      : (err && err.name === 'NotFoundError')
+        ? 'No camera found on this device. Tap "Device Camera / Gallery" below to choose a photo.'
+        : 'Could not open live camera. Tap "Device Camera / Gallery" below to capture or choose a photo.';
+    statusBox.className = 'text-xs text-amber-300 bg-amber-950/60 border border-amber-700/60 rounded-lg px-3 py-2 text-center';
+    statusBox.textContent = msg;
+  }
+}
+
+function openInAppPhotoCamera(stuId, previewElId = 'profilePhotoPreview', defaultFacing = 'user') {
+  stopPhotoCamera();
+  photoCameraState = {
+    stuId,
+    previewElId,
+    facingMode: defaultFacing === 'environment' ? 'environment' : 'user'
+  };
+  const safeId = escapeAttr(stuId);
+  const safePreviewId = escapeAttr(previewElId);
+  const captureAttr = photoCameraState.facingMode === 'environment' ? 'environment' : 'user';
+
+  const overlay = document.createElement('div');
+  overlay.id = 'photoCameraOverlay';
+  overlay.className = 'fixed inset-0 z-[60] bg-slate-950/90 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4';
+  overlay.innerHTML = `
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl text-white">
+      <div class="flex items-center justify-between px-4 py-3 border-b border-slate-800">
+        <div>
+          <h3 class="text-sm font-bold text-white">Capture ID Card Photo</h3>
+          <p class="text-[11px] text-slate-400">Auto-crops to 5:6 portrait &amp; optimizes under 28 KB</p>
+        </div>
+        <button type="button" onclick="stopPhotoCamera()" class="min-h-[36px] px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200">Close</button>
+      </div>
+
+      <div class="p-4 space-y-3">
+        <div class="relative w-full aspect-[5/6] max-h-[56vh] mx-auto rounded-xl overflow-hidden bg-black border border-slate-700 flex items-center justify-center">
+          <video id="photoCameraVideo" autoplay playsinline muted class="w-full h-full object-cover"></video>
+          <div class="pointer-events-none absolute inset-0 flex items-center justify-center">
+            <div class="w-[74%] h-[82%] border-2 border-dashed border-white/75 rounded-2xl shadow-[0_0_0_9999px_rgba(0,0,0,0.32)]"></div>
+          </div>
+          <span class="pointer-events-none absolute bottom-2 left-1/2 -translate-x-1/2 px-2.5 py-0.5 rounded-full bg-black/60 text-[10px] font-semibold text-white/90">Portrait 5:6 Guide</span>
+        </div>
+
+        <div id="photoCameraStatus" class="text-xs text-slate-300 text-center py-1">Starting camera...</div>
+
+        <div class="grid grid-cols-2 gap-2">
+          <button type="button" onclick="flipPhotoCamera()" class="min-h-[44px] px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-semibold text-white transition">
+            Switch Camera
+          </button>
+          <button id="photoCameraCaptureBtn" type="button" disabled onclick="capturePhotoFromInAppCamera()" class="min-h-[44px] px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed text-xs font-bold text-white shadow transition">
+            Capture Photo
+          </button>
+        </div>
+
+        <div class="pt-1 border-t border-slate-800 flex items-center justify-center">
+          <label class="w-full inline-flex items-center justify-center min-h-[40px] px-3 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 border border-slate-700 text-xs font-semibold text-slate-200 cursor-pointer transition">
+            Device Camera / Gallery Fallback
+            <input type="file" accept="image/*" capture="${captureAttr}" onchange="handleFallbackCameraFile(event, '${safeId}', '${safePreviewId}')" class="sr-only" />
+          </label>
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  startPhotoCameraStream();
+}
+
+function flipPhotoCamera() {
+  photoCameraState.facingMode = photoCameraState.facingMode === 'user' ? 'environment' : 'user';
+  startPhotoCameraStream();
+}
+
+async function handleFallbackCameraFile(e, stuId, previewElId) {
+  if (photoCameraStream) {
+    try { photoCameraStream.getTracks().forEach(t => t.stop()); } catch (_) {}
+    photoCameraStream = null;
+  }
+  const overlay = document.getElementById('photoCameraOverlay');
+  if (overlay) overlay.classList.add('hidden');
+  try {
+    await uploadStudentPhoto(e, stuId, true, previewElId);
+  } finally {
+    stopPhotoCamera();
+  }
+}
+
+function capturePhotoFromInAppCamera() {
+  const video = document.getElementById('photoCameraVideo');
+  if (!video || !video.videoWidth || !video.videoHeight) {
+    showToast('Camera is still loading. Please wait a moment.');
+    return;
+  }
+
+  try {
+    const mirror = photoCameraState.facingMode === 'user';
+    const result = cropSourceToIdPhotoDataUrl(video, video.videoWidth, video.videoHeight, 36000, mirror);
+    if (!result || !result.dataUrl || !result.dataUrl.startsWith('data:image/')) {
+      throw new Error('Capture produced invalid image');
+    }
+
+    const s = appState.students.find(x => x.id === photoCameraState.stuId);
+    if (!s) {
+      stopPhotoCamera();
+      return;
+    }
+
+    s.photoDataUrl = result.dataUrl;
+    saveState();
+
+    const preview = document.getElementById(photoCameraState.previewElId);
+    if (preview) {
+      preview.innerHTML = `<img src="${safeDataUrl(s.photoDataUrl, 'data:image/')}" class="w-full h-full object-cover" />`;
+    }
+
+    stopPhotoCamera();
+    renderCurrentTab();
+    showToast(`ID Photo captured, auto-cropped & saved (${result.kb} KB)`);
+  } catch (err) {
+    console.error('Capture ID photo error:', err);
+    showToast('Could not capture photo. Please try again or use Gallery.');
   }
 }
 
@@ -2911,9 +3116,12 @@ function openEditStudentModal(stuId) {
           <div class="font-bold text-[#0F172A]">Student ID Photo</div>
           <p class="text-[11px] text-slate-500">Auto-crops to portrait ID size (5:6) and optimizes under 28 KB automatically.</p>
           <div class="flex flex-wrap items-center justify-center sm:justify-start gap-2">
-            <label class="inline-flex items-center justify-center min-h-[36px] px-3 py-1.5 bg-[#0F172A] hover:bg-slate-800 text-white rounded-lg text-xs font-semibold cursor-pointer transition">
-              Upload / Take Photo
-              <input type="file" accept="image/*" onchange="uploadStudentPhoto(event, '${safeId}', true, 'adminEditPhotoPreview')" class="hidden" />
+            <button type="button" onclick="openInAppPhotoCamera('${safeId}', 'adminEditPhotoPreview', 'environment')" class="inline-flex items-center justify-center min-h-[36px] px-3 py-1.5 bg-[#0F172A] hover:bg-slate-800 text-white rounded-lg text-xs font-semibold cursor-pointer transition">
+              Take Camera Photo
+            </button>
+            <label class="inline-flex items-center justify-center min-h-[36px] px-3 py-1.5 bg-white border border-slate-300 text-slate-800 hover:bg-slate-100 rounded-lg text-xs font-semibold cursor-pointer transition">
+              Upload Photo
+              <input type="file" accept="image/*" onchange="uploadStudentPhoto(event, '${safeId}', true, 'adminEditPhotoPreview')" class="sr-only" />
             </label>
             ${safePhoto ? `<button type="button" onclick="removeStudentPhoto('${safeId}', 'adminEditPhotoPreview')" class="min-h-[36px] px-3 py-1.5 border border-red-200 text-red-700 bg-red-50 rounded-lg text-xs font-semibold hover:bg-red-100">Remove</button>` : ''}
           </div>
@@ -4390,13 +4598,12 @@ function openStudentProfileModal(stuId) {
           <div class="text-slate-600">Batch: <b>${escapeHtml(s.batch)}</b> &bull; Admitted: <b>${escapeHtml(s.admissionDate)}</b></div>
           <div class="text-[10px] text-slate-500">Auto-crops to portrait ID ratio &amp; optimizes file size automatically.</div>
           <div class="flex flex-wrap items-center justify-center sm:justify-start gap-2">
-            <label class="inline-flex items-center justify-center min-h-[36px] px-3 py-1.5 bg-[#0F172A] hover:bg-slate-800 text-white rounded-lg text-xs font-semibold cursor-pointer transition">
+            <button type="button" onclick="openInAppPhotoCamera('${safeId}', 'profilePhotoPreview', 'user')" class="inline-flex items-center justify-center min-h-[36px] px-3 py-1.5 bg-[#0F172A] hover:bg-slate-800 text-white rounded-lg text-xs font-semibold cursor-pointer transition">
               Take Camera Photo
-              <input type="file" accept="image/*" capture="user" onchange="uploadStudentPhoto(event, '${safeId}', true, 'profilePhotoPreview')" class="hidden" />
-            </label>
+            </button>
             <label class="inline-flex items-center justify-center min-h-[36px] px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-800 cursor-pointer hover:bg-slate-100 transition">
               Choose from Gallery
-              <input type="file" accept="image/*" onchange="uploadStudentPhoto(event, '${safeId}', true, 'profilePhotoPreview')" class="hidden" />
+              <input type="file" accept="image/*" onchange="uploadStudentPhoto(event, '${safeId}', true, 'profilePhotoPreview')" class="sr-only" />
             </label>
             ${safeDataUrl(s.photoDataUrl, 'data:image/') ? `<button type="button" onclick="removeStudentPhoto('${safeId}', 'profilePhotoPreview')" class="min-h-[36px] px-2.5 py-1.5 border border-red-200 text-red-700 bg-red-50 rounded-lg text-xs font-semibold hover:bg-red-100">Remove</button>` : ''}
           </div>
@@ -4881,6 +5088,7 @@ function showModal(html) {
 
 function closeModal() {
   stopQrCamera();
+  stopPhotoCamera();
   document.getElementById('modalBackdrop').classList.add('hidden');
 }
 
