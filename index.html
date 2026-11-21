@@ -741,7 +741,7 @@ function normalizeStudent(s) {
   if (s.genuineDays === undefined) s.genuineDays = s.attendedDays || 0;
   if (s.bonusCredits === undefined) s.bonusCredits = 0;
   if (s.concessionMonths === undefined) s.concessionMonths = 0;
-  if (!s.parentPhone) s.parentPhone = s.phone || '';
+  if (s.parentPhone === undefined) s.parentPhone = '';
   if (!s.pin) s.pin = '1234';
   if (s.pinChanged === undefined) s.pinChanged = Boolean(String(s.pin).trim() !== '1234');
   if (s.dob === undefined) s.dob = '';
@@ -1453,7 +1453,7 @@ function handleRestoreBackupFile(e) {
           batch: st.batch || appState.batches[0] || '5:00 PM',
           dob: st.dob || '',
           phone: String(st.phone || st.pphone || '').replace(/\s+/g, ''),
-          parentPhone: String(st.pphone || st.phone || '').replace(/\s+/g, ''),
+          parentPhone: String(st.pphone || '').replace(/\s+/g, ''),
           email: st.email || '',
           addr: st.addr || '',
           isMinor: true,
@@ -1650,15 +1650,23 @@ function getStudentNetPayable(student) {
   return Math.max(0, Number(student.monthlyFee || 0) - effConc + Number(student.idCardFee || 0) + Number(student.certFee || 0));
 }
 
+function normalizeParentPhoneForFamily(raw) {
+  const digits = String(raw || '').replace(/\D+/g, '');
+  if (digits.length < 10) return '';
+  const last10 = digits.slice(-10);
+  // Reject placeholder numbers (all identical digits like 0000000000/9999999999 or sequential dummy)
+  if (/^(\d)\1{9}$/.test(last10) || last10 === '1234567890' || last10 === '0123456789') return '';
+  return last10;
+}
+
 function getFamilySiblings(student) {
-  const pPhone = (student.parentPhone || student.phone || '').replace(/\s+/g, '').trim();
-  const pName = (student.guardian || '').trim().toLowerCase();
+  if (!student) return [];
+  const pPhone = normalizeParentPhoneForFamily(student.parentPhone);
+  if (!pPhone) return [student];
   return appState.students.filter(other => {
-    const oPhone = (other.parentPhone || other.phone || '').replace(/\s+/g, '').trim();
-    const oName = (other.guardian || '').trim().toLowerCase();
-    if (pPhone && oPhone && pPhone === oPhone) return true;
-    if (pName && oName && pName !== 'guardian' && pName !== 'guardian verified' && pName !== 'self / verified' && pName === oName) return true;
-    return other.id === student.id;
+    if (other.id === student.id) return true;
+    const oPhone = normalizeParentPhoneForFamily(other.parentPhone);
+    return Boolean(oPhone && oPhone === pPhone);
   });
 }
 
@@ -2694,11 +2702,11 @@ function openAddStudentModal() {
       <div class="grid grid-cols-3 gap-2 items-center">
         <div>
           <label class="block font-semibold text-slate-700 mb-1">Parent / Family Name</label>
-          <input name="guardian" placeholder="Links same-parent siblings" class="w-full px-2.5 py-2 border border-slate-300 rounded-lg" />
+          <input name="guardian" placeholder="Parent / Guardian name" class="w-full px-2.5 py-2 border border-slate-300 rounded-lg" />
         </div>
         <div>
           <label class="block font-semibold text-slate-700 mb-1">Parent Mobile (Family Link)</label>
-          <input name="parentPhone" placeholder="Links same-parent siblings" class="w-full px-2.5 py-2 border border-slate-300 rounded-lg" />
+          <input name="parentPhone" placeholder="Same parent mobile links family" class="w-full px-2.5 py-2 border border-slate-300 rounded-lg" />
         </div>
         <div>
           <label class="block font-semibold text-slate-700 mb-1">Notes / Pickup</label>
@@ -2729,7 +2737,7 @@ function saveNewStudent(e) {
     pinChanged: false,
     name: fd.get('name').trim(),
     phone,
-    parentPhone: (fd.get('parentPhone') || phone).trim(),
+    parentPhone: String(fd.get('parentPhone') || '').trim(),
     courses: finalCourses,
     course: finalCourses.join(', '),
     grade: fd.get('grade'),
@@ -2811,7 +2819,7 @@ function openEditStudentModal(stuId) {
         </div>
         <div>
           <label class="block font-semibold text-slate-700 mb-1">Parent Mobile (Family Link)</label>
-          <input name="parentPhone" value="${s.parentPhone || s.phone}" class="w-full px-3 py-2 border border-slate-300 rounded-lg" />
+          <input name="parentPhone" value="${escapeHtml(s.parentPhone || '')}" placeholder="Same parent mobile links family" class="w-full px-3 py-2 border border-slate-300 rounded-lg" />
         </div>
       </div>
 
@@ -2862,7 +2870,7 @@ function saveEditedStudent(e, stuId) {
   s.course = s.courses.join(', ');
   s.name = fd.get('name').trim();
   s.phone = fd.get('phone').trim();
-  s.parentPhone = (fd.get('parentPhone') || s.phone).trim();
+  s.parentPhone = String(fd.get('parentPhone') || '').trim();
   s.guardian = (fd.get('guardian') || s.guardian).trim();
   if (fd.get('batch')) s.batch = fd.get('batch');
   s.grade = fd.get('grade');
@@ -4187,7 +4195,7 @@ function openStudentProfileModal(stuId) {
             </div>
             <div>
               <label class="block font-semibold text-slate-700 mb-1">Parent / Emergency Mobile</label>
-              <input type="tel" name="parentPhone" value="${escapeHtml(s.parentPhone || s.phone || '')}" class="w-full px-3 py-2 border border-slate-300 rounded-lg" />
+              <input type="tel" name="parentPhone" value="${escapeHtml(s.parentPhone || '')}" placeholder="Same parent mobile links family" class="w-full px-3 py-2 border border-slate-300 rounded-lg" />
             </div>
             <div>
               <label class="block font-semibold text-slate-700 mb-1">Pickup / Safety Note</label>
@@ -4266,7 +4274,7 @@ function saveStudentProfileModal(e, stuId) {
   s.addr = String(fd.get('addr') || '').trim();
   s.phone = String(fd.get('phone') || s.phone || '').trim();
   s.guardian = String(fd.get('guardian') || '').trim();
-  s.parentPhone = String(fd.get('parentPhone') || s.phone || '').trim();
+  s.parentPhone = String(fd.get('parentPhone') || '').trim();
   s.pickupNote = String(fd.get('pickupNote') || '').trim();
   s.musicGoal = String(fd.get('musicGoal') || '').trim();
 
