@@ -295,6 +295,8 @@ function compressImageDataUrl(dataUrl, maxWidth, maxHeight, quality) {
       c.width = width;
       c.height = height;
       const ctx = c.getContext('2d');
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(0, 0, width, height);
       ctx.drawImage(img, 0, 0, width, height);
       try {
         resolve(c.toDataURL('image/jpeg', quality));
@@ -305,6 +307,119 @@ function compressImageDataUrl(dataUrl, maxWidth, maxHeight, quality) {
     img.onerror = () => resolve(dataUrl);
     img.src = dataUrl;
   });
+}
+
+async function decodeImageFileForCanvas(file) {
+  // 1. Prefer createImageBitmap (natively handles EXIF rotation & large mobile camera files with low RAM)
+  if (typeof createImageBitmap === 'function') {
+    try {
+      const bmp = await createImageBitmap(file);
+      return {
+        source: bmp,
+        width: bmp.width,
+        height: bmp.height,
+        cleanup: () => { try { bmp.close(); } catch (e) {} }
+      };
+    } catch (e) {}
+  }
+
+  // 2. Fallback: Object URL -> HTMLImageElement (avoids huge base64 memory spikes)
+  try {
+    const objUrl = URL.createObjectURL(file);
+    const img = await new Promise((resolve, reject) => {
+      const el = new Image();
+      el.onload = () => resolve(el);
+      el.onerror = () => reject(new Error('ObjectURL decode failed'));
+      el.src = objUrl;
+    });
+    return {
+      source: img,
+      width: img.naturalWidth || img.width,
+      height: img.naturalHeight || img.height,
+      cleanup: () => { try { URL.revokeObjectURL(objUrl); } catch (e) {} }
+    };
+  } catch (e) {}
+
+  // 3. Final fallback: FileReader -> DataURL -> HTMLImageElement
+  const rawDataUrl = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = ev => resolve(ev.target.result);
+    reader.onerror = () => reject(new Error('FileReader failed'));
+    reader.readAsDataURL(file);
+  });
+  const img = await new Promise((resolve, reject) => {
+    const el = new Image();
+    el.onload = () => resolve(el);
+    el.onerror = () => reject(new Error('Image decode failed'));
+    el.src = rawDataUrl;
+  });
+  return {
+    source: img,
+    width: img.naturalWidth || img.width,
+    height: img.naturalHeight || img.height,
+    cleanup: () => {}
+  };
+}
+
+async function autoCropAndResizeIdPhoto(file, maxTargetChars = 36000) {
+  const decoded = await decodeImageFileForCanvas(file);
+  try {
+    const srcW = Math.max(1, decoded.width);
+    const srcH = Math.max(1, decoded.height);
+    const targetAspect = 5 / 6; // Standard portrait ID card aspect ratio (w-20 h-24)
+    const srcAspect = srcW / srcH;
+
+    let sx = 0, sy = 0, sW = srcW, sH = srcH;
+    if (srcAspect > targetAspect) {
+      // Landscape or wider image: center-crop horizontally
+      sW = Math.round(srcH * targetAspect);
+      sx = Math.round((srcW - sW) / 2);
+    } else if (srcAspect < targetAspect) {
+      // Tall portrait image: upper-center crop so head/face isn't cut off
+      sH = Math.round(srcW / targetAspect);
+      sy = Math.round((srcH - sH) * 0.22);
+    }
+
+    const sizeSteps = [
+      [300, 360],
+      [250, 300],
+      [200, 240],
+      [160, 192]
+    ];
+    const qualitySteps = [0.82, 0.72, 0.62, 0.52, 0.44, 0.36];
+
+    let bestUrl = '';
+    let bestW = 300;
+    let bestH = 360;
+
+    for (const [outW, outH] of sizeSteps) {
+      const canvas = document.createElement('canvas');
+      canvas.width = outW;
+      canvas.height = outH;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(0, 0, outW, outH);
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(decoded.source, sx, sy, sW, sH, 0, 0, outW, outH);
+
+      for (const q of qualitySteps) {
+        const candidate = canvas.toDataURL('image/jpeg', q);
+        bestUrl = candidate;
+        bestW = outW;
+        bestH = outH;
+        if (candidate.length <= maxTargetChars) {
+          const kb = Math.max(1, Math.round((candidate.length * 0.75) / 1024));
+          return { dataUrl: candidate, width: outW, height: outH, kb };
+        }
+      }
+    }
+
+    const kb = Math.max(1, Math.round((bestUrl.length * 0.75) / 1024));
+    return { dataUrl: bestUrl, width: bestW, height: bestH, kb };
+  } finally {
+    decoded.cleanup();
+  }
 }
 
 // ==========================================
@@ -2774,89 +2889,192 @@ function saveNewStudent(e) {
 function openEditStudentModal(stuId) {
   const s = appState.students.find(x => x.id === stuId);
   if (!s) return;
+  const safeId = escapeHtml(s.id);
+  const safePhoto = safeDataUrl(s.photoDataUrl, 'data:image/');
+
   showModal(`
-    <h3 class="text-base font-bold text-[#0F172A] mb-3">Edit Student (${s.rollNo})</h3>
-    <form onsubmit="saveEditedStudent(event, '${s.id}')" class="space-y-3 text-xs">
-      <div class="grid grid-cols-2 gap-3">
+    <div class="space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-200 pb-3">
         <div>
-          <label class="block font-semibold text-slate-700 mb-1">Full Name</label>
-          <input name="name" value="${s.name}" class="w-full px-3 py-2 border border-slate-300 rounded-lg" required />
+          <h3 class="text-base font-bold text-[#0F172A]">Student Profile Editor (Admin)</h3>
+          <p class="text-[11px] text-slate-500">${escapeHtml(s.name)} &bull; <span class="font-mono font-semibold text-indigo-700">${escapeHtml(s.rollNo)}</span></p>
         </div>
-        <div>
-          <label class="block font-semibold text-slate-700 mb-1">Student WhatsApp</label>
-          <input name="phone" value="${s.phone}" class="w-full px-3 py-2 border border-slate-300 rounded-lg" required />
-        </div>
+        <button type="button" onclick="closeModal()" class="min-h-[36px] px-3 text-xs font-semibold text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50">Close</button>
       </div>
 
-      <div>
-        <label class="block font-semibold text-slate-700 mb-1">Enrolled Instruments / Courses (Check 1 or Multiple)</label>
-        <div class="grid grid-cols-2 sm:grid-cols-3 gap-1.5 p-2.5 border border-slate-300 rounded-lg bg-slate-50 max-h-36 overflow-y-auto">
-          ${appState.courses.map(c => `
-            <label class="flex items-center gap-1.5 text-[11px] font-medium text-slate-800 cursor-pointer">
-              <input type="checkbox" name="selectedCourses" value="${c.name}" ${(s.courses||[]).includes(c.name)?'checked':''} onchange="recalcMultiCourseFee(this.closest('form'))" />
-              <span class="truncate">${c.name} (₹${c.fee})</span>
+      <!-- ADMIN ID PHOTO UPLOADER WITH AUTO-CROP & RESIZE -->
+      <div class="flex flex-col sm:flex-row items-center gap-4 p-3.5 bg-slate-50 border border-slate-200 rounded-xl">
+        <div id="adminEditPhotoPreview" class="w-20 h-24 rounded-lg bg-white border border-slate-300 flex items-center justify-center text-xs font-bold text-slate-400 overflow-hidden shrink-0">
+          ${safePhoto ? `<img src="${safePhoto}" class="w-full h-full object-cover" />` : 'PHOTO'}
+        </div>
+        <div class="flex-1 text-center sm:text-left space-y-2 text-xs">
+          <div class="font-bold text-[#0F172A]">Student ID Photo</div>
+          <p class="text-[11px] text-slate-500">Auto-crops to portrait ID size (5:6) and optimizes under 28 KB automatically.</p>
+          <div class="flex flex-wrap items-center justify-center sm:justify-start gap-2">
+            <label class="inline-flex items-center justify-center min-h-[36px] px-3 py-1.5 bg-[#0F172A] hover:bg-slate-800 text-white rounded-lg text-xs font-semibold cursor-pointer transition">
+              Upload / Take Photo
+              <input type="file" accept="image/*" onchange="uploadStudentPhoto(event, '${safeId}', true, 'adminEditPhotoPreview')" class="hidden" />
             </label>
-          `).join('')}
+            ${safePhoto ? `<button type="button" onclick="removeStudentPhoto('${safeId}', 'adminEditPhotoPreview')" class="min-h-[36px] px-3 py-1.5 border border-red-200 text-red-700 bg-red-50 rounded-lg text-xs font-semibold hover:bg-red-100">Remove</button>` : ''}
+          </div>
         </div>
       </div>
 
-      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div>
-          <label class="block font-semibold text-slate-700 mb-1">Batch Timing</label>
-          <select name="batch" class="w-full px-3 py-2 border border-slate-300 rounded-lg font-semibold">
-            ${appState.batches.map(b => `<option value="${b}" ${s.batch===b?'selected':''}>${b}</option>`).join('')}
-          </select>
-        </div>
-        <div>
-          <label class="block font-semibold text-slate-700 mb-1">Grade Level</label>
-          <select name="grade" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
-            ${GRADES.map(g => `<option value="${g}" ${s.grade===g?'selected':''}>${g}</option>`).join('')}
-          </select>
-        </div>
-        <div>
-          <label class="block font-semibold text-slate-700 mb-1">Parent / Family Name</label>
-          <input name="guardian" value="${s.guardian}" class="w-full px-3 py-2 border border-slate-300 rounded-lg" />
-        </div>
-        <div>
-          <label class="block font-semibold text-slate-700 mb-1">Parent Mobile (Family Link)</label>
-          <input name="parentPhone" value="${escapeHtml(s.parentPhone || '')}" placeholder="Same parent mobile links family" class="w-full px-3 py-2 border border-slate-300 rounded-lg" />
-        </div>
-      </div>
+      <form onsubmit="saveEditedStudent(event, '${safeId}')" class="space-y-4 text-xs">
+        <!-- CORE ENROLLMENT & SECURITY -->
+        <div class="space-y-2.5">
+          <h4 class="text-[11px] font-bold uppercase tracking-wider text-slate-500 border-b border-slate-100 pb-1">Enrollment &amp; Login</h4>
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label class="block font-semibold text-slate-700 mb-1">Full Name</label>
+              <input name="name" value="${escapeHtml(s.name)}" class="w-full px-3 py-2 border border-slate-300 rounded-lg" required />
+            </div>
+            <div>
+              <label class="block font-semibold text-slate-700 mb-1">Admission Date</label>
+              <input type="date" name="admissionDate" value="${escapeHtml(s.admissionDate || '')}" class="w-full px-3 py-2 border border-slate-300 rounded-lg" required />
+            </div>
+            <div>
+              <label class="block font-semibold text-slate-700 mb-1">Access PIN</label>
+              <input type="text" name="pin" value="${escapeHtml(s.pin || '1234')}" minlength="4" class="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono" required />
+            </div>
+          </div>
 
-      <div class="grid grid-cols-6 gap-2">
-        <div>
-          <label class="block font-semibold text-slate-700 mb-1">Gen. Days</label>
-          <input type="number" name="genuineDays" value="${s.genuineDays}" class="w-full px-2 py-2 border border-slate-300 rounded-lg" />
+          <label class="inline-flex items-center gap-2 text-[11px] font-medium text-slate-600 cursor-pointer">
+            <input type="checkbox" name="requirePinChange" ${s.pinChanged === false ? 'checked' : ''} />
+            <span>Prompt student to change PIN on next login</span>
+          </label>
+
+          <div>
+            <label class="block font-semibold text-slate-700 mb-1">Enrolled Instruments / Courses (Check 1 or Multiple)</label>
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-1.5 p-2.5 border border-slate-300 rounded-lg bg-slate-50 max-h-36 overflow-y-auto">
+              ${appState.courses.map(c => `
+                <label class="flex items-center gap-1.5 text-[11px] font-medium text-slate-800 cursor-pointer">
+                  <input type="checkbox" name="selectedCourses" value="${escapeHtml(c.name)}" ${(s.courses||[]).includes(c.name)?'checked':''} onchange="recalcMultiCourseFee(this.closest('form'))" />
+                  <span class="truncate">${escapeHtml(c.name)} (₹${c.fee})</span>
+                </label>
+              `).join('')}
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block font-semibold text-slate-700 mb-1">Batch Timing</label>
+              <select name="batch" class="w-full px-3 py-2 border border-slate-300 rounded-lg font-semibold bg-white">
+                ${appState.batches.map(b => `<option value="${escapeHtml(b)}" ${s.batch===b?'selected':''}>${escapeHtml(b)}</option>`).join('')}
+              </select>
+            </div>
+            <div>
+              <label class="block font-semibold text-slate-700 mb-1">Grade Level</label>
+              <select name="grade" class="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white">
+                ${GRADES.map(g => `<option value="${escapeHtml(g)}" ${s.grade===g?'selected':''}>${escapeHtml(g)}</option>`).join('')}
+              </select>
+            </div>
+          </div>
         </div>
-        <div>
-          <label class="block font-semibold text-slate-700 mb-1">Total Fee</label>
-          <input type="number" name="monthlyFee" value="${s.monthlyFee}" class="w-full px-2 py-2 border border-slate-300 rounded-lg" />
+
+        <!-- PERSONAL DETAILS -->
+        <div class="space-y-2.5">
+          <h4 class="text-[11px] font-bold uppercase tracking-wider text-slate-500 border-b border-slate-100 pb-1">Personal Details</h4>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label class="block font-semibold text-slate-700 mb-1">Date of Birth</label>
+              <input type="date" name="dob" value="${escapeHtml(s.dob || '')}" class="w-full px-3 py-2 border border-slate-300 rounded-lg" />
+            </div>
+            <div>
+              <label class="block font-semibold text-slate-700 mb-1">Gender</label>
+              <select name="gender" class="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white">
+                <option value="" ${!s.gender ? 'selected' : ''}>Select</option>
+                <option value="Male" ${s.gender === 'Male' ? 'selected' : ''}>Male</option>
+                <option value="Female" ${s.gender === 'Female' ? 'selected' : ''}>Female</option>
+                <option value="Other" ${s.gender === 'Other' ? 'selected' : ''}>Other</option>
+              </select>
+            </div>
+            <div>
+              <label class="block font-semibold text-slate-700 mb-1">Email Address</label>
+              <input type="email" name="email" value="${escapeHtml(s.email || '')}" placeholder="student@example.com" class="w-full px-3 py-2 border border-slate-300 rounded-lg" />
+            </div>
+            <div>
+              <label class="block font-semibold text-slate-700 mb-1">School / College / Occupation</label>
+              <input type="text" name="schoolOrOccupation" value="${escapeHtml(s.schoolOrOccupation || '')}" class="w-full px-3 py-2 border border-slate-300 rounded-lg" />
+            </div>
+          </div>
+          <div>
+            <label class="block font-semibold text-slate-700 mb-1">Residential Address</label>
+            <textarea name="addr" rows="2" class="w-full px-3 py-2 border border-slate-300 rounded-lg">${escapeHtml(s.addr || '')}</textarea>
+          </div>
         </div>
-        <div>
-          <label class="block font-semibold text-slate-700 mb-1">Concession</label>
-          <input type="number" name="concession" value="${s.concession}" class="w-full px-2 py-2 border border-slate-300 rounded-lg" />
+
+        <!-- CONTACT, FAMILY & MUSIC GOAL -->
+        <div class="space-y-2.5">
+          <h4 class="text-[11px] font-bold uppercase tracking-wider text-slate-500 border-b border-slate-100 pb-1">Contact, Family &amp; Notes</h4>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label class="block font-semibold text-slate-700 mb-1">Student WhatsApp</label>
+              <input name="phone" value="${escapeHtml(s.phone || '')}" class="w-full px-3 py-2 border border-slate-300 rounded-lg" required />
+            </div>
+            <div>
+              <label class="block font-semibold text-slate-700 mb-1">Parent / Family Name</label>
+              <input name="guardian" value="${escapeHtml(s.guardian || '')}" class="w-full px-3 py-2 border border-slate-300 rounded-lg" />
+            </div>
+            <div>
+              <label class="block font-semibold text-slate-700 mb-1">Parent Mobile (Family Link)</label>
+              <input name="parentPhone" value="${escapeHtml(s.parentPhone || '')}" placeholder="Same parent mobile links family" class="w-full px-3 py-2 border border-slate-300 rounded-lg" />
+            </div>
+            <div>
+              <label class="block font-semibold text-slate-700 mb-1">Pickup / Safety Note</label>
+              <input name="pickupNote" value="${escapeHtml(s.pickupNote || '')}" class="w-full px-3 py-2 border border-slate-300 rounded-lg" />
+            </div>
+          </div>
+          <div>
+            <label class="block font-semibold text-slate-700 mb-1">Music Learning Goal</label>
+            <input name="musicGoal" value="${escapeHtml(s.musicGoal || '')}" class="w-full px-3 py-2 border border-slate-300 rounded-lg" />
+          </div>
         </div>
-        <div>
-          <label class="block font-semibold text-slate-700 mb-1">Conc. Mos</label>
-          <input type="number" name="concessionMonths" value="${s.concessionMonths || 0}" class="w-full px-2 py-2 border border-slate-300 rounded-lg" />
+
+        <!-- ATTENDANCE & FEES -->
+        <div class="space-y-2.5">
+          <h4 class="text-[11px] font-bold uppercase tracking-wider text-slate-500 border-b border-slate-100 pb-1">Attendance &amp; Fees</h4>
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+            <div>
+              <label class="block font-semibold text-slate-700 mb-1">Genuine Days</label>
+              <input type="number" name="genuineDays" value="${Number(s.genuineDays || 0)}" class="w-full px-2.5 py-2 border border-slate-300 rounded-lg tabular-nums" />
+            </div>
+            <div>
+              <label class="block font-semibold text-slate-700 mb-1">Bonus Credits</label>
+              <input type="number" name="bonusCredits" value="${Number(s.bonusCredits || 0)}" class="w-full px-2.5 py-2 border border-slate-300 rounded-lg tabular-nums" />
+            </div>
+            <div>
+              <label class="block font-semibold text-slate-700 mb-1">Total Fee</label>
+              <input type="number" name="monthlyFee" value="${Number(s.monthlyFee || 0)}" class="w-full px-2.5 py-2 border border-slate-300 rounded-lg tabular-nums" />
+            </div>
+            <div>
+              <label class="block font-semibold text-slate-700 mb-1">Concession</label>
+              <input type="number" name="concession" value="${Number(s.concession || 0)}" class="w-full px-2.5 py-2 border border-slate-300 rounded-lg tabular-nums" />
+            </div>
+            <div>
+              <label class="block font-semibold text-slate-700 mb-1">Conc. Mos</label>
+              <input type="number" name="concessionMonths" value="${Number(s.concessionMonths || 0)}" class="w-full px-2.5 py-2 border border-slate-300 rounded-lg tabular-nums" />
+            </div>
+            <div>
+              <label class="block font-semibold text-slate-700 mb-1">ID Card Fee</label>
+              <input type="number" name="idCardFee" value="${Number(s.idCardFee || 0)}" class="w-full px-2.5 py-2 border border-slate-300 rounded-lg tabular-nums" />
+            </div>
+            <div>
+              <label class="block font-semibold text-slate-700 mb-1">Cert Fee</label>
+              <input type="number" name="certFee" value="${Number(s.certFee || 0)}" class="w-full px-2.5 py-2 border border-slate-300 rounded-lg tabular-nums" />
+            </div>
+          </div>
         </div>
-        <div>
-          <label class="block font-semibold text-slate-700 mb-1">ID Fee</label>
-          <input type="number" name="idCardFee" value="${s.idCardFee}" class="w-full px-2 py-2 border border-slate-300 rounded-lg" />
+
+        <div class="flex justify-between items-center pt-3 border-t border-slate-200">
+          <button type="button" onclick="deleteStudent('${safeId}')" class="min-h-[40px] px-3 py-2 text-red-700 border border-red-200 rounded-lg font-semibold hover:bg-red-50">Remove Student</button>
+          <div class="flex gap-2">
+            <button type="button" onclick="closeModal()" class="min-h-[40px] px-4 py-2 border border-slate-300 rounded-lg font-semibold">Cancel</button>
+            <button type="submit" class="min-h-[40px] px-5 py-2 bg-[#0F172A] hover:bg-slate-800 text-white rounded-lg font-bold">Save Profile</button>
+          </div>
         </div>
-        <div>
-          <label class="block font-semibold text-slate-700 mb-1">Cert Fee</label>
-          <input type="number" name="certFee" value="${s.certFee}" class="w-full px-2 py-2 border border-slate-300 rounded-lg" />
-        </div>
-      </div>
-      <div class="flex justify-between items-center pt-3">
-        <button type="button" onclick="deleteStudent('${s.id}')" class="px-3 py-2 text-red-700 border border-red-200 rounded-lg font-semibold hover:bg-red-50">Remove Student</button>
-        <div class="flex gap-2">
-          <button type="button" onclick="closeModal()" class="px-4 py-2 border border-slate-300 rounded-lg font-semibold">Cancel</button>
-          <button type="submit" class="px-4 py-2 bg-[#0F172A] text-white rounded-lg font-semibold">Save</button>
-        </div>
-      </div>
-    </form>
+      </form>
+    </div>
   `);
 }
 
@@ -2864,17 +3082,30 @@ function saveEditedStudent(e, stuId) {
   e.preventDefault();
   const form = e.target;
   const s = appState.students.find(x => x.id === stuId);
+  if (!s) return;
   const fd = new FormData(form);
   const selectedCourses = [...form.querySelectorAll('input[name="selectedCourses"]:checked')].map(cb => cb.value);
   s.courses = selectedCourses.length ? selectedCourses : s.courses;
   s.course = s.courses.join(', ');
-  s.name = fd.get('name').trim();
-  s.phone = fd.get('phone').trim();
+  s.name = String(fd.get('name') || s.name).trim();
+  if (fd.get('admissionDate')) s.admissionDate = String(fd.get('admissionDate')).trim();
+  const newPin = String(fd.get('pin') || '').trim();
+  if (newPin.length >= 4) s.pin = newPin;
+  s.pinChanged = !form.querySelector('input[name="requirePinChange"]')?.checked;
+  s.phone = String(fd.get('phone') || '').trim();
   s.parentPhone = String(fd.get('parentPhone') || '').trim();
-  s.guardian = (fd.get('guardian') || s.guardian).trim();
+  s.guardian = String(fd.get('guardian') || '').trim();
+  s.dob = String(fd.get('dob') || '').trim();
+  s.gender = String(fd.get('gender') || '').trim();
+  s.email = String(fd.get('email') || '').trim();
+  s.schoolOrOccupation = String(fd.get('schoolOrOccupation') || '').trim();
+  s.addr = String(fd.get('addr') || '').trim();
+  s.pickupNote = String(fd.get('pickupNote') || '').trim();
+  s.musicGoal = String(fd.get('musicGoal') || '').trim();
   if (fd.get('batch')) s.batch = fd.get('batch');
   s.grade = fd.get('grade');
   s.genuineDays = Number(fd.get('genuineDays') || 0);
+  s.bonusCredits = Number(fd.get('bonusCredits') || 0);
   s.monthlyFee = Number(fd.get('monthlyFee') || 0);
   s.concession = Number(fd.get('concession') || 0);
   s.concessionMonths = Number(fd.get('concessionMonths') || 0);
@@ -2883,14 +3114,30 @@ function saveEditedStudent(e, stuId) {
   saveState();
   closeModal();
   renderCurrentTab();
+  showToast(`Saved profile for ${s.name}`);
 }
 
 function deleteStudent(stuId) {
-  if (!confirm('Remove this student record?')) return;
+  const s = appState.students.find(x => x.id === stuId);
+  const safeId = escapeHtml(stuId);
+  showModal(`
+    <div class="space-y-4">
+      <h3 class="text-base font-bold text-[#0F172A]">Remove Student Record</h3>
+      <p class="text-xs text-slate-600">Are you sure you want to permanently remove <b>${escapeHtml(s ? s.name : 'this student')}</b>?</p>
+      <div class="flex justify-end gap-2 pt-2">
+        <button type="button" onclick="openEditStudentModal('${safeId}')" class="px-4 py-2 text-xs font-semibold border border-slate-300 rounded-lg hover:bg-slate-50">Cancel</button>
+        <button type="button" onclick="executeDeleteStudent('${safeId}')" class="px-4 py-2 text-xs font-semibold bg-[#B91C1C] text-white rounded-lg hover:bg-red-800">Remove</button>
+      </div>
+    </div>
+  `);
+}
+
+function executeDeleteStudent(stuId) {
   appState.students = appState.students.filter(s => s.id !== stuId);
   saveState();
   closeModal();
   renderCurrentTab();
+  showToast('Student record removed');
 }
 
 function openIdCardModal(stuId) {
@@ -4136,15 +4383,23 @@ function openStudentProfileModal(stuId) {
       <!-- PHOTO & ACADEMY IDENTITY SUMMARY -->
       <div class="flex flex-col sm:flex-row items-center gap-4 p-3.5 bg-slate-50 border border-slate-200 rounded-xl">
         <div id="profilePhotoPreview" class="w-20 h-24 rounded-lg bg-white border border-slate-300 flex items-center justify-center text-xs font-bold text-slate-400 overflow-hidden shrink-0">
-          ${s.photoDataUrl ? `<img src="${safeDataUrl(s.photoDataUrl, 'data:image/')}" class="w-full h-full object-cover" />` : 'PHOTO'}
+          ${safeDataUrl(s.photoDataUrl, 'data:image/') ? `<img src="${safeDataUrl(s.photoDataUrl, 'data:image/')}" class="w-full h-full object-cover" />` : 'PHOTO'}
         </div>
-        <div class="flex-1 text-center sm:text-left space-y-1.5 text-xs">
+        <div class="flex-1 text-center sm:text-left space-y-2 text-xs">
           <div class="font-bold text-[#0F172A]">${escapeHtml(s.course)} &mdash; <span class="text-indigo-700">${escapeHtml(s.grade)}</span></div>
           <div class="text-slate-600">Batch: <b>${escapeHtml(s.batch)}</b> &bull; Admitted: <b>${escapeHtml(s.admissionDate)}</b></div>
-          <label class="inline-flex items-center justify-center px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-800 cursor-pointer hover:bg-slate-100">
-            Upload / Change Photo
-            <input type="file" accept="image/*" onchange="uploadStudentPhoto(event, '${safeId}', true)" class="hidden" />
-          </label>
+          <div class="text-[10px] text-slate-500">Auto-crops to portrait ID ratio &amp; optimizes file size automatically.</div>
+          <div class="flex flex-wrap items-center justify-center sm:justify-start gap-2">
+            <label class="inline-flex items-center justify-center min-h-[36px] px-3 py-1.5 bg-[#0F172A] hover:bg-slate-800 text-white rounded-lg text-xs font-semibold cursor-pointer transition">
+              Take Camera Photo
+              <input type="file" accept="image/*" capture="user" onchange="uploadStudentPhoto(event, '${safeId}', true, 'profilePhotoPreview')" class="hidden" />
+            </label>
+            <label class="inline-flex items-center justify-center min-h-[36px] px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-800 cursor-pointer hover:bg-slate-100 transition">
+              Choose from Gallery
+              <input type="file" accept="image/*" onchange="uploadStudentPhoto(event, '${safeId}', true, 'profilePhotoPreview')" class="hidden" />
+            </label>
+            ${safeDataUrl(s.photoDataUrl, 'data:image/') ? `<button type="button" onclick="removeStudentPhoto('${safeId}', 'profilePhotoPreview')" class="min-h-[36px] px-2.5 py-1.5 border border-red-200 text-red-700 bg-red-50 rounded-lg text-xs font-semibold hover:bg-red-100">Remove</button>` : ''}
+          </div>
         </div>
       </div>
 
@@ -4503,25 +4758,55 @@ function renderStudentPortal(el, tab) {
   }
 }
 
-function uploadStudentPhoto(e, stuId, keepModalOpen = false) {
-  const file = e.target.files[0];
+async function uploadStudentPhoto(e, stuId, keepModalOpen = false, previewElId = 'profilePhotoPreview') {
+  const input = e.target;
+  const file = input && input.files && input.files[0];
   if (!file) return;
-  const reader = new FileReader();
-  reader.onload = async function(ev) {
+
+  const preview = keepModalOpen ? document.getElementById(previewElId) : null;
+  const prevHtml = preview ? preview.innerHTML : '';
+  if (preview) {
+    preview.innerHTML = '<span class="text-[10px] font-semibold text-indigo-700 text-center px-1">Cropping...</span>';
+  }
+  showToast('Auto-cropping & resizing ID photo...');
+
+  try {
+    const result = await autoCropAndResizeIdPhoto(file, 36000);
+    if (!result || !result.dataUrl || !result.dataUrl.startsWith('data:image/')) {
+      throw new Error('Invalid processed image');
+    }
+
     const s = appState.students.find(x => x.id === stuId);
     if (!s) return;
-    s.photoDataUrl = await compressImageDataUrl(ev.target.result, 360, 440, 0.82);
+
+    s.photoDataUrl = result.dataUrl;
     saveState();
-    renderCurrentTab();
-    if (keepModalOpen) {
-      const preview = document.getElementById('profilePhotoPreview');
-      if (preview) {
-        preview.innerHTML = `<img src="${safeDataUrl(s.photoDataUrl, 'data:image/')}" class="w-full h-full object-cover" />`;
-      }
+
+    // Update live preview immediately without closing modal
+    if (preview) {
+      preview.innerHTML = `<img src="${safeDataUrl(s.photoDataUrl, 'data:image/')}" class="w-full h-full object-cover" />`;
     }
-    showToast('Photo updated');
-  };
-  reader.readAsDataURL(file);
+    // Also refresh underlying ID card / Students grid live
+    renderCurrentTab();
+    showToast(`ID Photo auto-cropped & saved (${result.kb} KB)`);
+  } catch (err) {
+    console.error('Photo upload error:', err);
+    if (preview) preview.innerHTML = prevHtml || 'PHOTO';
+    showToast('Could not process photo. Please try a JPG/PNG image.');
+  } finally {
+    if (input) input.value = '';
+  }
+}
+
+function removeStudentPhoto(stuId, previewElId = 'profilePhotoPreview') {
+  const s = appState.students.find(x => x.id === stuId);
+  if (!s) return;
+  s.photoDataUrl = '';
+  saveState();
+  const preview = document.getElementById(previewElId);
+  if (preview) preview.innerHTML = 'PHOTO';
+  renderCurrentTab();
+  showToast('ID Photo removed');
 }
 
 function updateStudentField(stuId, field, val) {
