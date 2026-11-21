@@ -7,6 +7,9 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-title" content="TSM" />
   <title>TIKARIYA'S SCHOOL OF MUSIC</title>
+  <meta name="description" content="Official management portal, attendance tracker, QR verification, and study material studio for Tikariya's School of Music — B. S. Tikariya Cultural Foundation." />
+  <meta property="og:title" content="TIKARIYA'S SCHOOL OF MUSIC" />
+  <meta property="og:description" content="Official management portal, attendance tracker, QR verification, and study material studio for Tikariya's School of Music." />
   <link id="faviconLink" rel="icon" type="image/png" href="" />
   <link id="appleIconLink" rel="apple-touch-icon" href="" />
   <link id="manifestLink" rel="manifest" href="" />
@@ -25,6 +28,17 @@
     .no-scrollbar::-webkit-scrollbar { display: none; }
     .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
     .tabular-nums { font-variant-numeric: tabular-nums; }
+    .tsm-marquee-wrap { overflow: hidden; position: relative; width: 100%; }
+    .tsm-marquee-track { display: inline-flex; align-items: center; white-space: nowrap; will-change: transform; animation: tsmMarquee 22s linear infinite; }
+    .tsm-marquee-wrap:hover .tsm-marquee-track, .tsm-marquee-wrap:focus-within .tsm-marquee-track { animation-play-state: paused; }
+    @keyframes tsmMarquee {
+      0% { transform: translateX(0%); }
+      100% { transform: translateX(-50%); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .tsm-marquee-track { animation: none; white-space: normal; }
+      .tsm-marquee-dup { display: none; }
+    }
   </style>
 </head>
 <body class="min-h-screen flex flex-col">
@@ -71,9 +85,9 @@
   <!-- MAIN APPLICATION SHELL -->
   <div id="appShell" class="hidden flex-1 flex flex-col">
     <header class="bg-white border-b border-slate-200 sticky top-0 z-30">
-      <div class="max-w-7xl mx-auto px-3 sm:px-6 py-2">
-        <div class="font-extrabold text-sm sm:text-lg text-[#0F172A] uppercase tracking-tight whitespace-nowrap">TIKARIYA'S SCHOOL OF <span class="text-[#B91C1C]">M</span>USIC</div>
-        <p class="text-[7.5px] sm:text-[9.5px] tracking-tighter text-slate-500 whitespace-nowrap mt-0.5" style="font-family: 'Arial Narrow', 'Roboto Condensed', sans-serif;">B. S. TIKARIYA CULTURAL FOUNDATION &bull; <span class="whitespace-nowrap">CIN: U88900MH2025NPL454435</span></p>
+      <div class="max-w-7xl mx-auto px-2 sm:px-6 py-2 text-center">
+        <div class="w-full text-center font-extrabold text-[clamp(1.05rem,5.2vw,1.5rem)] sm:text-xl text-[#0F172A] uppercase tracking-tight leading-tight whitespace-nowrap">TIKARIYA'S SCHOOL OF <span class="text-[#B91C1C]">M</span>USIC</div>
+        <p class="text-center text-[8.5px] sm:text-[10px] tracking-tight text-slate-500 whitespace-nowrap mt-0.5" style="font-family: 'Arial Narrow', 'Roboto Condensed', sans-serif;">B. S. TIKARIYA CULTURAL FOUNDATION &bull; <span class="whitespace-nowrap">CIN: U88900MH2025NPL454435</span></p>
       </div>
 
       <nav id="mainNav" class="bg-slate-50 border-t border-slate-200 overflow-x-auto no-scrollbar">
@@ -96,6 +110,202 @@
   <div id="toast" class="hidden fixed bottom-4 right-4 z-50 bg-slate-900 text-white text-xs font-medium px-4 py-2.5 rounded-lg shadow-lg"></div>
 
 <script>
+// ==========================================
+// 0. CORE SECURITY, DATE & DOWNLOAD UTILITIES
+// ==========================================
+function escapeHtml(str) {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function safeDataUrl(url, prefix) {
+  const s = String(url || '').trim();
+  if (!s || !s.startsWith(prefix)) return '';
+  return s.replace(/["'<>\\()]/g, '');
+}
+
+function formatLocalDate(d = new Date()) {
+  const yr = d.getFullYear();
+  const mo = String(d.getMonth() + 1).padStart(2, '0');
+  const dy = String(d.getDate()).padStart(2, '0');
+  return `${yr}-${mo}-${dy}`;
+}
+
+function parseLocalDate(dateStr) {
+  const parts = String(dateStr || '').split('-').map(Number);
+  if (parts.length === 3 && !parts.some(isNaN)) {
+    return new Date(parts[0], parts[1] - 1, parts[2], 12, 0, 0);
+  }
+  const d = new Date(dateStr);
+  return isNaN(d.getTime()) ? new Date() : new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12, 0, 0);
+}
+
+function sanitizePdfText(str) {
+  return String(str ?? '')
+    .replace(/₹/g, 'INR ')
+    .replace(/[—–]/g, '-')
+    .replace(/[‘’]/g, "'")
+    .replace(/[“”]/g, '"')
+    .replace(/•/g, '|')
+    .replace(/[^\x20-\x7E\xA0-\xFF]/g, '');
+}
+
+function dataUrlToUint8Array(dataUrl) {
+  const str = String(dataUrl || '').trim();
+  const commaIdx = str.indexOf(',');
+  const b64 = (commaIdx !== -1 ? str.slice(commaIdx + 1) : str).replace(/\s+/g, '');
+  const binStr = atob(b64);
+  const len = binStr.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) bytes[i] = binStr.charCodeAt(i);
+  return bytes;
+}
+
+function getMimeFromDataUrl(dataUrl, fallback = 'application/pdf') {
+  const m = String(dataUrl || '').match(/^data:([^;,]+)/i);
+  return m ? m[1] : fallback;
+}
+
+function isStudentFeesDay(dateStr, student) {
+  if (!student || !dateStr) return false;
+  if (student.lastPaymentDate && student.lastPaymentDate !== '-' && dateStr === student.lastPaymentDate) {
+    return true;
+  }
+  const admStr = student.admissionDate || '';
+  if (!admStr || dateStr <= admStr) return false;
+  const admParts = String(admStr).split('-').map(Number);
+  const dtParts = String(dateStr).split('-').map(Number);
+  if (admParts.length !== 3 || dtParts.length !== 3 || admParts.some(isNaN) || dtParts.some(isNaN)) return false;
+  const daysInThisMonth = new Date(dtParts[0], dtParts[1], 0).getDate();
+  const expectedDueDay = Math.min(admParts[2], daysInThisMonth);
+  return dtParts[2] === expectedDueDay;
+}
+
+function getAttendanceLegendHtml() {
+  return `
+    <div class="flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5 text-[11px] font-semibold bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+      <span class="inline-flex items-center gap-1"><span class="font-black text-emerald-600 text-sm">P</span><span class="text-slate-600">Present</span></span>
+      <span class="inline-flex items-center gap-1"><span class="font-black text-purple-600 text-sm">H</span><span class="text-slate-600">Holiday</span></span>
+      <span class="inline-flex items-center gap-1"><span class="font-black text-red-600 text-sm">A</span><span class="text-slate-600">Absent</span></span>
+      <span class="inline-flex items-center gap-1"><span class="font-black text-indigo-600 text-sm">AD</span><span class="text-slate-600">Admission</span></span>
+      <span class="inline-flex items-center gap-1"><span class="font-black text-amber-600 text-sm">TL</span><span class="text-slate-600">Teacher's Leave</span></span>
+      <span class="inline-flex items-center gap-1"><span class="font-black text-teal-700 text-sm">F</span><span class="text-slate-600">Fees Day</span></span>
+    </div>
+  `;
+}
+
+function buildStudentDayCellContent(status, isBeforeAdmission, isHoliday, isAdmissionDay, isFeesDay) {
+  if (isBeforeAdmission) {
+    return {
+      bgCls: 'bg-slate-50 border-slate-100 opacity-45',
+      mainHtml: '<span class="text-[9px] text-slate-300">&mdash;</span>',
+      tagHtml: ''
+    };
+  }
+
+  let primaryCode = '';
+  let primaryTextCls = '';
+  let bgCls = 'bg-white border-slate-200';
+
+  if (isHoliday) {
+    primaryCode = 'H';
+    primaryTextCls = 'text-purple-600';
+    bgCls = 'bg-purple-50/80 border-purple-200';
+  } else if (status === 'present') {
+    primaryCode = 'P';
+    primaryTextCls = 'text-emerald-600';
+    bgCls = 'bg-emerald-50/80 border-emerald-200';
+  } else if (status === 'absent') {
+    primaryCode = 'A';
+    primaryTextCls = 'text-red-600';
+    bgCls = 'bg-red-50/80 border-red-200';
+  } else if (status === 'teacher_leave') {
+    primaryCode = 'TL';
+    primaryTextCls = 'text-amber-600';
+    bgCls = 'bg-amber-50/80 border-amber-200';
+  } else if (status === 'bonus_used') {
+    primaryCode = 'B';
+    primaryTextCls = 'text-sky-600';
+    bgCls = 'bg-sky-50/80 border-sky-200';
+  } else if (status === 'excused_leave') {
+    primaryCode = 'E';
+    primaryTextCls = 'text-slate-600';
+    bgCls = 'bg-slate-100 border-slate-300';
+  }
+
+  let tagHtml = '';
+  if (!primaryCode) {
+    if (isAdmissionDay) {
+      primaryCode = 'AD';
+      primaryTextCls = 'text-indigo-600';
+      bgCls = 'bg-indigo-50/90 border-indigo-300';
+    } else if (isFeesDay) {
+      primaryCode = 'F';
+      primaryTextCls = 'text-teal-700';
+      bgCls = 'bg-teal-50/90 border-teal-300';
+    }
+  } else {
+    const tags = [];
+    if (isAdmissionDay) tags.push('<span class="text-[9px] sm:text-[10px] font-black text-indigo-700 leading-none">AD</span>');
+    if (isFeesDay) tags.push('<span class="text-[9px] sm:text-[10px] font-black text-teal-700 leading-none">F</span>');
+    tagHtml = tags.join(' ');
+    if (isAdmissionDay) bgCls += ' ring-1 ring-indigo-500';
+    else if (isFeesDay) bgCls += ' ring-1 ring-teal-500';
+  }
+
+  const mainHtml = primaryCode
+    ? `<span class="text-lg sm:text-2xl font-black leading-none tracking-tight ${primaryTextCls}">${primaryCode}</span>`
+    : '<span class="text-[10px] text-slate-300">&middot;</span>';
+
+  return { bgCls, mainHtml, tagHtml };
+}
+
+function triggerBlobDownload(blob, fileName) {
+  const blobUrl = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = blobUrl;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
+}
+
+function formatWhatsAppPhone(raw) {
+  const digits = String(raw || '').replace(/\D+/g, '');
+  if (!digits) return '';
+  if (digits.length === 10) return '91' + digits;
+  if (digits.length === 11 && digits.startsWith('0')) return '91' + digits.slice(1);
+  return digits;
+}
+
+function compressImageDataUrl(dataUrl, maxWidth, maxHeight, quality) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      let { width, height } = img;
+      const ratio = Math.min(maxWidth / Math.max(1, width), maxHeight / Math.max(1, height), 1);
+      width = Math.max(1, Math.round(width * ratio));
+      height = Math.max(1, Math.round(height * ratio));
+      const c = document.createElement('canvas');
+      c.width = width;
+      c.height = height;
+      const ctx = c.getContext('2d');
+      ctx.drawImage(img, 0, 0, width, height);
+      try {
+        resolve(c.toDataURL('image/jpeg', quality));
+      } catch (e) {
+        resolve(dataUrl);
+      }
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
+}
 
 // ==========================================
 // STUDENT MONTHLY CALENDAR MODAL & EDITORS
@@ -111,56 +321,33 @@ function openStudentMonthlyCalendarModal(stuId, monthParam) {
   const monthLabel = firstDay.toLocaleString('default', { month: 'long', year: 'numeric' });
   const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   const admDateStr = s.admissionDate || '2000-01-01';
+  const safeId = escapeHtml(s.id);
 
   let cells = '';
   for (let i = 0; i < startWeekday; i++) {
-    cells += `<div class="h-20 bg-slate-50 border border-slate-100 rounded-lg"></div>`;
+    cells += `<div class="h-16 sm:h-20 bg-slate-50/70 border border-slate-100 rounded-lg"></div>`;
   }
 
   for (let day = 1; day <= daysInMonth; day++) {
     const dt = `${yr}-${String(mo).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     const isBeforeAdmission = dt < admDateStr;
     const isAdmissionDay = dt === admDateStr;
+    const isFeesDay = isStudentFeesDay(dt, s);
     const isHoliday = isDateHoliday(dt);
+    const isSunday = new Date(yr, mo - 1, day).getDay() === 0;
     const rec = getAttendanceRecord(dt, s.id);
     const status = isBeforeAdmission ? 'pre' : (isHoliday ? 'holiday' : rec.status);
 
-    let badge = '';
-    let bgCls = 'bg-white border-slate-200';
-
-    if (isBeforeAdmission) {
-      bgCls = 'bg-slate-100 border-slate-200 opacity-50';
-      badge = `<span class="text-[9px] text-slate-400">Pre-Adm</span>`;
-    } else if (isHoliday) {
-      bgCls = 'bg-purple-50 border-purple-200';
-      badge = `<span class="px-1.5 py-0.5 text-[9px] font-bold bg-purple-100 text-purple-800 rounded">HOLIDAY</span>`;
-    } else if (status === 'present') {
-      bgCls = 'bg-emerald-50 border-emerald-300';
-      badge = `<span class="px-1.5 py-0.5 text-[9px] font-bold bg-emerald-100 text-emerald-800 rounded">PRESENT (P)</span>`;
-    } else if (status === 'absent') {
-      bgCls = 'bg-red-50 border-red-300';
-      badge = `<span class="px-1.5 py-0.5 text-[9px] font-bold bg-red-100 text-red-800 rounded">ABSENT (A)</span>`;
-    } else if (status === 'teacher_leave') {
-      bgCls = 'bg-amber-50 border-amber-300';
-      badge = `<span class="px-1.5 py-0.5 text-[9px] font-bold bg-amber-100 text-amber-800 rounded">T-LEAVE (L)</span>`;
-    } else if (status === 'bonus_used') {
-      bgCls = 'bg-indigo-50 border-indigo-300';
-      badge = `<span class="px-1.5 py-0.5 text-[9px] font-bold bg-indigo-100 text-indigo-800 rounded">BONUS (B)</span>`;
-    } else if (status === 'excused_leave') {
-      bgCls = 'bg-slate-100 border-slate-300';
-      badge = `<span class="px-1.5 py-0.5 text-[9px] font-bold bg-slate-200 text-slate-800 rounded">EXCUSED</span>`;
-    } else {
-      badge = `<span class="text-[9px] text-slate-400">Unmarked</span>`;
-    }
+    const cell = buildStudentDayCellContent(status, isBeforeAdmission, isHoliday, isAdmissionDay, isFeesDay);
 
     cells += `
-      <div onclick="${isBeforeAdmission ? '' : `openDayStatusSelector('${s.id}', '${dt}')`}" 
-           class="h-20 p-1.5 border rounded-lg flex flex-col justify-between ${bgCls} ${isBeforeAdmission ? '' : 'cursor-pointer hover:shadow-sm transition'}">
-        <div class="flex justify-between items-center">
-          <span class="text-xs font-bold text-slate-700">${day}</span>
-          ${isAdmissionDay ? '<span class="px-1 text-[8px] font-bold bg-indigo-700 text-white rounded">ADM</span>' : ''}
+      <div onclick="${isBeforeAdmission ? '' : `openDayStatusSelector('${safeId}', '${dt}')`}"
+           class="h-16 sm:h-20 p-1 sm:p-1.5 border rounded-lg flex flex-col justify-between ${cell.bgCls} ${isBeforeAdmission ? '' : 'cursor-pointer hover:shadow-sm transition'}">
+        <div class="flex justify-between items-start gap-0.5">
+          <span class="text-[10px] sm:text-xs font-bold leading-none tabular-nums ${isSunday ? 'text-red-600' : 'text-slate-700'}">${day}</span>
+          <div class="flex items-center gap-0.5">${cell.tagHtml}</div>
         </div>
-        <div class="text-center">${badge}</div>
+        <div class="flex-1 flex items-center justify-center">${cell.mainHtml}</div>
       </div>
     `;
   }
@@ -171,48 +358,53 @@ function openStudentMonthlyCalendarModal(stuId, monthParam) {
   const nextMonthStr = `${nextDate.getFullYear()}-${String(nextDate.getMonth() + 1).padStart(2, '0')}`;
 
   showModal(`
-    <div class="space-y-4">
+    <div class="space-y-3.5">
       <div class="flex items-center justify-between border-b border-slate-200 pb-3">
         <div>
-          <h3 class="text-base font-bold text-[#0F172A]">${s.name} (${s.rollNo})</h3>
-          <p class="text-xs text-indigo-700 font-semibold">${s.grade} &bull; ${s.course} &bull; Genuine: ${s.genuineDays} Days</p>
+          <h3 class="text-base font-bold text-[#0F172A]">${escapeHtml(s.name)} (${escapeHtml(s.rollNo)})</h3>
+          <p class="text-xs text-indigo-700 font-semibold">${escapeHtml(s.grade)} &bull; ${escapeHtml(s.course)} &bull; Genuine: ${Number(s.genuineDays || 0)} Days</p>
         </div>
-        <button onclick="closeModal()" class="text-xs font-semibold text-slate-500 hover:text-slate-900">Close</button>
+        <button onclick="closeModal()" class="px-2.5 py-1.5 text-xs font-semibold text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50">Close</button>
       </div>
 
       <div class="flex items-center justify-between">
-        <button type="button" onclick="openStudentMonthlyCalendarModal('${s.id}', '${prevMonthStr}')" class="px-3 py-1.5 text-xs font-semibold border border-slate-300 rounded-lg hover:bg-slate-50">&larr; Prev Month</button>
-        <h4 class="text-sm font-bold text-[#0F172A] uppercase">${monthLabel}</h4>
-        <button type="button" onclick="openStudentMonthlyCalendarModal('${s.id}', '${nextMonthStr}')" class="px-3 py-1.5 text-xs font-semibold border border-slate-300 rounded-lg hover:bg-slate-50">Next Month &rarr;</button>
+        <button type="button" onclick="openStudentMonthlyCalendarModal('${safeId}', '${prevMonthStr}')" class="px-3 py-1.5 text-xs font-semibold border border-slate-300 rounded-lg hover:bg-slate-50">&larr; Prev</button>
+        <h4 class="text-sm font-bold text-[#0F172A] uppercase">${escapeHtml(monthLabel)}</h4>
+        <button type="button" onclick="openStudentMonthlyCalendarModal('${safeId}', '${nextMonthStr}')" class="px-3 py-1.5 text-xs font-semibold border border-slate-300 rounded-lg hover:bg-slate-50">Next &rarr;</button>
       </div>
 
-      <div class="grid grid-cols-7 gap-1 text-center text-[11px] font-bold text-slate-500 uppercase">
+      ${getAttendanceLegendHtml()}
+
+      <div class="grid grid-cols-7 gap-1 text-center text-[10px] sm:text-[11px] font-bold text-slate-500 uppercase">
         ${weekdays.map(w => `<div>${w}</div>`).join('')}
       </div>
-      <div class="grid grid-cols-7 gap-1.5">
+      <div class="grid grid-cols-7 gap-1 sm:gap-1.5">
         ${cells}
       </div>
-      <p class="text-[11px] text-slate-500 text-center">Click any date cell to update attendance status (Present, Absent, Leave, etc.)</p>
+      <p class="text-[11px] text-slate-500 text-center">Tap any date cell to update attendance status (P, A, TL, B, E)</p>
     </div>
   `);
 }
 
 function openDayStatusSelector(stuId, dateStr) {
   const s = appState.students.find(x => x.id === stuId);
+  if (!s) return;
+  const safeId = escapeHtml(stuId);
+  const safeDt = escapeHtml(dateStr);
   showModal(`
     <div class="space-y-4 max-w-sm mx-auto">
       <div class="flex items-center justify-between border-b border-slate-200 pb-2">
-        <h3 class="text-sm font-bold text-[#0F172A]">Edit Status: ${dateStr}</h3>
-        <button onclick="openStudentMonthlyCalendarModal('${stuId}', '${dateStr.slice(0, 7)}')" class="text-xs text-indigo-700 font-semibold">&larr; Back</button>
+        <h3 class="text-sm font-bold text-[#0F172A]">Edit Status: ${safeDt}</h3>
+        <button onclick="openStudentMonthlyCalendarModal('${safeId}', '${safeDt.slice(0, 7)}')" class="text-xs text-indigo-700 font-semibold">&larr; Back</button>
       </div>
-      <p class="text-xs font-semibold text-slate-700">${s.name} (${s.rollNo})</p>
+      <p class="text-xs font-semibold text-slate-700">${escapeHtml(s.name)} (${escapeHtml(s.rollNo)})</p>
       <div class="space-y-2">
-        <button onclick="setSpecificDayStatus('${stuId}', '${dateStr}', 'present')" class="w-full py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-lg">Present (P)</button>
-        <button onclick="setSpecificDayStatus('${stuId}', '${dateStr}', 'absent')" class="w-full py-2.5 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-lg">Absent (A)</button>
-        <button onclick="setSpecificDayStatus('${stuId}', '${dateStr}', 'teacher_leave')" class="w-full py-2.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-lg">Teacher Leave (L)</button>
-        <button onclick="setSpecificDayStatus('${stuId}', '${dateStr}', 'bonus_used')" class="w-full py-2.5 bg-indigo-700 hover:bg-indigo-800 text-white text-xs font-bold rounded-lg">Bonus Used (B)</button>
-        <button onclick="setSpecificDayStatus('${stuId}', '${dateStr}', 'excused_leave')" class="w-full py-2.5 bg-slate-700 hover:bg-slate-800 text-white text-xs font-bold rounded-lg">Excused Leave</button>
-        <button onclick="setSpecificDayStatus('${stuId}', '${dateStr}', 'unmarked')" class="w-full py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-800 text-xs font-bold rounded-lg">Clear / Unmark</button>
+        <button onclick="setSpecificDayStatus('${safeId}', '${safeDt}', 'present')" class="w-full py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-lg">Present (P)</button>
+        <button onclick="setSpecificDayStatus('${safeId}', '${safeDt}', 'absent')" class="w-full py-2.5 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-lg">Absent (A)</button>
+        <button onclick="setSpecificDayStatus('${safeId}', '${safeDt}', 'teacher_leave')" class="w-full py-2.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-lg">Teacher Leave (L)</button>
+        <button onclick="setSpecificDayStatus('${safeId}', '${safeDt}', 'bonus_used')" class="w-full py-2.5 bg-indigo-700 hover:bg-indigo-800 text-white text-xs font-bold rounded-lg">Bonus Used (B)</button>
+        <button onclick="setSpecificDayStatus('${safeId}', '${safeDt}', 'excused_leave')" class="w-full py-2.5 bg-slate-700 hover:bg-slate-800 text-white text-xs font-bold rounded-lg">Excused Leave</button>
+        <button onclick="setSpecificDayStatus('${safeId}', '${safeDt}', 'unmarked')" class="w-full py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-800 text-xs font-bold rounded-lg">Clear / Unmark</button>
       </div>
     </div>
   `);
@@ -231,8 +423,9 @@ function setSpecificDayStatus(stuId, dateStr, status) {
     };
   }
   const stu = appState.students.find(x => x.id === stuId);
-  if (stu) recalculateStudentAttendanceStats(stu);
+  if (stu) recalculateStudentAttendanceStats(stu, true);
   saveState();
+  renderCurrentTab();
   openStudentMonthlyCalendarModal(stuId, dateStr.slice(0, 7));
   showToast(`Updated attendance for ${dateStr}`);
 }
@@ -488,13 +681,14 @@ const DEFAULT_STATE = {
 let appState = loadState();
 let currentUser = loadSession();
 let activeTab = currentUser ? (currentUser.role === 'admin' ? 'dashboard' : 'student_home') : 'dashboard';
-let selectedDate = new Date().toISOString().split('T')[0];
+let selectedDate = formatLocalDate(new Date());
 let calendarMonth = selectedDate.slice(0, 7);
 let attendanceSubView = 'register';
 let filterBatch = 'ALL';
 let adminChatRoll = appState.students[0]?.rollNo || 'TSM-0001';
 let selectedReceiptIds = [];
 let db = null;
+let masterStateUnsubscribe = null;
 let cloudSyncStatus = 'Connecting...';
 let loadedCustomFont = null;
 let loadedFontName = '';
@@ -504,6 +698,7 @@ let uploadedBasePdfBytes = null;
 let uploadedBasePdfName = '';
 let html5QrScanner = null;
 let lastSeenPushId = localStorage.getItem('tsm_last_push_id') || '';
+let toastTimer = null;
 
 // In-App Audio Recorder State
 let mediaRecorder = null;
@@ -512,6 +707,7 @@ let recordedAudioDataUrl = '';
 let recordedDurationSec = 0;
 let recordingTimerInterval = null;
 let isRecordingAudio = false;
+let discardAudioOnStop = false;
 
 const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
 
@@ -547,6 +743,13 @@ function normalizeStudent(s) {
   if (s.concessionMonths === undefined) s.concessionMonths = 0;
   if (!s.parentPhone) s.parentPhone = s.phone || '';
   if (!s.pin) s.pin = '1234';
+  if (s.pinChanged === undefined) s.pinChanged = Boolean(String(s.pin).trim() !== '1234');
+  if (s.dob === undefined) s.dob = '';
+  if (s.email === undefined) s.email = '';
+  if (s.addr === undefined) s.addr = '';
+  if (s.gender === undefined) s.gender = '';
+  if (s.schoolOrOccupation === undefined) s.schoolOrOccupation = '';
+  if (s.musicGoal === undefined) s.musicGoal = '';
   if (!s.grade) {
     const gradeIdx = Math.min(GRADES.length - 1, Math.floor((s.genuineDays || 0) / 48));
     s.grade = GRADES[gradeIdx];
@@ -557,7 +760,7 @@ function normalizeStudent(s) {
 // ==========================================
 // 3. GENUINE DAYS & BONUS AUTO-CONVERSION CALCULATOR
 // ==========================================
-function recalculateStudentAttendanceStats(student) {
+function recalculateStudentAttendanceStats(student, resetIfEmpty = true) {
   const admDate = student.admissionDate || '2000-01-01';
   const entries = [];
   Object.entries(appState.attendance || {}).forEach(([key, rec]) => {
@@ -570,13 +773,20 @@ function recalculateStudentAttendanceStats(student) {
     }
   });
 
-  if (!entries.length) return;
+  if (!entries.length) {
+    if (resetIfEmpty) {
+      student.genuineDays = 0;
+      student.bonusCredits = 0;
+      student.grade = GRADES[0];
+    }
+    return;
+  }
   entries.sort((a, b) => a.dt.localeCompare(b.dt));
 
-  const admTime = new Date(admDate).getTime();
+  const admTime = parseLocalDate(admDate).getTime();
   const weekBuckets = new Map();
   entries.forEach(item => {
-    const dayDiff = Math.max(0, Math.floor((new Date(item.dt).getTime() - admTime) / 86400000));
+    const dayDiff = Math.max(0, Math.round((parseLocalDate(item.dt).getTime() - admTime) / 86400000));
     const weekIdx = Math.floor(dayDiff / 7);
     if (!weekBuckets.has(weekIdx)) weekBuckets.set(weekIdx, []);
     weekBuckets.get(weekIdx).push(item);
@@ -670,8 +880,41 @@ function openTsmBlobDb() {
   });
 }
 
-async function tsmSaveBlob(key, dataUrl) {
-  if (!dataUrl) return;
+let firestoreReadyPromise = null;
+
+async function ensureFirestoreReady() {
+  if (db) return db;
+  if (firestoreReadyPromise) {
+    await firestoreReadyPromise;
+    return db;
+  }
+  firestoreReadyPromise = (async () => {
+    try {
+      let cfg = DEFAULT_FIREBASE_CONFIG;
+      const cfgRaw = localStorage.getItem(CONFIG_KEY);
+      if (cfgRaw) {
+        const parsed = JSON.parse(cfgRaw);
+        if (parsed && parsed.apiKey && parsed.projectId) cfg = parsed;
+      }
+      if (!firebase.apps.length) firebase.initializeApp(cfg);
+      if (firebase.auth && !firebase.auth().currentUser) {
+        try { await firebase.auth().signInAnonymously(); } catch (e) {}
+      }
+      db = firebase.firestore();
+    } catch (e) {
+      console.warn('Firestore init warning:', e);
+    }
+  })();
+  await firestoreReadyPromise;
+  firestoreReadyPromise = null;
+  return db;
+}
+
+async function tsmSaveBlob(key, dataUrl, meta = {}) {
+  if (!dataUrl) return { localOk: false, cloudOk: false };
+  let localOk = false;
+  let cloudOk = false;
+
   // 1. Save to IndexedDB (unlimited local capacity)
   try {
     const idb = await openTsmBlobDb();
@@ -681,87 +924,151 @@ async function tsmSaveBlob(key, dataUrl) {
       tx.oncomplete = () => res();
       tx.onerror = () => rej(tx.error);
     });
+    localOk = true;
   } catch (e) { console.warn('IDB save warning:', e); }
 
-  // 2. Save to Firestore `tsm_blobs` (chunked at 650KB so any PDF size syncs across all devices)
-  if (db) {
+  // 2. Save to Firestore `tsm_blobs` (chunked at 500KB so any PDF size syncs across all devices)
+  const fsDb = await ensureFirestoreReady();
+  if (fsDb) {
     try {
-      const CHUNK_SIZE = 650000;
+      const CHUNK_SIZE = 500000;
       const totalChunks = Math.ceil(dataUrl.length / CHUNK_SIZE);
-      await db.collection('tsm_blobs').doc(key).set({
+      await fsDb.collection('tsm_blobs').doc(key).set({
         key,
         totalChunks,
+        fileName: meta.fileName || '',
+        mimeType: meta.mimeType || getMimeFromDataUrl(dataUrl, 'application/pdf'),
         data: dataUrl.slice(0, CHUNK_SIZE),
         updatedAt: Date.now()
       });
       for (let i = 1; i < totalChunks; i++) {
-        await db.collection('tsm_blobs').doc(`${key}_part_${i}`).set({
+        await fsDb.collection('tsm_blobs').doc(`${key}_part_${i}`).set({
           key,
           part: i,
           data: dataUrl.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE)
         });
       }
+      cloudOk = true;
     } catch (e) { console.warn('Cloud blob sync warning:', e); }
   }
+  return { localOk, cloudOk };
 }
 
-async function tsmLoadBlob(key) {
-  // 1. Try IndexedDB first
-  try {
-    const idb = await openTsmBlobDb();
-    const localVal = await new Promise((res, rej) => {
-      const tx = idb.transaction('blobs', 'readonly');
-      const req = tx.objectStore('blobs').get(key);
-      req.onsuccess = () => res(req.result || '');
-      req.onerror = () => rej(req.error);
-    });
-    if (localVal) return localVal;
-  } catch (e) {}
+async function tsmLoadBlobWithMeta(key, options = {}) {
+  const preferCloud = Boolean(options.preferCloud);
+  let localVal = '';
+
+  // 1. Try IndexedDB first (unless cloud is explicitly requested)
+  if (!preferCloud) {
+    try {
+      const idb = await openTsmBlobDb();
+      localVal = await new Promise((res, rej) => {
+        const tx = idb.transaction('blobs', 'readonly');
+        const req = tx.objectStore('blobs').get(key);
+        req.onsuccess = () => res(req.result || '');
+        req.onerror = () => rej(req.error);
+      });
+      if (localVal) return { dataUrl: localVal, fileName: '' };
+    } catch (e) {}
+  }
 
   // 2. Fallback to Firestore `tsm_blobs`
-  if (db) {
+  const fsDb = await ensureFirestoreReady();
+  if (fsDb) {
     try {
-      const snap = await db.collection('tsm_blobs').doc(key).get();
+      const snap = await fsDb.collection('tsm_blobs').doc(key).get();
       if (snap.exists) {
-        const meta = snap.data();
+        const meta = snap.data() || {};
         let fullData = meta.data || '';
         const totalChunks = Number(meta.totalChunks || 1);
+        let allChunksLoaded = Boolean(fullData);
         for (let i = 1; i < totalChunks; i++) {
-          const partSnap = await db.collection('tsm_blobs').doc(`${key}_part_${i}`).get();
-          if (partSnap.exists) fullData += (partSnap.data().data || '');
+          const partSnap = await fsDb.collection('tsm_blobs').doc(`${key}_part_${i}`).get();
+          if (partSnap.exists && partSnap.data().data) {
+            fullData += partSnap.data().data;
+          } else {
+            allChunksLoaded = false;
+            break;
+          }
         }
-        if (fullData) {
+        if (allChunksLoaded && fullData) {
           // Cache in IndexedDB for instant subsequent loads
           try {
             const idb = await openTsmBlobDb();
             const tx = idb.transaction('blobs', 'readwrite');
             tx.objectStore('blobs').put(fullData, key);
           } catch (e) {}
-          return fullData;
+          return { dataUrl: fullData, fileName: meta.fileName || '' };
         }
       }
     } catch (e) { console.warn('Cloud blob read warning:', e); }
   }
-  return '';
+
+  if (preferCloud) {
+    try {
+      const idb = await openTsmBlobDb();
+      localVal = await new Promise((res, rej) => {
+        const tx = idb.transaction('blobs', 'readonly');
+        const req = tx.objectStore('blobs').get(key);
+        req.onsuccess = () => res(req.result || '');
+        req.onerror = () => rej(req.error);
+      });
+      if (localVal) return { dataUrl: localVal, fileName: '' };
+    } catch (e) {}
+  }
+
+  return { dataUrl: '', fileName: '' };
+}
+
+async function tsmLoadBlob(key) {
+  const res = await tsmLoadBlobWithMeta(key);
+  return res.dataUrl || '';
+}
+
+async function tsmDeleteBlob(key) {
+  if (!key) return;
+  try {
+    const idb = await openTsmBlobDb();
+    await new Promise((res) => {
+      const tx = idb.transaction('blobs', 'readwrite');
+      tx.objectStore('blobs').delete(key);
+      tx.oncomplete = () => res();
+      tx.onerror = () => res();
+    });
+  } catch (e) {}
+  const fsDb = await ensureFirestoreReady();
+  if (fsDb) {
+    try {
+      const docRef = fsDb.collection('tsm_blobs').doc(key);
+      const snap = await docRef.get();
+      const totalChunks = snap.exists ? Number(snap.data().totalChunks || 1) : 1;
+      await docRef.delete().catch(() => {});
+      for (let i = 1; i < totalChunks; i++) {
+        await fsDb.collection('tsm_blobs').doc(`${key}_part_${i}`).delete().catch(() => {});
+      }
+    } catch (e) {}
+  }
 }
 
 async function triggerSafeDownloadFromDataUrl(dataUrl, fileName) {
   try {
-    const res = await fetch(dataUrl);
-    const blob = await res.blob();
-    const blobUrl = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = blobUrl;
-    link.download = fileName;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
+    const bytes = dataUrlToUint8Array(dataUrl);
+    const mime = getMimeFromDataUrl(dataUrl, 'application/pdf');
+    const blob = new Blob([bytes], { type: mime });
+    triggerBlobDownload(blob, fileName);
   } catch (e) {
-    const link = document.createElement('a');
-    link.href = dataUrl;
-    link.download = fileName;
-    link.click();
+    try {
+      const res = await fetch(dataUrl);
+      const blob = await res.blob();
+      triggerBlobDownload(blob, fileName);
+    } catch (err) {
+      const link = document.createElement('a');
+      link.href = dataUrl;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
   }
 }
 
@@ -788,17 +1095,21 @@ function loadState() {
   return JSON.parse(JSON.stringify(DEFAULT_STATE));
 }
 
-function saveState() {
-  purgeExpiredAudioData(appState);
-  // Create a lightweight state copy for localStorage & Firestore master_state (large PDFs live in IndexedDB + tsm_blobs)
-  const slimState = {
-    ...appState,
-    customBrochureDataUrl: (appState.customBrochureDataUrl && appState.customBrochureDataUrl.length < 150000) ? appState.customBrochureDataUrl : '',
-    vaultItems: (appState.vaultItems || []).map(v => ({
+function buildSlimState(stateObj) {
+  return {
+    ...stateObj,
+    customBrochureDataUrl: (stateObj.customBrochureDataUrl && stateObj.customBrochureDataUrl.length < 150000) ? stateObj.customBrochureDataUrl : '',
+    vaultItems: (stateObj.vaultItems || []).map(v => ({
       ...v,
       pdfDataUrl: (v.pdfDataUrl && v.pdfDataUrl.length < 150000) ? v.pdfDataUrl : ''
     }))
   };
+}
+
+function saveState() {
+  purgeExpiredAudioData(appState);
+  // Create a lightweight state copy for localStorage & Firestore master_state (large PDFs live in IndexedDB + tsm_blobs)
+  const slimState = buildSlimState(appState);
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(slimState));
   } catch (e) {
@@ -897,7 +1208,7 @@ function saveSession(userObj) {
   else localStorage.removeItem(SESSION_KEY);
 }
 
-async function initFirebaseAuto() {
+async function initFirebaseAuto(forceReinit = false) {
   try {
     let cfg = DEFAULT_FIREBASE_CONFIG;
     const cfgRaw = localStorage.getItem(CONFIG_KEY);
@@ -908,48 +1219,55 @@ async function initFirebaseAuto() {
       localStorage.setItem(CONFIG_KEY, JSON.stringify(DEFAULT_FIREBASE_CONFIG));
     }
 
+    if (masterStateUnsubscribe) {
+      try { masterStateUnsubscribe(); } catch (e) {}
+      masterStateUnsubscribe = null;
+    }
+
+    if (forceReinit && firebase.apps.length) {
+      try { await firebase.app().delete(); } catch (e) {}
+      db = null;
+    }
     if (!firebase.apps.length) firebase.initializeApp(cfg);
-    if (firebase.auth) {
+    if (firebase.auth && !firebase.auth().currentUser) {
       try { await firebase.auth().signInAnonymously(); } catch (e) {}
     }
 
-    await initBackgroundFcmServiceWorker();
-
     db = firebase.firestore();
-    db.collection('tsm_system').doc('master_state').onSnapshot(doc => {
+    initBackgroundFcmServiceWorker().catch(() => {});
+    masterStateUnsubscribe = db.collection('tsm_system').doc('master_state').onSnapshot(doc => {
       cloudSyncStatus = 'Cloud Synced (tikariya-music---foundation)';
       if (doc.exists) {
         const remote = doc.data();
         if (remote && Array.isArray(remote.students)) {
-          // Prevent empty or stale remote state from overwriting a richer local state
-          if (remote.students.length > 0 || (appState.students || []).length === 0) {
-            if (!remote.adminRollNo) remote.adminRollNo = 'MUSICSNSOUNDS';
-            if (!remote.courses) remote.courses = DEFAULT_COURSES;
-            if (!remote.batches) remote.batches = DEFAULT_BATCHES;
-            if (!remote.audioClips) remote.audioClips = [];
-            if (!remote.holidays) remote.holidays = {};
-            if (!remote.certs) remote.certs = [];
-            if (!remote.pushAlerts) remote.pushAlerts = [];
-            if (!remote.fcmTokens) remote.fcmTokens = {};
-            remote.students = purgeTestStudent(remote.students.map(normalizeStudent));
-            
-            // If local has more students than remote, keep local and push to cloud instead!
-            if ((appState.students || []).length > remote.students.length) {
-              saveState();
-              return;
-            }
+          if (!remote.adminRollNo) remote.adminRollNo = 'MUSICSNSOUNDS';
+          if (!remote.courses || !remote.courses.length) remote.courses = DEFAULT_COURSES;
+          if (!remote.batches || !remote.batches.length) remote.batches = DEFAULT_BATCHES;
+          if (!remote.audioClips) remote.audioClips = [];
+          if (!remote.holidays) remote.holidays = {};
+          if (!remote.certs) remote.certs = [];
+          if (!remote.pushAlerts) remote.pushAlerts = [];
+          if (!remote.fcmTokens) remote.fcmTokens = {};
+          if (!remote.messages) remote.messages = [];
+          if (!remote.campaigns) remote.campaigns = [];
+          if (!remote.vaultItems) remote.vaultItems = [];
+          if (!remote.attendance) remote.attendance = {};
+          remote.students = purgeTestStudent(remote.students.map(normalizeStudent));
 
-            const didPurge = purgeExpiredAudioData(remote);
-            appState = remote;
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(appState));
-            if (didPurge) saveState();
-            checkIncomingPushAlerts();
-            if (currentUser) {
-              if (currentDeviceFcmToken) saveDeviceTokenToState(currentDeviceFcmToken);
-              renderCurrentTab();
-            }
-            checkPublicQrVerify();
+          const didPurge = purgeExpiredAudioData(remote);
+          appState = remote;
+          try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(buildSlimState(appState)));
+          } catch (e) {
+            console.warn('localStorage cache write skipped:', e);
           }
+          if (didPurge) saveState();
+          checkIncomingPushAlerts();
+          if (currentUser) {
+            if (currentDeviceFcmToken) saveDeviceTokenToState(currentDeviceFcmToken);
+            renderCurrentTab();
+          }
+          checkPublicQrVerify();
         }
       } else {
         saveState();
@@ -964,16 +1282,18 @@ async function initFirebaseAuto() {
 
 function showToast(msg) {
   const t = document.getElementById('toast');
+  if (!t) return;
   t.textContent = msg;
   t.classList.remove('hidden');
-  setTimeout(() => t.classList.add('hidden'), 2600);
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.add('hidden'), 2600);
 }
 
 // ==========================================
 // 4. BACKUP & RESTORE ENGINE (Tikariya_Backup_YYYY-MM-DD.json)
 // ==========================================
 function exportBackupJson() {
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = formatLocalDate(new Date());
   const nosMap = {};
   const attMap = {};
   const payMap = {};
@@ -981,7 +1301,8 @@ function exportBackupJson() {
   appState.students.forEach((s, idx) => {
     nosMap[s.id] = s.rollNo || `TSM-${String(idx + 1).padStart(4, '0')}`;
     if (s.feeStatus === 'Paid') {
-      payMap[s.id] = { [s.admissionDate.slice(0, 7)]: { d: s.lastPaymentDate || todayStr, m: s.lastPaymentMode || 'UPI' } };
+      const admMonth = String(s.admissionDate || todayStr).slice(0, 7);
+      payMap[s.id] = { [admMonth]: { d: s.lastPaymentDate || todayStr, m: s.lastPaymentMode || 'UPI' } };
     }
   });
 
@@ -1046,10 +1367,7 @@ function exportBackupJson() {
   };
 
   const blob = new Blob([JSON.stringify(backupPayload, null, 2)], { type: 'application/json' });
-  const link = document.createElement('a');
-  link.href = URL.createObjectURL(blob);
-  link.download = `Tikariya_Backup_${todayStr}.json`;
-  link.click();
+  triggerBlobDownload(blob, `Tikariya_Backup_${todayStr}.json`);
   showToast(`Exported Tikariya_Backup_${todayStr}.json`);
 }
 
@@ -1103,7 +1421,10 @@ function handleRestoreBackupFile(e) {
       appState.attendance = restoredAttendance;
 
       const restoredStudents = d.students.map((st, idx) => {
-        const courseArr = String(st.course || 'Piano').split(/[,/]/).map(x => x.trim()).filter(Boolean);
+        const sid = st.id || ('stu_' + Date.now() + '_' + idx);
+        const courseArr = Array.isArray(st.courses) && st.courses.length
+          ? st.courses.map(x => String(x).trim()).filter(Boolean)
+          : String(st.course || 'Piano').split(/[,/]/).map(x => x.trim()).filter(Boolean);
         let baseFee = Number(st.base || st.fee || 1000);
         let concAmt = 0;
         if (st.disc && typeof st.disc === 'object') {
@@ -1113,7 +1434,7 @@ function handleRestoreBackupFile(e) {
           concAmt = st.concession;
         }
 
-        const stuPays = payMap[st.id] || {};
+        const stuPays = payMap[sid] || {};
         const payKeys = Object.keys(stuPays);
         const latestPayKey = payKeys.sort().pop();
         const latestPay = latestPayKey ? stuPays[latestPayKey] : null;
@@ -1122,17 +1443,17 @@ function handleRestoreBackupFile(e) {
         const payDate = (latestPay && typeof latestPay === 'object' && latestPay.d) ? latestPay.d : (latestPayKey || '-');
 
         const stuObj = normalizeStudent({
-          id: st.id,
-          rollNo: (nosMap[st.id] || st.rollNo || `TSM-${String(idx + 1).padStart(4, '0')}`).toUpperCase(),
+          id: sid,
+          rollNo: (nosMap[sid] || st.rollNo || `TSM-${String(idx + 1).padStart(4, '0')}`).toUpperCase(),
           pin: st.pin || '1234',
-          name: st.name,
+          name: st.name || 'Student',
           courses: courseArr,
           course: courseArr.join(', '),
           grade: st.grade || 'Elementary Grade 1',
           batch: st.batch || appState.batches[0] || '5:00 PM',
           dob: st.dob || '',
-          phone: (st.phone || st.pphone || '').replace(/\s+/g, ''),
-          parentPhone: (st.pphone || st.phone || '').replace(/\s+/g, ''),
+          phone: String(st.phone || st.pphone || '').replace(/\s+/g, ''),
+          parentPhone: String(st.pphone || st.phone || '').replace(/\s+/g, ''),
           email: st.email || '',
           addr: st.addr || '',
           isMinor: true,
@@ -1151,7 +1472,7 @@ function handleRestoreBackupFile(e) {
           lastPaymentDate: payDate,
           photoDataUrl: st.photo || st.photoDataUrl || ''
         });
-        recalculateStudentAttendanceStats(stuObj);
+        recalculateStudentAttendanceStats(stuObj, false);
         return stuObj;
       });
 
@@ -1174,6 +1495,7 @@ function handleRestoreBackupFile(e) {
     }
   };
   reader.readAsText(file);
+  e.target.value = '';
 }
 
 // ==========================================
@@ -1192,7 +1514,7 @@ function checkPublicQrVerify() {
   vView.classList.remove('hidden');
 
   if (vRoll) {
-    const s = appState.students.find(x => x.rollNo.toUpperCase() === vRoll.toUpperCase());
+    const s = appState.students.find(x => String(x.rollNo || '').toUpperCase() === vRoll.toUpperCase());
     vCard.innerHTML = s ? `
       <div class="h-1.5 bg-[#0F172A]"></div>
       <div class="p-6 text-center space-y-3">
@@ -1201,18 +1523,20 @@ function checkPublicQrVerify() {
         <h2 class="text-lg font-extrabold text-[#0F172A] uppercase">${BRAND_HTML}</h2>
         <div class="inline-block px-3 py-1 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold rounded-full">VERIFIED ACTIVE STUDENT</div>
         <div class="pt-2 text-xs space-y-1">
-          <div class="text-base font-bold text-[#0F172A]">${s.name}</div>
-          <div class="font-mono font-bold text-indigo-700">${s.rollNo}</div>
-          <div class="font-semibold text-slate-700">${s.grade} &mdash; ${s.course}</div>
-          <div class="text-slate-500">Admission: ${s.admissionDate} &bull; Genuine Days: ${s.genuineDays}</div>
+          <div class="text-base font-bold text-[#0F172A]">${escapeHtml(s.name)}</div>
+          <div class="font-mono font-bold text-indigo-700">${escapeHtml(s.rollNo)}</div>
+          <div class="font-semibold text-slate-700">${escapeHtml(s.grade)} &mdash; ${escapeHtml(s.course)}</div>
+          <div class="text-slate-500">Admission: ${escapeHtml(s.admissionDate)} &bull; Genuine Days: ${Number(s.genuineDays || 0)}</div>
         </div>
         <button onclick="window.location.href=window.location.pathname" class="mt-4 px-4 py-2 bg-[#0F172A] text-white text-xs font-semibold rounded-lg">Open Portal</button>
       </div>
-    ` : `<div class="p-6 text-center text-xs text-red-700 font-semibold">Record not found for ${vRoll}</div>`;
+    ` : `<div class="p-6 text-center text-xs text-red-700 font-semibold">Record not found for ${escapeHtml(vRoll)}</div>`;
   } else if (vCert) {
     const parts = vCert.split('-');
-    const rollSuffix = parts[2] || '';
-    const s = appState.students.find(x => x.rollNo.endsWith(rollSuffix));
+    const rollSuffix = (parts[2] || '').trim().toUpperCase();
+    const s = rollSuffix
+      ? appState.students.find(x => String(x.rollNo || '').toUpperCase().split('-').pop() === rollSuffix)
+      : null;
     const elig = s ? evaluateCertificateEligibility(s, selectedDate) : { eligible: false };
     vCard.innerHTML = `
       <div class="h-1.5 bg-[#0F172A]"></div>
@@ -1224,8 +1548,8 @@ function checkPublicQrVerify() {
           ${elig.eligible ? 'VERIFIED GRADE CERTIFICATE' : 'CERTIFICATE RECORD'}
         </div>
         <div class="pt-2 text-xs space-y-1">
-          <div class="font-mono font-bold text-slate-800">${vCert}</div>
-          ${s ? `<div class="text-base font-bold text-[#0F172A]">${s.name} (${s.rollNo})</div><div class="font-semibold text-indigo-700">${s.grade} &mdash; ${s.course}</div><div class="text-slate-500">Genuine Attendance: ${s.genuineDays} Days &bull; Weekly Audio Clips: ${elig.weeklyAudioCount}/2</div>` : ''}
+          <div class="font-mono font-bold text-slate-800">${escapeHtml(vCert)}</div>
+          ${s ? `<div class="text-base font-bold text-[#0F172A]">${escapeHtml(s.name)} (${escapeHtml(s.rollNo)})</div><div class="font-semibold text-indigo-700">${escapeHtml(s.grade)} &mdash; ${escapeHtml(s.course)}</div><div class="text-slate-500">Genuine Attendance: ${Number(s.genuineDays || 0)} Days &bull; Weekly Audio Clips: ${elig.weeklyAudioCount}/2</div>` : '<div class="text-red-700 font-semibold pt-1">Matching student record not found.</div>'}
         </div>
         <button onclick="window.location.href=window.location.pathname" class="mt-4 px-4 py-2 bg-[#0F172A] text-white text-xs font-semibold rounded-lg">Open Portal</button>
       </div>
@@ -1237,26 +1561,22 @@ function checkPublicQrVerify() {
 // 6. WEEKLY STATS, CERTIFICATE ELIGIBILITY & BILLING ENGINE
 // ==========================================
 function getAdmissionWeekRange(dateStr, admissionDateStr) {
-  const d = new Date(dateStr);
+  const d = parseLocalDate(dateStr);
   if (!admissionDateStr) {
     const dayOfWeek = d.getDay();
     const diffToMon = (dayOfWeek === 0 ? -6 : 1 - dayOfWeek);
-    const mon = new Date(d);
-    mon.setDate(d.getDate() + diffToMon);
-    const sun = new Date(mon);
-    sun.setDate(mon.getDate() + 6);
-    return { startStr: mon.toISOString().split('T')[0], endStr: sun.toISOString().split('T')[0], start: mon };
+    const mon = new Date(d.getFullYear(), d.getMonth(), d.getDate() + diffToMon, 12, 0, 0);
+    const sun = new Date(mon.getFullYear(), mon.getMonth(), mon.getDate() + 6, 12, 0, 0);
+    return { startStr: formatLocalDate(mon), endStr: formatLocalDate(sun), start: mon };
   }
-  const adm = new Date(admissionDateStr);
-  const diffDays = Math.max(0, Math.floor((d.getTime() - adm.getTime()) / 86400000));
+  const adm = parseLocalDate(admissionDateStr);
+  const diffDays = Math.max(0, Math.round((d.getTime() - adm.getTime()) / 86400000));
   const weekOffset = Math.floor(diffDays / 7) * 7;
-  const start = new Date(adm);
-  start.setDate(adm.getDate() + weekOffset);
-  const end = new Date(start);
-  end.setDate(start.getDate() + 6);
+  const start = new Date(adm.getFullYear(), adm.getMonth(), adm.getDate() + weekOffset, 12, 0, 0);
+  const end = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 6, 12, 0, 0);
   return {
-    startStr: start.toISOString().split('T')[0],
-    endStr: end.toISOString().split('T')[0],
+    startStr: formatLocalDate(start),
+    endStr: formatLocalDate(end),
     start
   };
 }
@@ -1270,9 +1590,8 @@ function getWeeklyStats(dateStr, student) {
   let absentCount = 0;
 
   for (let i = 0; i < 7; i++) {
-    const cur = new Date(start);
-    cur.setDate(start.getDate() + i);
-    const key = `${cur.toISOString().split('T')[0]}_${student.id}`;
+    const cur = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i, 12, 0, 0);
+    const key = `${formatLocalDate(cur)}_${student.id}`;
     const rec = appState.attendance[key];
     if (rec) {
       if (rec.status === 'present') genuineWeekDays++;
@@ -1292,7 +1611,8 @@ function evaluateCertificateEligibility(student, refDateStr) {
   const has48Genuine = genuineDays >= 48;
   const wk = getWeeklyStats(refDateStr, student);
   const { startStr, endStr } = getAdmissionWeekRange(refDateStr, student.admissionDate);
-  const stuClips = (appState.audioClips || []).filter(c => c.rollNo.toUpperCase() === student.rollNo.toUpperCase());
+  const targetRoll = String(student.rollNo || '').toUpperCase();
+  const stuClips = (appState.audioClips || []).filter(c => String(c.rollNo || '').toUpperCase() === targetRoll);
   const weeklyClips = stuClips.filter(c => c.date >= startStr && c.date <= endStr);
   const hasWeeklyAudio = weeklyClips.length >= 2 || stuClips.length >= 2;
   const hasWeeklyAttendance = wk.totalWeekSessions >= 3 || genuineDays >= 48;
@@ -1310,7 +1630,7 @@ function evaluateCertificateEligibility(student, refDateStr) {
 
 function getMonthsEnrolled(admissionDateStr) {
   if (!admissionDateStr) return 1;
-  const start = new Date(admissionDateStr);
+  const start = parseLocalDate(admissionDateStr);
   const now = new Date();
   if (isNaN(start.getTime())) return 1;
   let months = (now.getFullYear() - start.getFullYear()) * 12 + (now.getMonth() - start.getMonth());
@@ -1344,13 +1664,14 @@ function getFamilySiblings(student) {
 
 function getNextBillingDate(admissionDateStr) {
   if (!admissionDateStr) return '-';
-  const start = new Date(admissionDateStr);
+  const start = parseLocalDate(admissionDateStr);
   if (isNaN(start.getTime())) return '-';
   const day = start.getDate();
   const now = new Date();
-  const next = new Date(now.getFullYear(), now.getMonth(), day);
-  if (next < now) next.setMonth(next.getMonth() + 1);
-  return next.toISOString().split('T')[0];
+  const todayMid = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12, 0, 0);
+  const next = new Date(now.getFullYear(), now.getMonth(), day, 12, 0, 0);
+  if (next < todayMid) next.setMonth(next.getMonth() + 1);
+  return formatLocalDate(next);
 }
 
 function drawStyledAcademyTitlePdf(page, x, y, size, fontBold) {
@@ -1369,6 +1690,9 @@ function drawStyledAcademyTitlePdf(page, x, y, size, fontBold) {
 // ==========================================
 // 7. LOGIN & PERSISTENT SESSION
 // ==========================================
+let studentSecurityPopupDismissed = false;
+let attendanceSearchQuery = '';
+
 function handleUnifiedLogin(e) {
   e.preventDefault();
   const roll = document.getElementById('loginRollInput').value.trim().toUpperCase();
@@ -1388,6 +1712,7 @@ function handleUnifiedLogin(e) {
 
   const stu = appState.students.find(s => s.rollNo.toUpperCase() === roll && String(s.pin) === pin);
   if (stu) {
+    studentSecurityPopupDismissed = false;
     currentUser = { role: 'student', studentId: stu.id };
     saveSession(currentUser);
     activeTab = 'student_home';
@@ -1411,6 +1736,9 @@ function enterApp() {
   document.getElementById('appShell').classList.remove('hidden');
   renderNavTabs();
   renderCurrentTab();
+  if (currentUser && currentUser.role === 'student') {
+    setTimeout(() => maybeShowStudentSecurityPopup(), 180);
+  }
 }
 
 function confirmLogout() {
@@ -1429,6 +1757,7 @@ function confirmLogout() {
 function executeLogout() {
   closeModal();
   stopAudioRecording(true);
+  studentSecurityPopupDismissed = false;
   currentUser = null;
   saveSession(null);
   document.getElementById('loginRollInput').value = '';
@@ -1447,7 +1776,7 @@ function renderNavTabs() {
     { id: 'fees', label: 'Fees' },
     { id: 'audio', label: 'Audio' },
     { id: 'vault', label: 'Studio' },
-    { id: 'messages', label: 'Massages' },
+    { id: 'messages', label: 'Messages' },
     { id: 'marketing', label: 'Instagram' },
     { id: 'settings', label: 'Settings' }
   ];
@@ -1457,8 +1786,9 @@ function renderNavTabs() {
     { id: 'student_audio', label: 'Audio' },
     { id: 'student_fees', label: 'Fees' },
     { id: 'student_vault', label: 'Study Material' },
-    { id: 'student_messages', label: 'Massages' }
+    { id: 'student_messages', label: 'Messages' }
   ];
+  if (!currentUser) return;
   const tabs = currentUser.role === 'admin' ? adminTabs : studentTabs;
   container.innerHTML = tabs.map(t => `
     <button onclick="switchTab('${t.id}')"
@@ -1485,7 +1815,9 @@ function switchTab(id) {
 }
 
 function renderCurrentTab() {
+  if (!currentUser) return;
   const main = document.getElementById('mainContent');
+  if (!main) return;
   if (currentUser.role === 'admin') {
     if (activeTab === 'dashboard') renderAdminDashboard(main);
     else if (activeTab === 'attendance') renderAttendanceTab(main);
@@ -1512,102 +1844,51 @@ function renderAdminDashboard(el) {
   const todayRecords = appState.students.map(s => getAttendanceRecord(selectedDate, s.id));
   const presentToday = todayRecords.filter(r => r.status === 'present' || r.status === 'bonus_used').length;
 
-  el.innerHTML = `
-    <div class="space-y-5">
-      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 rounded-xl border border-slate-200">
-        <div>
-          <h2 class="text-base font-bold text-[#0F172A]">Academy Operations Summary</h2>
-          <p class="text-xs text-slate-500"></p>
-        </div>
-        <div class="flex flex-wrap gap-2">
-          <button onclick="openAddStudentModal()" class="px-3 py-2 bg-indigo-700 text-white text-xs font-semibold rounded-lg hover:bg-indigo-800">+ New Admission</button>
-        </div>
-      </div>
+  const feeTickerText = unpaidStudents.length > 0
+    ? `Fee Reminder (${unpaidStudents.length} Unpaid): ${unpaidStudents.map(u => `${escapeHtml(u.name)} (${escapeHtml(u.rollNo)})`).join('  •  ')}  —  Tap to open Fees`
+    : '';
 
-      <!-- BIG ONE-HANDED SCAN I CARD BUTTON ON FIRST OPENING PAGE -->
-      <div class="w-full">
-        <button type="button" onclick="openCameraQrScanner()" class="w-full py-4 px-6 bg-indigo-700 hover:bg-indigo-800 active:scale-[0.99] text-white text-base sm:text-lg font-extrabold tracking-wide rounded-xl shadow-md flex items-center justify-center gap-3 transition">
+  el.innerHTML = `
+    <div class="space-y-4 max-w-4xl mx-auto">
+      <!-- PRIMARY ACTIONS: SCAN I CARD + NEW ADMISSION DIRECTLY BELOW -->
+      <div class="space-y-2.5">
+        <button type="button" onclick="openCameraQrScanner()" class="w-full min-h-[54px] py-3.5 px-6 bg-indigo-700 hover:bg-indigo-800 active:scale-[0.99] text-white text-base sm:text-lg font-extrabold tracking-wide rounded-xl shadow-sm flex items-center justify-center gap-3 transition">
           <svg class="w-6 h-6 shrink-0" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 7V5a2 2 0 012-2h2m10 0h2a2 2 0 012 2v2m0 10v2a2 2 0 01-2 2h-2M7 21H5a2 2 0 01-2-2v-2M7 12h10"/></svg>
           <span>Scan I Card</span>
+        </button>
+
+        <button type="button" onclick="openAddStudentModal()" class="w-full min-h-[46px] py-3 px-5 bg-[#0F172A] hover:bg-slate-800 active:scale-[0.99] text-white text-sm font-bold tracking-wide rounded-xl shadow-sm flex items-center justify-center gap-2 transition">
+          <span>+ New Admission</span>
         </button>
       </div>
 
       ${unpaidStudents.length > 0 ? `
-        <div class="bg-amber-50 border border-amber-200 rounded-xl p-3.5 flex flex-wrap items-center justify-between gap-2 text-xs">
-          <div class="truncate max-w-3xl">
-            <span class="font-bold text-amber-900">Fee Reminder (${unpaidStudents.length}):</span>
-            <span class="text-amber-800">${unpaidStudents.slice(0, 5).map(u => `${u.name} (${u.rollNo})`).join(', ')}${unpaidStudents.length > 5 ? ` +${unpaidStudents.length - 5} more` : ''}</span>
+        <a href="javascript:void(0)" onclick="switchTab('fees')" class="block bg-amber-50 hover:bg-amber-100/80 border border-amber-200 rounded-xl py-2.5 px-3 text-xs font-semibold text-amber-900 transition" aria-label="Open unpaid fees">
+          <div class="tsm-marquee-wrap">
+            <div class="tsm-marquee-track">
+              <span class="pr-10 underline decoration-amber-400 underline-offset-2">${feeTickerText}</span>
+              <span class="tsm-marquee-dup pr-10 underline decoration-amber-400 underline-offset-2" aria-hidden="true">${feeTickerText}</span>
+            </div>
           </div>
-          <button onclick="switchTab('fees')" class="px-3 py-1 bg-amber-800 text-white font-semibold rounded-lg shrink-0">Manage Fees</button>
-        </div>
+        </a>
       ` : ''}
 
       <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <div class="bg-white p-4 rounded-xl border border-slate-200">
+        <div onclick="switchTab('students')" class="bg-white p-4 rounded-xl border border-slate-200 cursor-pointer hover:border-slate-300 transition">
           <p class="text-xs text-slate-500 font-medium">Active Students</p>
           <p class="text-2xl font-bold text-[#0F172A] mt-1 tabular-nums">${totalStu}</p>
         </div>
-        <div class="bg-white p-4 rounded-xl border border-slate-200">
-          <p class="text-xs text-slate-500 font-medium">Present (${selectedDate})</p>
+        <div onclick="switchTab('attendance')" class="bg-white p-4 rounded-xl border border-slate-200 cursor-pointer hover:border-slate-300 transition">
+          <p class="text-xs text-slate-500 font-medium">Present <span class="text-[10px] text-slate-400">(${escapeHtml(selectedDate)})</span></p>
           <p class="text-2xl font-bold text-emerald-700 mt-1 tabular-nums">${presentToday} / ${totalStu}</p>
         </div>
-        <div class="bg-white p-4 rounded-xl border border-slate-200">
+        <div onclick="switchTab('fees')" class="bg-white p-4 rounded-xl border border-slate-200 cursor-pointer hover:border-slate-300 transition">
           <p class="text-xs text-slate-500 font-medium">Unpaid Fees</p>
           <p class="text-2xl font-bold text-amber-600 mt-1 tabular-nums">${unpaidStudents.length}</p>
         </div>
-        <div class="bg-white p-4 rounded-xl border border-slate-200">
-          <p class="text-xs text-slate-500 font-medium">Cert Eligible</p>
+        <div onclick="switchTab('students')" class="bg-white p-4 rounded-xl border border-slate-200 cursor-pointer hover:border-slate-300 transition">
+          <p class="text-xs text-slate-500 font-medium">Certificate Eligible</p>
           <p class="text-2xl font-bold text-indigo-700 mt-1 tabular-nums">${certEligible.length}</p>
-        </div>
-      </div>
-
-      <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        <div class="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
-          <h3 class="text-sm font-bold text-[#0F172A]">Student Roster &amp; Certificate Eligibility</h3>
-          <span class="text-[11px] text-slate-500">48 Genuine Days + 2 Weekly Audio Clips</span>
-        </div>
-        <div class="overflow-x-auto">
-          <table class="w-full text-left border-collapse">
-            <thead>
-              <tr class="bg-slate-50 border-b border-slate-200 text-[11px] font-semibold text-slate-600 uppercase">
-                <th class="py-2.5 px-3">Roll No</th>
-                <th class="py-2.5 px-3">Student &amp; Instruments</th>
-                <th class="py-2.5 px-3">Genuine &amp; Bonus Days</th>
-                <th class="py-2.5 px-3">Fee Status</th>
-                <th class="py-2.5 px-3 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody class="divide-y divide-slate-200 text-xs">
-              ${appState.students.map(s => {
-                const mod = s.genuineDays % 48;
-                const elig = evaluateCertificateEligibility(s, selectedDate);
-                return `
-                  <tr class="hover:bg-slate-50">
-                    <td class="py-2.5 px-3 font-mono font-semibold text-slate-700">${s.rollNo}</td>
-                    <td class="py-2.5 px-3">
-                      <div class="font-semibold text-[#0F172A] cursor-pointer hover:text-indigo-700 hover:underline" onclick="openStudentMonthlyCalendarModal('${s.id}')">${s.name}</div>
-                      <div class="text-[11px] text-indigo-700">${s.grade} &mdash; ${s.course}</div>
-                    </td>
-                    <td class="py-2.5 px-3 tabular-nums">
-                      <span class="font-semibold text-[#0F172A]">${s.genuineDays} Genuine</span> (${mod}/48) &bull; Bonus: <b>${s.bonusCredits}</b>
-                      <div class="text-[10px] ${elig.eligible ? 'text-emerald-700 font-bold' : 'text-slate-500'}">
-                        Audio Clips: ${elig.weeklyAudioCount}/2 wk &bull; ${elig.eligible ? 'CERT ELIGIBLE' : 'In Progress'}
-                      </div>
-                    </td>
-                    <td class="py-2.5 px-3">
-                      <span class="px-2 py-0.5 rounded text-[11px] font-semibold ${s.feeStatus === 'Paid' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-amber-50 text-amber-700 border border-amber-200'}">
-                        ${s.feeStatus}
-                      </span>
-                    </td>
-                    <td class="py-2.5 px-3 text-right space-x-1">
-                      <button onclick="openIdCardModal('${s.id}')" class="px-2 py-1 text-[11px] font-semibold border border-slate-300 rounded hover:bg-slate-100">ID Card</button>
-                      <button onclick="openCertificateModal('${s.id}')" class="px-2 py-1 text-[11px] font-semibold border border-indigo-200 text-indigo-700 bg-indigo-50 rounded hover:bg-indigo-100">Certificate</button>
-                    </td>
-                  </tr>
-                `;
-              }).join('')}
-            </tbody>
-          </table>
         </div>
       </div>
     </div>
@@ -1712,7 +1993,7 @@ function buildMonthlyCalendarHtml(studentFilterObj) {
 
   let cells = '';
   for (let i = 0; i < startWeekday; i++) {
-    cells += `<div class="h-20 bg-slate-50/60 border border-slate-100 rounded-lg"></div>`;
+    cells += `<div class="${studentFilterObj ? 'h-16 sm:h-20' : 'h-24'} bg-slate-50/60 border border-slate-100 rounded-lg"></div>`;
   }
 
   for (let day = 1; day <= daysInMonth; day++) {
@@ -1724,38 +2005,19 @@ function buildMonthlyCalendarHtml(studentFilterObj) {
     if (studentFilterObj) {
       const isBeforeAdmission = dt < admDateStr;
       const isAdmissionDay = dt === admDateStr;
+      const isFeesDay = isStudentFeesDay(dt, studentFilterObj);
       const rec = appState.attendance[`${dt}_${studentFilterObj.id}`];
-      let badge = '';
+      const status = isBeforeAdmission ? 'pre' : (isHoliday ? 'holiday' : (rec ? rec.status : 'unmarked'));
 
-      if (isBeforeAdmission) {
-        cells += `
-          <div class="h-20 p-1.5 border border-slate-100 bg-slate-50 rounded-lg flex flex-col justify-between opacity-50">
-            <span class="text-xs font-medium text-slate-400">${day}</span>
-            <span class="text-[8px] text-slate-400 text-center">Pre-Adm</span>
-          </div>
-        `;
-        continue;
-      }
+      const cell = buildStudentDayCellContent(status, isBeforeAdmission, isHoliday, isAdmissionDay, isFeesDay);
 
-      if (isHoliday) badge = `<span class="px-1.5 py-0.5 text-[9px] font-bold bg-purple-100 text-purple-800 rounded">HOLIDAY</span>`;
-      else if (rec) {
-        const map = {
-          present: 'bg-emerald-100 text-emerald-800 border-emerald-200|PRESENT',
-          absent: 'bg-red-100 text-red-800 border-red-200|ABSENT',
-          teacher_leave: 'bg-amber-100 text-amber-800 border-amber-200|T-LEAVE',
-          bonus_used: 'bg-indigo-100 text-indigo-800 border-indigo-200|BONUS',
-          excused_leave: 'bg-slate-200 text-slate-800 border-slate-300|EXCUSED'
-        };
-        const [cls, lbl] = (map[rec.status] || 'bg-slate-100 text-slate-700|MARKED').split('|');
-        badge = `<span class="px-1.5 py-0.5 text-[9px] font-bold border rounded ${cls}">${lbl}</span>`;
-      }
       cells += `
-        <div class="h-20 p-1.5 border rounded-lg flex flex-col justify-between ${isAdmissionDay ? 'border-indigo-600 bg-indigo-50/40' : isSelected ? 'border-[#0F172A] bg-slate-50' : 'border-slate-200 bg-white'}">
-          <div class="flex justify-between items-center">
-            <span class="text-xs font-bold ${isSunday ? 'text-red-600' : 'text-slate-700'}">${day}</span>
-            ${isAdmissionDay ? '<span class="px-1 text-[8px] font-bold bg-indigo-700 text-white rounded">ADM</span>' : ''}
+        <div class="h-16 sm:h-20 p-1 sm:p-1.5 border rounded-lg flex flex-col justify-between ${cell.bgCls} ${isSelected && !isBeforeAdmission ? 'ring-1 ring-[#0F172A]' : ''}">
+          <div class="flex justify-between items-start gap-0.5">
+            <span class="text-[10px] sm:text-xs font-bold leading-none tabular-nums ${isSunday ? 'text-red-600' : 'text-slate-700'}">${day}</span>
+            <div class="flex items-center gap-0.5">${cell.tagHtml}</div>
           </div>
-          <div class="text-center">${badge}</div>
+          <div class="flex-1 flex items-center justify-center">${cell.mainHtml}</div>
         </div>
       `;
     } else {
@@ -1775,15 +2037,15 @@ function buildMonthlyCalendarHtml(studentFilterObj) {
           <div class="flex items-center justify-between">
             <span class="text-xs font-bold ${isSunday ? 'text-red-600' : 'text-slate-800'}">${day}</span>
             <button type="button" onclick="event.stopPropagation(); toggleHolidayDate('${dt}')" title="Toggle Holiday" class="text-[9px] px-1 rounded ${isHoliday ? 'bg-purple-700 text-white font-bold' : 'text-slate-400 hover:bg-slate-100'}">
-              ${isHoliday ? 'HOL' : 'H'}
+              ${isHoliday ? 'H' : 'H'}
             </button>
           </div>
           <div class="space-y-0.5 text-[9px] font-semibold tabular-nums">
-            ${isHoliday ? '<div class="text-purple-700 font-bold text-center">Holiday</div>' : ''}
+            ${isHoliday ? '<div class="text-purple-700 font-black text-base text-center leading-none">H</div>' : ''}
             ${hasMarks ? `
-              <div class="flex justify-between text-emerald-700"><span>Present:</span><span>${pCount}</span></div>
-              ${aCount > 0 ? `<div class="flex justify-between text-red-600"><span>Absent:</span><span>${aCount}</span></div>` : ''}
-              ${lCount > 0 ? `<div class="flex justify-between text-amber-700"><span>T-Leave:</span><span>${lCount}</span></div>` : ''}
+              <div class="flex justify-between text-emerald-700"><span>P:</span><span>${pCount}</span></div>
+              ${aCount > 0 ? `<div class="flex justify-between text-red-600"><span>A:</span><span>${aCount}</span></div>` : ''}
+              ${lCount > 0 ? `<div class="flex justify-between text-amber-700"><span>TL:</span><span>${lCount}</span></div>` : ''}
             ` : (!isHoliday ? '<div class="text-slate-300 text-center">&mdash;</div>' : '')}
           </div>
         </div>
@@ -1792,19 +2054,20 @@ function buildMonthlyCalendarHtml(studentFilterObj) {
   }
 
   return `
-    <div class="bg-white p-4 rounded-xl border border-slate-200 space-y-3">
-      <div class="flex items-center justify-between">
-        <button type="button" onclick="shiftCalendarMonth(-1)" class="px-3 py-1.5 text-xs font-semibold border border-slate-300 rounded-lg hover:bg-slate-50">&larr; Prev</button>
+    <div class="bg-white p-3.5 sm:p-4 rounded-xl border border-slate-200 space-y-3">
+      <div class="flex items-center justify-between gap-2">
+        <button type="button" onclick="shiftCalendarMonth(-1)" class="min-h-[36px] px-3 py-1.5 text-xs font-semibold border border-slate-300 rounded-lg hover:bg-slate-50">&larr; Prev</button>
         <div class="text-center">
-          <h3 class="text-sm font-bold text-[#0F172A] uppercase tracking-wide">${monthLabel}</h3>
-          ${studentFilterObj ? `<p class="text-[10px] text-slate-500">Admission Start: <b>${studentFilterObj.admissionDate}</b></p>` : ''}
+          <h3 class="text-sm font-bold text-[#0F172A] uppercase tracking-wide">${escapeHtml(monthLabel)}</h3>
+          ${studentFilterObj ? `<p class="text-[10px] text-slate-500">Admission: <b>${escapeHtml(studentFilterObj.admissionDate)}</b></p>` : ''}
         </div>
-        <button type="button" onclick="shiftCalendarMonth(1)" class="px-3 py-1.5 text-xs font-semibold border border-slate-300 rounded-lg hover:bg-slate-50">Next &rarr;</button>
+        <button type="button" onclick="shiftCalendarMonth(1)" class="min-h-[36px] px-3 py-1.5 text-xs font-semibold border border-slate-300 rounded-lg hover:bg-slate-50">Next &rarr;</button>
       </div>
-      <div class="grid grid-cols-7 gap-1.5 text-center text-[11px] font-bold text-slate-500 uppercase">
+      ${studentFilterObj ? getAttendanceLegendHtml() : ''}
+      <div class="grid grid-cols-7 gap-1 sm:gap-1.5 text-center text-[10px] sm:text-[11px] font-bold text-slate-500 uppercase">
         ${weekdays.map(w => `<div>${w}</div>`).join('')}
       </div>
-      <div class="grid grid-cols-7 gap-1.5">
+      <div class="grid grid-cols-7 gap-1 sm:gap-1.5">
         ${cells}
       </div>
     </div>
@@ -1900,111 +2163,198 @@ function toggleHolidayForSelectedDate() {
   showToast(!currentlyHol ? `Marked ${selectedDate} as Holiday` : `Enabled Classes / Special Class on ${selectedDate}`);
 }
 
+const ATTENDANCE_STATUS_DEFS = [
+  { id: 'present', code: 'P', label: 'Present', activeClass: 'bg-emerald-600 text-white border-emerald-600', idleClass: 'bg-white text-emerald-700 border-slate-200 hover:bg-emerald-50' },
+  { id: 'absent', code: 'A', label: 'Absent', activeClass: 'bg-red-600 text-white border-red-600', idleClass: 'bg-white text-red-700 border-slate-200 hover:bg-red-50' },
+  { id: 'teacher_leave', code: 'TL', label: "Teacher's Leave", activeClass: 'bg-amber-600 text-white border-amber-600', idleClass: 'bg-white text-amber-700 border-slate-200 hover:bg-amber-50' },
+  { id: 'bonus_used', code: 'B', label: 'Bonus Used', activeClass: 'bg-sky-600 text-white border-sky-600', idleClass: 'bg-white text-sky-700 border-slate-200 hover:bg-sky-50' },
+  { id: 'excused_leave', code: 'E', label: 'Excused', activeClass: 'bg-slate-700 text-white border-slate-700', idleClass: 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100' }
+];
+
+function buildAttendanceRowsHtml(visibleStudents) {
+  if (!visibleStudents.length) {
+    return `<div class="p-8 text-center text-xs text-slate-400">No students match this batch/filter.</div>`;
+  }
+  return visibleStudents.map(s => {
+    const rec = getAttendanceRecord(selectedDate, s.id);
+    const wk = getWeeklyStats(selectedDate, s);
+    const isShort = rec.status === 'absent' || wk.hasShortFlag;
+    const mod48 = Number(s.genuineDays || 0) % 48;
+    const safeId = escapeHtml(s.id);
+    return `
+      <div class="p-3 lg:px-3.5 lg:py-2.5 hover:bg-slate-50/70 transition space-y-2.5 lg:space-y-0 lg:grid lg:grid-cols-[230px_130px_280px_84px_125px_1fr] lg:gap-3 lg:items-center">
+        <!-- Student Info + Mobile Stats Header -->
+        <div class="flex items-start justify-between gap-2 min-w-0">
+          <div class="min-w-0">
+            <div class="flex items-center gap-1.5">
+              <span class="text-[10px] font-mono font-bold text-slate-600 shrink-0">${escapeHtml(s.rollNo)}</span>
+              <span class="text-slate-300 lg:hidden">&bull;</span>
+              <span class="text-[10px] font-medium text-slate-500 truncate lg:hidden">${escapeHtml(s.batch)}</span>
+            </div>
+            <div class="text-xs font-bold text-[#0F172A] truncate cursor-pointer hover:text-indigo-700 hover:underline mt-0.5" onclick="openStudentMonthlyCalendarModal('${safeId}')">
+              ${escapeHtml(s.name)} ${isShort ? '<span class="text-red-600 font-black">*</span>' : ''}
+            </div>
+            <div class="text-[10px] text-indigo-700 truncate">${escapeHtml(s.grade)} &mdash; ${escapeHtml(s.course)}</div>
+          </div>
+          <div class="text-right tabular-nums shrink-0 lg:hidden">
+            <div class="text-[11px] font-bold ${isShort ? 'text-red-600' : 'text-emerald-700'}">Wk ${wk.totalWeekSessions}/3${isShort ? '*' : ''}</div>
+            <div class="text-[10px] text-slate-500">Gen <b>${mod48}/48</b> &middot; B:<b>${Number(s.bonusCredits || 0)}</b></div>
+          </div>
+        </div>
+
+        <!-- Desktop Batch Col -->
+        <div class="hidden lg:block min-w-0">
+          <div class="text-[11px] font-semibold text-slate-700 truncate">${escapeHtml(s.batch)}</div>
+          <div class="text-[10px] text-slate-500 truncate">Adm: ${escapeHtml(s.admissionDate)}</div>
+        </div>
+
+        <!-- 5 Disciplined Equal-Width Status Buttons -->
+        <div class="grid grid-cols-5 gap-1.5">
+          ${ATTENDANCE_STATUS_DEFS.map(st => {
+            const isActive = rec.status === st.id;
+            return `
+              <button type="button" title="${escapeHtml(st.label)}" onclick="setStudentAttendanceStatus('${safeId}', '${st.id}')"
+                class="min-h-[40px] lg:min-h-[34px] rounded-lg border text-xs font-black transition flex flex-col items-center justify-center leading-tight ${isActive ? st.activeClass : st.idleClass}">
+                <span>${st.code}</span>
+                <span class="text-[8px] font-semibold opacity-80 lg:hidden">${st.label.split(' ')[0]}</span>
+              </button>
+            `;
+          }).join('')}
+        </div>
+
+        <!-- Desktop Time -->
+        <input type="text" value="${escapeHtml(rec.time || '')}" placeholder="Time" onchange="updateAttendanceField('${safeId}', 'time', this.value)"
+          class="hidden lg:block w-full px-2 py-1.5 text-[11px] font-mono border border-slate-200 rounded-lg text-center" />
+
+        <!-- Desktop Stats -->
+        <div class="hidden lg:block text-right tabular-nums">
+          <div class="text-[11px] font-bold ${isShort ? 'text-red-600' : 'text-emerald-700'}">Wk: ${wk.totalWeekSessions}/3 ${isShort ? '*' : ''}</div>
+          <div class="text-[10px] text-slate-600">Gen: <b>${mod48}/48</b> &bull; B:<b>${Number(s.bonusCredits || 0)}</b></div>
+        </div>
+
+        <!-- Desktop Remark -->
+        <input type="text" value="${escapeHtml(rec.note || '')}" placeholder="Remark" onchange="updateAttendanceField('${safeId}', 'note', this.value)"
+          class="hidden lg:block w-full px-2.5 py-1.5 text-[11px] border border-slate-200 rounded-lg" />
+
+        <!-- Mobile Time + Remark Row -->
+        <div class="grid grid-cols-3 gap-2 lg:hidden">
+          <input type="text" value="${escapeHtml(rec.time || '')}" placeholder="Time" onchange="updateAttendanceField('${safeId}', 'time', this.value)"
+            class="col-span-1 px-2.5 py-1.5 text-[11px] font-mono border border-slate-200 rounded-lg text-center bg-slate-50/50" />
+          <input type="text" value="${escapeHtml(rec.note || '')}" placeholder="Add remark..." onchange="updateAttendanceField('${safeId}', 'note', this.value)"
+            class="col-span-2 px-2.5 py-1.5 text-[11px] border border-slate-200 rounded-lg bg-slate-50/50" />
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function filterAttendanceRowsInPlace(val) {
+  attendanceSearchQuery = val;
+  const container = document.getElementById('attendanceRowsContainer');
+  if (!container) return;
+  const batchStudents = getFilteredStudents();
+  const q = attendanceSearchQuery.trim().toLowerCase();
+  const visibleStudents = q
+    ? batchStudents.filter(s => String(s.name || '').toLowerCase().includes(q) || String(s.rollNo || '').toLowerCase().includes(q))
+    : batchStudents;
+  container.innerHTML = buildAttendanceRowsHtml(visibleStudents);
+}
+
 function renderAttendanceTab(el) {
-  const statuses = [
-    { id: 'present', label: 'Present', activeClass: 'bg-emerald-700 text-white border-emerald-700' },
-    { id: 'absent', label: 'Absent', activeClass: 'bg-red-600 text-white border-red-600' },
-    { id: 'teacher_leave', label: 'Teacher Leave', activeClass: 'bg-amber-600 text-white border-amber-600' },
-    { id: 'bonus_used', label: 'Bonus Used', activeClass: 'bg-indigo-700 text-white border-indigo-700' },
-    { id: 'excused_leave', label: 'Excused Leave', activeClass: 'bg-slate-700 text-white border-slate-700' }
-  ];
-  const visibleStudents = getFilteredStudents();
+  const batchStudents = getFilteredStudents();
+  const q = attendanceSearchQuery.trim().toLowerCase();
+  const visibleStudents = q
+    ? batchStudents.filter(s => String(s.name || '').toLowerCase().includes(q) || String(s.rollNo || '').toLowerCase().includes(q))
+    : batchStudents;
+
   const isHol = isDateHoliday(selectedDate);
   const parts = selectedDate.split('-').map(Number);
   const isSunday = parts.length === 3 && new Date(parts[0], parts[1] - 1, parts[2]).getDay() === 0;
 
+  let pCnt = 0, aCnt = 0, tlCnt = 0, unmCnt = 0;
+  batchStudents.forEach(s => {
+    const st = getAttendanceRecord(selectedDate, s.id).status;
+    if (st === 'present' || st === 'bonus_used') pCnt++;
+    else if (st === 'absent') aCnt++;
+    else if (st === 'teacher_leave') tlCnt++;
+    else if (st === 'unmarked') unmCnt++;
+  });
+
   el.innerHTML = `
-    <div class="space-y-4">
-      <div class="bg-white p-3.5 rounded-xl border border-slate-200 flex flex-wrap items-end justify-between gap-3">
-        <div class="flex flex-wrap items-end gap-2.5">
+    <div class="space-y-3.5">
+      <!-- DISCIPLINED ATTENDANCE CONTROL BAR -->
+      <div class="bg-white p-3.5 rounded-xl border border-slate-200 space-y-3">
+        <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-[170px_170px_1fr_auto] gap-2.5 items-end">
           <div>
-            <label class="block text-[10px] font-bold uppercase text-slate-500 mb-0.5">Date</label>
-            <input type="date" value="${selectedDate}" onchange="selectedDate=this.value; calendarMonth=this.value.slice(0,7); renderCurrentTab();" class="px-2.5 py-1.5 text-xs font-semibold border border-slate-300 rounded-lg" />
+            <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Date</label>
+            <input type="date" value="${escapeHtml(selectedDate)}" onchange="selectedDate=this.value; calendarMonth=this.value.slice(0,7); renderCurrentTab();" class="w-full min-h-[38px] px-2.5 py-1.5 text-xs font-semibold border border-slate-300 rounded-lg bg-white" />
           </div>
           <div>
-            <label class="block text-[10px] font-bold uppercase text-slate-500 mb-0.5">Batch</label>
-            <select onchange="filterBatch=this.value; renderCurrentTab();" class="px-2.5 py-1.5 text-xs font-semibold border border-slate-300 rounded-lg">
+            <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Batch</label>
+            <select onchange="filterBatch=this.value; renderCurrentTab();" class="w-full min-h-[38px] px-2.5 py-1.5 text-xs font-semibold border border-slate-300 rounded-lg bg-white">
               <option value="ALL">All Batches</option>
-              ${appState.batches.map(b => `<option value="${b}" ${filterBatch===b?'selected':''}>${b}</option>`).join('')}
+              ${appState.batches.map(b => `<option value="${escapeHtml(b)}" ${filterBatch===b?'selected':''}>${escapeHtml(b)}</option>`).join('')}
             </select>
           </div>
-          <div class="flex flex-wrap gap-1.5">
-            <button type="button" onclick="toggleHolidayForSelectedDate()"
-              class="px-3 py-1.5 text-[11px] font-bold rounded-lg border transition ${
-                isHol
-                  ? 'bg-purple-700 text-white border-purple-700 hover:bg-purple-800'
-                  : 'bg-purple-50 text-purple-800 border-purple-200 hover:bg-purple-100'
-              }">
-              ${isHol ? (isSunday ? 'Sunday Holiday (Click for Special Class)' : 'Holiday Active (Click to Reopen)') : (isSunday ? 'Special Class Active (Mark Sunday Holiday)' : 'Mark Holiday')}
-            </button>
-            <button onclick="applyBatchStatus('present')" class="px-2.5 py-1.5 text-[11px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-lg hover:bg-emerald-100">All Present</button>
-            <button onclick="applyBatchStatus('teacher_leave')" class="px-2.5 py-1.5 text-[11px] font-semibold bg-amber-50 text-amber-800 border border-amber-200 rounded-lg hover:bg-amber-100">Teacher Leave</button>
+          <div class="col-span-2 sm:col-span-1">
+            <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Filter Student</label>
+            <input id="attendanceSearchInput" type="text" value="${escapeHtml(attendanceSearchQuery)}" oninput="filterAttendanceRowsInPlace(this.value)" placeholder="Search name or roll..." class="w-full min-h-[38px] px-2.5 py-1.5 text-xs border border-slate-300 rounded-lg" />
+          </div>
+          <div class="col-span-2 sm:col-span-1 flex gap-2">
+            <button type="button" onclick="openCameraQrScanner()" class="flex-1 sm:flex-none min-h-[38px] px-3 py-1.5 bg-indigo-700 hover:bg-indigo-800 text-white text-xs font-semibold rounded-lg whitespace-nowrap">Scan QR</button>
+            <button type="button" onclick="exportDailyAttendancePdf()" class="flex-1 sm:flex-none min-h-[38px] px-3 py-1.5 border border-slate-300 text-slate-800 text-xs font-semibold rounded-lg hover:bg-slate-50 whitespace-nowrap">Export PDF</button>
           </div>
         </div>
 
-        <div class="flex items-center gap-1.5">
-          <button type="button" onclick="exportDailyAttendancePdf()" class="px-3 py-1.5 border border-slate-300 text-slate-800 text-xs font-semibold rounded-lg hover:bg-slate-50">PDF</button>
+        <div class="grid grid-cols-3 gap-2 pt-2 border-t border-slate-100">
+          <button type="button" onclick="toggleHolidayForSelectedDate()"
+            class="min-h-[38px] px-2.5 py-1.5 text-[11px] font-bold rounded-lg border transition text-center ${
+              isHol
+                ? 'bg-purple-700 text-white border-purple-700 hover:bg-purple-800'
+                : 'bg-purple-50 text-purple-800 border-purple-200 hover:bg-purple-100'
+            }">
+            ${isHol ? (isSunday ? 'Holiday (Open Class)' : 'Holiday Active') : (isSunday ? 'Special Class' : 'Mark Holiday (H)')}
+          </button>
+          <button type="button" onclick="applyBatchStatus('present')" class="min-h-[38px] px-2.5 py-1.5 text-[11px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-lg hover:bg-emerald-100 text-center">All Present (P)</button>
+          <button type="button" onclick="applyBatchStatus('teacher_leave')" class="min-h-[38px] px-2.5 py-1.5 text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200 rounded-lg hover:bg-amber-100 text-center">All T-Leave (TL)</button>
+        </div>
+
+        <div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100 text-[11px] tabular-nums">
+          <div class="flex flex-wrap items-center gap-x-3 gap-y-1 font-semibold">
+            <span class="text-slate-600">Total: <b class="text-[#0F172A]">${batchStudents.length}</b></span>
+            <span class="text-emerald-700">P: <b>${pCnt}</b></span>
+            <span class="text-red-600">A: <b>${aCnt}</b></span>
+            <span class="text-amber-600">TL: <b>${tlCnt}</b></span>
+            <span class="text-slate-500">Pending: <b>${unmCnt}</b></span>
+          </div>
+          <span class="text-[10px] text-slate-400">Tap student name for monthly calendar</span>
         </div>
       </div>
 
       ${isHol ? `
-        <div class="bg-purple-50 border border-purple-200 rounded-xl p-4 flex flex-wrap items-center justify-between gap-2 text-xs text-purple-900">
+        <div class="bg-purple-50 border border-purple-200 rounded-xl p-3 text-xs text-purple-900 flex items-center justify-between gap-2">
           <div>
-            <span class="font-bold">${isSunday ? 'Sunday Weekly Off / Holiday' : 'Academy Holiday'} (${selectedDate}):</span>
-            <span>Regular attendance is paused. Click <b>${isSunday ? 'Sunday Holiday (Click for Special Class)' : 'Holiday Active (Click to Reopen)'}</b> above to conduct special classes on this day.</span>
+            <span class="font-bold">${isSunday ? 'Sunday Holiday (H)' : 'Academy Holiday (H)'} &mdash; ${escapeHtml(selectedDate)}:</span>
+            <span class="text-purple-800"> Regular classes paused. Tap the Holiday button above to open a special class.</span>
           </div>
         </div>
       ` : ''}
 
-      <div class="bg-white rounded-xl border border-slate-200 divide-y divide-slate-200 overflow-x-auto">
-        ${visibleStudents.map(s => {
-          const rec = getAttendanceRecord(selectedDate, s.id);
-          const wk = getWeeklyStats(selectedDate, s);
-          const isShort = rec.status === 'absent' || wk.hasShortFlag;
-          const mod48 = s.genuineDays % 48;
-          return `
-            <div class="px-3 py-2 flex items-center justify-between gap-3 min-w-[960px] hover:bg-slate-50/80 transition">
-              <div class="flex items-center gap-2.5 w-56 shrink-0">
-                <span class="px-1.5 py-0.5 text-[10px] font-mono font-semibold bg-slate-100 border border-slate-200 rounded text-slate-700">${s.rollNo}</span>
-                <div class="truncate">
-                  <div class="text-xs font-bold text-[#0F172A] truncate cursor-pointer hover:text-indigo-700 hover:underline" onclick="openStudentMonthlyCalendarModal('${s.id}')">${s.name} ${isShort ? '<span class="text-red-600 font-bold">*</span>' : ''}</div>
-                  <div class="text-[10px] text-indigo-700 truncate">${s.grade} &mdash; ${s.course}</div>
-                </div>
-              </div>
+      <!-- DISCIPLINED ATTENDANCE REGISTER -->
+      <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <!-- Desktop Aligned Table Header -->
+        <div class="hidden lg:grid lg:grid-cols-[230px_130px_280px_84px_125px_1fr] gap-3 items-center px-3.5 py-2.5 bg-slate-50 border-b border-slate-200 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+          <div>Student</div>
+          <div>Batch</div>
+          <div>Mark Status (P / A / TL / B / E)</div>
+          <div class="text-center">Time</div>
+          <div class="text-right">Weekly / Genuine</div>
+          <div>Remark</div>
+        </div>
 
-              <div class="w-44 shrink-0">
-                <div class="text-[11px] font-medium text-slate-700 truncate">${s.batch}</div>
-                <div class="text-[10px] text-slate-500 truncate">Adm: ${s.admissionDate} ${s.pickupNote ? '&bull; ' + s.pickupNote : ''}</div>
-              </div>
-
-              <div class="flex items-center gap-1 shrink-0">
-                ${statuses.map(st => `
-                  <button onclick="setStudentAttendanceStatus('${s.id}', '${st.id}')"
-                    class="px-2 py-1 text-[10px] font-semibold rounded border transition ${
-                      rec.status === st.id
-                        ? st.activeClass
-                        : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
-                    }">
-                    ${st.label}
-                  </button>
-                `).join('')}
-              </div>
-
-              <input type="text" value="${rec.time}" onchange="updateAttendanceField('${s.id}', 'time', this.value)"
-                class="w-20 px-2 py-1 text-[11px] font-mono border border-slate-200 rounded text-center shrink-0" />
-
-              <div class="w-32 shrink-0 text-right tabular-nums">
-                <span class="inline-block px-1.5 py-0.5 text-[10px] font-semibold rounded ${isShort ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}">
-                  Wk: ${wk.totalWeekSessions}/3 ${isShort ? '*' : ''}
-                </span>
-                <div class="text-[10px] text-slate-600 mt-0.5">Gen: <b>${mod48}/48</b> &bull; B:<b>${s.bonusCredits}</b></div>
-              </div>
-
-              <input type="text" value="${rec.note || ''}" placeholder="Remark" onchange="updateAttendanceField('${s.id}', 'note', this.value)"
-                class="w-32 px-2 py-1 text-[11px] border border-slate-200 rounded shrink-0" />
-            </div>
-          `;
-        }).join('')}
+        <div id="attendanceRowsContainer" class="divide-y divide-slate-200">
+          ${buildAttendanceRowsHtml(visibleStudents)}
+        </div>
       </div>
     </div>
   `;
@@ -2376,6 +2726,7 @@ function saveNewStudent(e) {
     id: 'stu_' + Date.now(),
     rollNo: fd.get('rollNo').toUpperCase(),
     pin: fd.get('pin'),
+    pinChanged: false,
     name: fd.get('name').trim(),
     phone,
     parentPhone: (fd.get('parentPhone') || phone).trim(),
@@ -2397,6 +2748,12 @@ function saveNewStudent(e) {
     isMinor: false,
     guardian: (fd.get('guardian') || '').trim(),
     pickupNote: (fd.get('pickupNote') || '').trim(),
+    dob: '',
+    email: '',
+    addr: '',
+    gender: '',
+    schoolOrOccupation: '',
+    musicGoal: '',
     photoDataUrl: ''
   };
   appState.students.push(newStu);
@@ -2769,31 +3126,77 @@ function renderFeesTab(el) {
 function uploadCustomBrochure(e) {
   const file = e.target.files[0];
   if (!file) return;
-  showToast('Uploading custom brochure...');
+  showToast('Uploading custom brochure to cloud...');
   const reader = new FileReader();
   reader.onload = async function(ev) {
     const dataUrl = ev.target.result;
     appState.customBrochureDataUrl = dataUrl.length < 150000 ? dataUrl : '';
     appState.customBrochureName = file.name;
     appState.hasCustomBrochure = true;
-    await tsmSaveBlob('custom_brochure', dataUrl);
+    const res = await tsmSaveBlob('custom_brochure', dataUrl, { fileName: file.name, mimeType: file.type || 'application/pdf' });
     saveState();
     renderCurrentTab();
-    showToast(`Uploaded & synced brochure: ${file.name}`);
+    if (res.cloudOk) {
+      showToast(`Uploaded & cloud-synced brochure: ${file.name}`);
+    } else {
+      showToast(`Saved brochure locally (${file.name}), cloud sync failed — check internet/rules`);
+    }
   };
   reader.readAsDataURL(file);
 }
 
 async function downloadActiveBrochure() {
+  showToast('Preparing academy brochure...');
   let brochureData = appState.customBrochureDataUrl || '';
-  if (!brochureData && (appState.customBrochureName || appState.hasCustomBrochure)) {
-    showToast('Loading custom brochure...');
-    brochureData = await tsmLoadBlob('custom_brochure');
+  let brochureName = appState.customBrochureName || '';
+
+  // 1. Always check fresh cloud `tsm_blobs/custom_brochure` (with IndexedDB fallback) so newly uploaded brochures sync across devices
+  if (!brochureData) {
+    const loaded = await tsmLoadBlobWithMeta('custom_brochure', { preferCloud: true });
+    if (loaded.dataUrl) {
+      brochureData = loaded.dataUrl;
+      if (loaded.fileName && !brochureName) brochureName = loaded.fileName;
+    }
   }
+
+  // 2. If still not found, check cloud master_state directly (handles fresh login screen before snapshot arrives)
+  if (!brochureData) {
+    const fsDb = await ensureFirestoreReady();
+    if (fsDb) {
+      try {
+        const ms = await fsDb.collection('tsm_system').doc('master_state').get();
+        if (ms.exists) {
+          const d = ms.data() || {};
+          if (d.customBrochureName && !brochureName) brochureName = d.customBrochureName;
+          if (d.customBrochureDataUrl) brochureData = d.customBrochureDataUrl;
+          if (!brochureData && Array.isArray(d.vaultItems)) {
+            const brochureVault = d.vaultItems.find(x => String(x.category || '').toLowerCase() === 'brochure');
+            if (brochureVault) {
+              brochureData = brochureVault.pdfDataUrl || (await tsmLoadBlob(brochureVault.id)) || '';
+              if (brochureData && !brochureName) brochureName = `${String(brochureVault.title || 'TSM_Brochure').replace(/\s+/g, '_')}.pdf`;
+            }
+          }
+        }
+      } catch (e) { console.warn('Brochure cloud lookup warning:', e); }
+    }
+  }
+
+  // 3. Also check local vaultItems for a Brochure category upload if custom_brochure wasn't set
+  if (!brochureData && Array.isArray(appState.vaultItems)) {
+    const brochureVault = appState.vaultItems.find(x => String(x.category || '').toLowerCase() === 'brochure');
+    if (brochureVault) {
+      brochureData = brochureVault.pdfDataUrl || (await tsmLoadBlob(brochureVault.id)) || '';
+      if (brochureData && !brochureName) brochureName = `${String(brochureVault.title || 'TSM_Brochure').replace(/\s+/g, '_')}.pdf`;
+    }
+  }
+
   if (brochureData) {
-    await triggerSafeDownloadFromDataUrl(brochureData, appState.customBrochureName || 'TSM_Brochure.pdf');
+    await triggerSafeDownloadFromDataUrl(brochureData, brochureName || 'TSM_Brochure.pdf');
+    showToast(`Downloaded ${brochureName || 'Academy Brochure'}`);
     return;
   }
+
+  // Fallback: generate standard academy brochure only when no custom PDF has been uploaded
   const { PDFDocument, StandardFonts, rgb } = PDFLib;
   const pdfDoc = await PDFDocument.create();
   const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
@@ -2807,16 +3210,12 @@ async function downloadActiveBrochure() {
 
   let y = 328;
   appState.courses.forEach(c => {
-    p.drawText(`${c.name} (${c.category}) — INR ${c.fee}`, { x: 24, y, size: 7, font: fontBold, color: rgb(0.06, 0.09, 0.16) });
+    p.drawText(sanitizePdfText(`${c.name} (${c.category}) - INR ${c.fee}`), { x: 24, y, size: 7, font: fontBold, color: rgb(0.06, 0.09, 0.16) });
     y -= 14;
   });
 
   const bytes = await pdfDoc.save();
-  const blob = new Blob([bytes], { type: 'application/pdf' });
-  const link = document.createElement('a');
-  link.href = URL.createObjectURL(blob);
-  link.download = `TSM_Brochure.pdf`;
-  link.click();
+  triggerBlobDownload(new Blob([bytes], { type: 'application/pdf' }), 'TSM_Brochure.pdf');
 }
 
 function updateFeeStatus(stuId, val) {
@@ -3325,17 +3724,25 @@ function addCampaignPrompt() {
 }
 
 
-async function removeCustomBrochure() {
-  if (!confirm('Remove custom brochure and revert to default generated brochure?')) return;
+function removeCustomBrochure() {
+  showModal(`
+    <div class="space-y-4">
+      <h3 class="text-base font-bold text-[#0F172A]">Remove Custom Brochure</h3>
+      <p class="text-xs text-slate-600">Remove the uploaded custom brochure and revert to the default generated brochure?</p>
+      <div class="flex justify-end gap-2 pt-2">
+        <button type="button" onclick="closeModal()" class="px-4 py-2 text-xs font-semibold border border-slate-300 rounded-lg hover:bg-slate-50">Cancel</button>
+        <button type="button" onclick="executeRemoveCustomBrochure()" class="px-4 py-2 text-xs font-semibold bg-[#B91C1C] text-white rounded-lg hover:bg-red-800">Remove</button>
+      </div>
+    </div>
+  `);
+}
+
+async function executeRemoveCustomBrochure() {
+  closeModal();
   appState.customBrochureDataUrl = '';
   appState.customBrochureName = '';
   appState.hasCustomBrochure = false;
-  try {
-    const idb = await openTsmBlobDb();
-    const tx = idb.transaction('blobs', 'readwrite');
-    tx.objectStore('blobs').delete('custom_brochure');
-  } catch (e) {}
-  if (db) db.collection('tsm_blobs').doc('custom_brochure').delete().catch(() => {});
+  await tsmDeleteBlob('custom_brochure');
   saveState();
   renderCurrentTab();
   showToast('Custom brochure removed');
@@ -3490,83 +3897,408 @@ async function downloadStudentWatermarkedVaultPdf(vaultId, stuId) {
   const v = (appState.vaultItems || []).find(x => x.id === vaultId);
   if (!v || !s) return;
 
-  showToast('Wrapping cover & applying student watermark...');
-  const { PDFDocument, StandardFonts, rgb, degrees } = PDFLib;
-  const outDoc = await PDFDocument.create();
-  const fontBold = await outDoc.embedFont(StandardFonts.HelveticaBold);
-  const fontReg = await outDoc.embedFont(StandardFonts.Helvetica);
+  const safeFileName = `TSM_${String(v.title || 'Material').replace(/[^a-zA-Z0-9_-]+/g, '_')}_${s.rollNo}.pdf`;
+  showToast('Fetching study material PDF...');
 
-  // 1. Official Personalized Cover Page
-  const cover = outDoc.addPage([595.28, 841.89]);
-  cover.drawRectangle({ x: 36, y: 36, width: 523.28, height: 769.89, borderColor: rgb(0.06, 0.09, 0.16), borderWidth: 1.5 });
-  cover.drawRectangle({ x: 36, y: 799.89, width: 523.28, height: 6, color: rgb(0.06, 0.09, 0.16) });
-  cover.drawText('B. S. TIKARIYA CULTURAL FOUNDATION', { x: 185, y: 755, size: 10, font: fontBold, color: rgb(0.28, 0.33, 0.41) });
-  cover.drawText('CIN: U88900MH2025NPL454435', { x: 225, y: 740, size: 8.5, font: fontReg, color: rgb(0.39, 0.45, 0.55) });
-  drawStyledAcademyTitlePdf(cover, 148, 710, 18, fontBold);
-  cover.drawText((v.category || 'OFFICIAL STUDY MATERIAL').toUpperCase(), { x: 215, y: 675, size: 9.5, font: fontBold, color: rgb(0.26, 0.22, 0.79) });
-  cover.drawText(v.title, { x: 64, y: 615, size: 18, font: fontBold, color: rgb(0.06, 0.09, 0.16) });
-  cover.drawText(`Course: ${v.targetCourse || v.course || 'All Courses'}`, { x: 64, y: 585, size: 11, font: fontBold, color: rgb(0.26, 0.22, 0.79) });
-  cover.drawText(`Issued To Student: ${s.name} (Roll No: ${s.rollNo})`, { x: 64, y: 550, size: 12, font: fontBold, color: rgb(0.06, 0.09, 0.16) });
-  cover.drawText(`Grade: ${s.grade} — ${s.course} | Batch: ${s.batch}`, { x: 64, y: 530, size: 10, font: fontReg, color: rgb(0.28, 0.33, 0.41) });
-  cover.drawText(`${s.name} (${s.rollNo}) — TIKARIYA'S SCHOOL OF MUSIC`, {
-    x: 95, y: 320, size: 16, font: fontBold, color: rgb(0.75, 0.78, 0.82), opacity: 0.32, rotate: degrees(35)
-  });
-
-  // 2. Load Stored PDF Pages from IndexedDB / Firestore Blob Store & Apply Student Watermark on Each Page
-  let pdfDataUrl = v.pdfDataUrl || (await tsmLoadBlob(vaultId)) || localStorage.getItem('tsm_pdf_' + vaultId) || '';
-  if (!pdfDataUrl && db) {
-    try {
-      const doc = await db.collection('tsm_vault_files').doc(vaultId).get();
-      if (doc.exists && doc.data().pdfDataUrl) pdfDataUrl = doc.data().pdfDataUrl;
-    } catch (e) {}
+  // 1. Load actual uploaded PDF from all available stores (inline -> IndexedDB/Firestore tsm_blobs -> localStorage -> tsm_vault_files)
+  let pdfDataUrl = v.pdfDataUrl || '';
+  if (!pdfDataUrl) {
+    pdfDataUrl = await tsmLoadBlob(vaultId);
+  }
+  if (!pdfDataUrl) {
+    try { pdfDataUrl = localStorage.getItem('tsm_pdf_' + vaultId) || ''; } catch (e) {}
+  }
+  if (!pdfDataUrl) {
+    const fsDb = await ensureFirestoreReady();
+    if (fsDb) {
+      try {
+        const doc = await fsDb.collection('tsm_vault_files').doc(vaultId).get();
+        if (doc.exists && doc.data().pdfDataUrl) pdfDataUrl = doc.data().pdfDataUrl;
+      } catch (e) {}
+    }
   }
 
-  if (pdfDataUrl) {
-    try {
-      const srcDoc = await PDFDocument.load(pdfDataUrl);
-      const copiedPages = await outDoc.copyPages(srcDoc, srcDoc.getPageIndices());
-      copiedPages.forEach(cp => {
-        cp.drawText(`${s.name} (${s.rollNo}) — TIKARIYA'S SCHOOL OF MUSIC`, {
-          x: 95, y: 360, size: 16, font: fontBold, color: rgb(0.72, 0.75, 0.80), opacity: 0.32, rotate: degrees(35)
+  if (!pdfDataUrl) {
+    showToast('PDF file not synced to cloud yet. Please ask your instructor to re-upload it in Studio.');
+    return;
+  }
+
+  let rawBytes = null;
+  try {
+    rawBytes = dataUrlToUint8Array(pdfDataUrl);
+  } catch (e) {
+    console.warn('Base64 decode warning:', e);
+    await triggerSafeDownloadFromDataUrl(pdfDataUrl, safeFileName);
+    showToast('Downloaded study material PDF');
+    return;
+  }
+
+  // 2. Try merging cover page + student watermark on every uploaded page; if PDF cannot be rewritten, download the real uploaded PDF directly
+  try {
+    showToast('Applying student watermark to study material...');
+    const { PDFDocument, StandardFonts, rgb, degrees } = PDFLib;
+    const srcDoc = await PDFDocument.load(rawBytes, { ignoreEncryption: true });
+    const pageIndices = srcDoc.getPageIndices();
+    if (!pageIndices.length) {
+      throw new Error('Source PDF has zero readable pages');
+    }
+
+    const outDoc = await PDFDocument.create();
+    const fontBold = await outDoc.embedFont(StandardFonts.HelveticaBold);
+    const fontReg = await outDoc.embedFont(StandardFonts.Helvetica);
+
+    // Official Personalized Cover Page
+    const cover = outDoc.addPage([595.28, 841.89]);
+    cover.drawRectangle({ x: 36, y: 36, width: 523.28, height: 769.89, borderColor: rgb(0.06, 0.09, 0.16), borderWidth: 1.5 });
+    cover.drawRectangle({ x: 36, y: 799.89, width: 523.28, height: 6, color: rgb(0.06, 0.09, 0.16) });
+    cover.drawText('B. S. TIKARIYA CULTURAL FOUNDATION', { x: 185, y: 755, size: 10, font: fontBold, color: rgb(0.28, 0.33, 0.41) });
+    cover.drawText('CIN: U88900MH2025NPL454435', { x: 225, y: 740, size: 8.5, font: fontReg, color: rgb(0.39, 0.45, 0.55) });
+    drawStyledAcademyTitlePdf(cover, 148, 710, 18, fontBold);
+    cover.drawText(sanitizePdfText((v.category || 'OFFICIAL STUDY MATERIAL').toUpperCase()), { x: 215, y: 675, size: 9.5, font: fontBold, color: rgb(0.26, 0.22, 0.79) });
+    cover.drawText(sanitizePdfText(v.title || 'Study Material'), { x: 64, y: 615, size: 18, font: fontBold, color: rgb(0.06, 0.09, 0.16) });
+    cover.drawText(sanitizePdfText(`Course: ${v.targetCourse || v.course || 'All Courses'}`), { x: 64, y: 585, size: 11, font: fontBold, color: rgb(0.26, 0.22, 0.79) });
+    cover.drawText(sanitizePdfText(`Issued To Student: ${s.name} (Roll No: ${s.rollNo})`), { x: 64, y: 550, size: 12, font: fontBold, color: rgb(0.06, 0.09, 0.16) });
+    cover.drawText(sanitizePdfText(`Grade: ${s.grade} - ${s.course} | Batch: ${s.batch}`), { x: 64, y: 530, size: 10, font: fontReg, color: rgb(0.28, 0.33, 0.41) });
+    cover.drawText(sanitizePdfText(`${s.name} (${s.rollNo}) - TIKARIYA'S SCHOOL OF MUSIC`), {
+      x: 95, y: 320, size: 15, font: fontBold, color: rgb(0.75, 0.78, 0.82), opacity: 0.32, rotate: degrees(35)
+    });
+
+    const copiedPages = await outDoc.copyPages(srcDoc, pageIndices);
+    const wmText = sanitizePdfText(`${s.name} (${s.rollNo}) - TIKARIYA'S SCHOOL OF MUSIC`);
+    copiedPages.forEach(cp => {
+      try {
+        const { width, height } = cp.getSize();
+        cp.drawText(wmText, {
+          x: Math.max(36, width * 0.14),
+          y: Math.max(120, height * 0.42),
+          size: Math.min(16, Math.max(11, width / 38)),
+          font: fontBold,
+          color: rgb(0.72, 0.75, 0.80),
+          opacity: 0.28,
+          rotate: degrees(35)
         });
-        outDoc.addPage(cp);
-      });
-    } catch (e) { console.warn('PDF merge warning:', e); }
-  } else {
-    showToast('Notice: PDF body not found in cloud cache; downloaded cover sheet.');
+      } catch (wmErr) {
+        console.warn('Watermark draw skipped on page:', wmErr);
+      }
+      outDoc.addPage(cp);
+    });
+
+    const bytes = await outDoc.save();
+    triggerBlobDownload(new Blob([bytes], { type: 'application/pdf' }), safeFileName);
+    showToast(`Downloaded ${v.title} (${copiedPages.length} pages + cover)`);
+  } catch (mergeErr) {
+    console.warn('PDF merge fallback to original uploaded PDF:', mergeErr);
+    // CRITICAL: Never hand the student only an empty wrapper — download the real uploaded PDF directly!
+    triggerBlobDownload(new Blob([rawBytes], { type: 'application/pdf' }), safeFileName);
+    showToast(`Downloaded ${v.title}`);
+  }
+}
+
+function needsStudentSecurityPrompt(s) {
+  if (!s) return false;
+  if (s.pinChanged === true) return false;
+  return s.pinChanged === false || String(s.pin || '1234').trim() === '1234';
+}
+
+function maybeShowStudentSecurityPopup() {
+  if (!currentUser || currentUser.role !== 'student') return;
+  if (studentSecurityPopupDismissed) return;
+  const s = appState.students.find(x => x.id === currentUser.studentId);
+  if (!needsStudentSecurityPrompt(s)) return;
+  openStudentSecurityPopup(s.id);
+}
+
+function dismissStudentSecurityPopup() {
+  studentSecurityPopupDismissed = true;
+  closeModal();
+}
+
+function openStudentSecurityPopup(stuId) {
+  const s = appState.students.find(x => x.id === stuId);
+  if (!s) return;
+  const safeId = escapeHtml(s.id);
+  const pushGranted = typeof Notification !== 'undefined' && Notification.permission === 'granted';
+  const pinDone = !needsStudentSecurityPrompt(s);
+
+  showModal(`
+    <div class="space-y-4 max-w-md mx-auto">
+      <div class="flex items-start justify-between gap-3 border-b border-slate-200 pb-3">
+        <div>
+          <h3 class="text-base font-bold text-[#0F172A]">Secure Your Student Account</h3>
+          <p class="text-[11px] text-slate-500 mt-0.5">Please change your default PIN and enable Push Alerts to stay updated.</p>
+        </div>
+        <button type="button" onclick="dismissStudentSecurityPopup()" aria-label="Close" class="min-h-[36px] min-w-[36px] flex items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 text-sm font-bold">&times;</button>
+      </div>
+
+      <!-- STEP 1: CHANGE PIN -->
+      <div class="p-3.5 rounded-xl border ${pinDone ? 'border-emerald-200 bg-emerald-50/50' : 'border-amber-200 bg-amber-50/40'} space-y-2.5">
+        <div class="flex items-center justify-between gap-2">
+          <span class="text-xs font-bold text-[#0F172A]">1. Change Default Access PIN</span>
+          <span class="text-[10px] font-bold ${pinDone ? 'text-emerald-700' : 'text-amber-700'}">${pinDone ? 'Completed' : 'Required'}</span>
+        </div>
+        ${pinDone ? `
+          <p class="text-[11px] text-emerald-800">Your personal PIN is active. This reminder will not show again.</p>
+        ` : `
+          <form onsubmit="saveStudentSecurityPin(event, '${safeId}')" class="space-y-2.5 text-xs">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div>
+                <label class="block text-[10px] font-semibold text-slate-600 mb-1">New PIN (min 4 digits)</label>
+                <input type="password" name="newPin" minlength="4" autocomplete="new-password" placeholder="Enter new PIN" class="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono bg-white" required />
+              </div>
+              <div>
+                <label class="block text-[10px] font-semibold text-slate-600 mb-1">Confirm New PIN</label>
+                <input type="password" name="confirmPin" minlength="4" autocomplete="new-password" placeholder="Re-enter PIN" class="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono bg-white" required />
+              </div>
+            </div>
+            <div id="secPinError" class="hidden text-[11px] text-red-700 font-semibold"></div>
+            <button type="submit" class="w-full min-h-[40px] py-2 bg-[#0F172A] hover:bg-slate-800 text-white text-xs font-bold rounded-lg transition">Update Access PIN</button>
+          </form>
+        `}
+      </div>
+
+      <!-- STEP 2: ENABLE PUSH ALERTS -->
+      <div class="p-3.5 rounded-xl border ${pushGranted ? 'border-emerald-200 bg-emerald-50/50' : 'border-slate-200 bg-slate-50'} space-y-2">
+        <div class="flex items-center justify-between gap-2">
+          <span class="text-xs font-bold text-[#0F172A]">2. Enable Push Alerts</span>
+          <span class="text-[10px] font-bold ${pushGranted ? 'text-emerald-700' : 'text-slate-500'}">${pushGranted ? 'Enabled' : 'Not Enabled'}</span>
+        </div>
+        <p class="text-[11px] text-slate-600">Receive instant academy notices, class holiday alerts, and fee reminders on this device.</p>
+        <button type="button" onclick="enablePushFromSecurityPopup('${safeId}')" class="w-full min-h-[40px] py-2 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-lg transition">
+          ${pushGranted ? 'Re-Sync Push Alerts on This Device' : 'Enable Push Alerts Now'}
+        </button>
+      </div>
+
+      <div class="flex justify-end pt-1">
+        <button type="button" onclick="dismissStudentSecurityPopup()" class="px-4 py-2 text-xs font-semibold border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50">Close</button>
+      </div>
+    </div>
+  `);
+}
+
+function saveStudentSecurityPin(e, stuId) {
+  e.preventDefault();
+  const s = appState.students.find(x => x.id === stuId);
+  if (!s) return;
+  const fd = new FormData(e.target);
+  const newPin = String(fd.get('newPin') || '').trim();
+  const confirmPin = String(fd.get('confirmPin') || '').trim();
+  const errEl = document.getElementById('secPinError');
+
+  if (newPin.length < 4) {
+    if (errEl) { errEl.textContent = 'PIN must be at least 4 characters.'; errEl.classList.remove('hidden'); }
+    return;
+  }
+  if (newPin === '1234') {
+    if (errEl) { errEl.textContent = 'Please choose a new PIN different from 1234.'; errEl.classList.remove('hidden'); }
+    return;
+  }
+  if (newPin !== confirmPin) {
+    if (errEl) { errEl.textContent = 'PINs do not match. Please re-enter.'; errEl.classList.remove('hidden'); }
+    return;
   }
 
-  const bytes = await outDoc.save();
-  const blob = new Blob([bytes], { type: 'application/pdf' });
-  const link = document.createElement('a');
-  link.href = URL.createObjectURL(blob);
-  link.download = `TSM_${v.title.replace(/\s+/g, '_')}_${s.rollNo}.pdf`;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
+  s.pin = newPin;
+  s.pinChanged = true;
+  saveState();
+  showToast('Access PIN updated successfully');
+  openStudentSecurityPopup(stuId);
+}
+
+async function enablePushFromSecurityPopup(stuId) {
+  await enableFcmPushForCurrentUser(false);
+  openStudentSecurityPopup(stuId);
+}
+
+function openStudentProfileModal(stuId) {
+  const s = appState.students.find(x => x.id === stuId);
+  if (!s) return;
+  const safeId = escapeHtml(s.id);
+  const pushGranted = typeof Notification !== 'undefined' && Notification.permission === 'granted';
+
+  showModal(`
+    <div class="space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-200 pb-3">
+        <div>
+          <h3 class="text-base font-bold text-[#0F172A]">Customize Profile</h3>
+          <p class="text-[11px] text-slate-500">${escapeHtml(s.name)} &bull; <span class="font-mono font-semibold text-indigo-700">${escapeHtml(s.rollNo)}</span></p>
+        </div>
+        <button type="button" onclick="closeModal()" class="min-h-[36px] px-3 text-xs font-semibold text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50">Close</button>
+      </div>
+
+      <!-- PHOTO & ACADEMY IDENTITY SUMMARY -->
+      <div class="flex flex-col sm:flex-row items-center gap-4 p-3.5 bg-slate-50 border border-slate-200 rounded-xl">
+        <div id="profilePhotoPreview" class="w-20 h-24 rounded-lg bg-white border border-slate-300 flex items-center justify-center text-xs font-bold text-slate-400 overflow-hidden shrink-0">
+          ${s.photoDataUrl ? `<img src="${safeDataUrl(s.photoDataUrl, 'data:image/')}" class="w-full h-full object-cover" />` : 'PHOTO'}
+        </div>
+        <div class="flex-1 text-center sm:text-left space-y-1.5 text-xs">
+          <div class="font-bold text-[#0F172A]">${escapeHtml(s.course)} &mdash; <span class="text-indigo-700">${escapeHtml(s.grade)}</span></div>
+          <div class="text-slate-600">Batch: <b>${escapeHtml(s.batch)}</b> &bull; Admitted: <b>${escapeHtml(s.admissionDate)}</b></div>
+          <label class="inline-flex items-center justify-center px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-800 cursor-pointer hover:bg-slate-100">
+            Upload / Change Photo
+            <input type="file" accept="image/*" onchange="uploadStudentPhoto(event, '${safeId}', true)" class="hidden" />
+          </label>
+        </div>
+      </div>
+
+      <form onsubmit="saveStudentProfileModal(event, '${safeId}')" class="space-y-4 text-xs">
+        <!-- PERSONAL DETAILS -->
+        <div class="space-y-2.5">
+          <h4 class="text-[11px] font-bold uppercase tracking-wider text-slate-500 border-b border-slate-100 pb-1">Personal Details</h4>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label class="block font-semibold text-slate-700 mb-1">Date of Birth</label>
+              <input type="date" name="dob" value="${escapeHtml(s.dob || '')}" class="w-full px-3 py-2 border border-slate-300 rounded-lg" />
+            </div>
+            <div>
+              <label class="block font-semibold text-slate-700 mb-1">Gender</label>
+              <select name="gender" class="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white">
+                <option value="" ${!s.gender ? 'selected' : ''}>Select</option>
+                <option value="Male" ${s.gender === 'Male' ? 'selected' : ''}>Male</option>
+                <option value="Female" ${s.gender === 'Female' ? 'selected' : ''}>Female</option>
+                <option value="Other" ${s.gender === 'Other' ? 'selected' : ''}>Other</option>
+              </select>
+            </div>
+            <div>
+              <label class="block font-semibold text-slate-700 mb-1">Email Address</label>
+              <input type="email" name="email" value="${escapeHtml(s.email || '')}" placeholder="student@example.com" class="w-full px-3 py-2 border border-slate-300 rounded-lg" />
+            </div>
+            <div>
+              <label class="block font-semibold text-slate-700 mb-1">School / College / Occupation</label>
+              <input type="text" name="schoolOrOccupation" value="${escapeHtml(s.schoolOrOccupation || '')}" placeholder="e.g. St. Xavier's High School" class="w-full px-3 py-2 border border-slate-300 rounded-lg" />
+            </div>
+          </div>
+          <div>
+            <label class="block font-semibold text-slate-700 mb-1">Residential Address</label>
+            <textarea name="addr" rows="2" placeholder="House / Flat, Street, Area, City" class="w-full px-3 py-2 border border-slate-300 rounded-lg">${escapeHtml(s.addr || '')}</textarea>
+          </div>
+        </div>
+
+        <!-- CONTACT & FAMILY -->
+        <div class="space-y-2.5">
+          <h4 class="text-[11px] font-bold uppercase tracking-wider text-slate-500 border-b border-slate-100 pb-1">Contact &amp; Family</h4>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label class="block font-semibold text-slate-700 mb-1">Student WhatsApp Mobile</label>
+              <input type="tel" name="phone" value="${escapeHtml(s.phone || '')}" class="w-full px-3 py-2 border border-slate-300 rounded-lg" />
+            </div>
+            <div>
+              <label class="block font-semibold text-slate-700 mb-1">Parent / Guardian Name</label>
+              <input type="text" name="guardian" value="${escapeHtml(s.guardian || '')}" class="w-full px-3 py-2 border border-slate-300 rounded-lg" />
+            </div>
+            <div>
+              <label class="block font-semibold text-slate-700 mb-1">Parent / Emergency Mobile</label>
+              <input type="tel" name="parentPhone" value="${escapeHtml(s.parentPhone || s.phone || '')}" class="w-full px-3 py-2 border border-slate-300 rounded-lg" />
+            </div>
+            <div>
+              <label class="block font-semibold text-slate-700 mb-1">Pickup / Safety Note</label>
+              <input type="text" name="pickupNote" value="${escapeHtml(s.pickupNote || '')}" placeholder="Optional pickup or medical note" class="w-full px-3 py-2 border border-slate-300 rounded-lg" />
+            </div>
+          </div>
+        </div>
+
+        <!-- MUSIC PROFILE -->
+        <div class="space-y-2.5">
+          <h4 class="text-[11px] font-bold uppercase tracking-wider text-slate-500 border-b border-slate-100 pb-1">Music Learning Goal</h4>
+          <div>
+            <label class="block font-semibold text-slate-700 mb-1">Practice Goal / Favorite Style or Instrument Note</label>
+            <input type="text" name="musicGoal" value="${escapeHtml(s.musicGoal || '')}" placeholder="e.g. Trinity Grade 1 Exam, Classical Vocals, Fingerpicking" class="w-full px-3 py-2 border border-slate-300 rounded-lg" />
+          </div>
+        </div>
+
+        <!-- SECURITY & ALERTS -->
+        <div class="space-y-2.5 p-3.5 bg-slate-50 border border-slate-200 rounded-xl">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <h4 class="text-[11px] font-bold uppercase tracking-wider text-slate-600">Security &amp; Push Alerts</h4>
+            <button type="button" onclick="enableFcmPushForCurrentUser(false)" class="px-3 py-1.5 text-[11px] font-bold bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg">
+              ${pushGranted ? 'Push Alerts Enabled (Re-Sync)' : 'Enable Push Alerts'}
+            </button>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label class="block font-semibold text-slate-700 mb-1">Change Access PIN (leave blank to keep)</label>
+              <input type="password" name="newPin" minlength="4" autocomplete="new-password" placeholder="New PIN (min 4 chars)" class="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono bg-white" />
+            </div>
+            <div>
+              <label class="block font-semibold text-slate-700 mb-1">Confirm New PIN</label>
+              <input type="password" name="confirmPin" minlength="4" autocomplete="new-password" placeholder="Confirm new PIN" class="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono bg-white" />
+            </div>
+          </div>
+        </div>
+
+        <div class="flex justify-end gap-2 pt-2 border-t border-slate-200">
+          <button type="button" onclick="closeModal()" class="min-h-[40px] px-4 py-2 border border-slate-300 rounded-lg font-semibold text-slate-700 hover:bg-slate-50">Cancel</button>
+          <button type="submit" class="min-h-[40px] px-5 py-2 bg-[#0F172A] hover:bg-slate-800 text-white rounded-lg font-bold">Save Profile</button>
+        </div>
+      </form>
+    </div>
+  `);
+}
+
+function saveStudentProfileModal(e, stuId) {
+  e.preventDefault();
+  const s = appState.students.find(x => x.id === stuId);
+  if (!s) return;
+  const fd = new FormData(e.target);
+
+  const newPin = String(fd.get('newPin') || '').trim();
+  const confirmPin = String(fd.get('confirmPin') || '').trim();
+  if (newPin) {
+    if (newPin.length < 4) {
+      showToast('PIN must be at least 4 characters');
+      return;
+    }
+    if (newPin === '1234') {
+      showToast('Please choose a PIN different from 1234');
+      return;
+    }
+    if (newPin !== confirmPin) {
+      showToast('New PIN and Confirm PIN do not match');
+      return;
+    }
+    s.pin = newPin;
+    s.pinChanged = true;
+  }
+
+  s.dob = String(fd.get('dob') || '').trim();
+  s.gender = String(fd.get('gender') || '').trim();
+  s.email = String(fd.get('email') || '').trim();
+  s.schoolOrOccupation = String(fd.get('schoolOrOccupation') || '').trim();
+  s.addr = String(fd.get('addr') || '').trim();
+  s.phone = String(fd.get('phone') || s.phone || '').trim();
+  s.guardian = String(fd.get('guardian') || '').trim();
+  s.parentPhone = String(fd.get('parentPhone') || s.phone || '').trim();
+  s.pickupNote = String(fd.get('pickupNote') || '').trim();
+  s.musicGoal = String(fd.get('musicGoal') || '').trim();
+
+  saveState();
+  closeModal();
+  renderCurrentTab();
+  showToast('Profile saved successfully');
 }
 
 function renderStudentPortal(el, tab) {
   const s = appState.students.find(x => x.id === currentUser.studentId);
   if (!s) return;
-  const mod48 = s.genuineDays % 48;
+  const mod48 = Number(s.genuineDays || 0) % 48;
   const netFee = getStudentNetPayable(s);
   const siblings = getFamilySiblings(s);
   const months = getMonthsEnrolled(s.admissionDate);
   const nextDue = getNextBillingDate(s.admissionDate);
   const elig = evaluateCertificateEligibility(s, selectedDate);
+  const safeId = escapeHtml(s.id);
 
   const feeBanner = s.feeStatus === 'Unpaid' ? `
     <div class="max-w-xl mx-auto mb-4 bg-amber-50 border border-amber-200 rounded-xl p-3.5 text-xs flex items-center justify-between gap-2">
       <div>
-        <div class="font-bold text-amber-900">Dear ${s.name}, Fee Reminder (Month #${months})</div>
-        <div class="text-amber-800">Amount INR ${netFee} due for cycle starting ${nextDue} (UPI / Cash).</div>
+        <div class="font-bold text-amber-900">Dear ${escapeHtml(s.name)}, Fee Reminder (Month #${months})</div>
+        <div class="text-amber-800">Amount INR ${netFee} due for cycle starting ${escapeHtml(nextDue)} (UPI / Cash).</div>
       </div>
       <button onclick="switchTab('student_fees')" class="px-3 py-1.5 bg-amber-800 text-white font-semibold rounded-lg shrink-0">Pay Now</button>
     </div>
   ` : '';
 
   if (tab === 'student_home') {
+    const needsPin = needsStudentSecurityPrompt(s);
     el.innerHTML = `
       ${feeBanner}
       <div class="max-w-xl mx-auto space-y-4">
@@ -3579,43 +4311,24 @@ function renderStudentPortal(el, tab) {
           </div>
           <div class="p-5 flex flex-col sm:flex-row items-center gap-4">
             <div class="w-20 h-24 rounded-lg bg-slate-100 border border-slate-300 flex items-center justify-center text-xs font-bold text-slate-500 overflow-hidden shrink-0">
-              ${s.photoDataUrl ? `<img src="${s.photoDataUrl}" class="w-full h-full object-cover" />` : 'PHOTO'}
+              ${s.photoDataUrl ? `<img src="${safeDataUrl(s.photoDataUrl, 'data:image/')}" class="w-full h-full object-cover" />` : 'PHOTO'}
             </div>
             <div class="flex-1 text-center sm:text-left text-xs space-y-1">
-              <div class="font-mono font-bold text-indigo-700">${s.rollNo}</div>
-              <div class="text-base font-bold text-[#0F172A]">${s.name}</div>
-              <div class="font-semibold text-slate-700">${s.grade} &mdash; ${s.course}</div>
-              <div class="text-slate-500">Batch: ${s.batch} &bull; Admitted: ${s.admissionDate}</div>
-              <div class="text-slate-500">Genuine Days: <b>${s.genuineDays}</b> (${mod48}/48) &bull; Bonus: <b>${s.bonusCredits}</b> &bull; Audio: <b>${elig.weeklyAudioCount}/2</b></div>
+              <div class="font-mono font-bold text-indigo-700">${escapeHtml(s.rollNo)}</div>
+              <div class="text-base font-bold text-[#0F172A]">${escapeHtml(s.name)}</div>
+              <div class="font-semibold text-slate-700">${escapeHtml(s.grade)} &mdash; ${escapeHtml(s.course)}</div>
+              <div class="text-slate-500">Batch: ${escapeHtml(s.batch)} &bull; Admitted: ${escapeHtml(s.admissionDate)}</div>
+              <div class="text-slate-500 tabular-nums">Genuine Days: <b>${Number(s.genuineDays || 0)}</b> (${mod48}/48) &bull; Bonus: <b>${Number(s.bonusCredits || 0)}</b> &bull; Audio: <b>${elig.weeklyAudioCount}/2</b></div>
             </div>
             <div id="stuPortalQr" class="p-1.5 bg-white border border-slate-300 rounded shrink-0"></div>
           </div>
         </div>
 
-        <div class="bg-white p-4 rounded-xl border border-slate-200 space-y-3">
-          <div class="flex items-center justify-between">
-            <h3 class="text-sm font-bold text-[#0F172A]">Customize Profile</h3>
-            <button onclick="enableFcmPushForCurrentUser(false)" class="px-2.5 py-1 text-[10px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-lg">Enable Push Alerts</button>
-          </div>
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-            <div>
-              <label class="block font-semibold text-slate-700 mb-1">Update Photo</label>
-              <input type="file" accept="image/*" onchange="uploadStudentPhoto(event, '${s.id}')" class="w-full text-xs" />
-            </div>
-            <div>
-              <label class="block font-semibold text-slate-700 mb-1">Change PIN</label>
-              <input type="password" value="${s.pin}" onchange="updateStudentField('${s.id}', 'pin', this.value)" class="w-full px-3 py-1.5 border border-slate-300 rounded-lg font-mono" />
-            </div>
-            <div>
-              <label class="block font-semibold text-slate-700 mb-1">WhatsApp Mobile</label>
-              <input type="text" value="${s.phone}" onchange="updateStudentField('${s.id}', 'phone', this.value)" class="w-full px-3 py-1.5 border border-slate-300 rounded-lg" />
-            </div>
-            <div>
-              <label class="block font-semibold text-slate-700 mb-1">Emergency / Family Contact</label>
-              <input type="text" value="${s.guardian}" onchange="updateStudentField('${s.id}', 'guardian', this.value)" class="w-full px-3 py-1.5 border border-slate-300 rounded-lg" />
-            </div>
-          </div>
-        </div>
+        <button type="button" onclick="openStudentProfileModal('${safeId}')" class="w-full min-h-[48px] py-3 px-5 bg-[#0F172A] hover:bg-slate-800 active:scale-[0.99] text-white text-sm font-bold rounded-xl shadow-sm flex items-center justify-center gap-2 transition">
+          <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+          <span>Customize Profile</span>
+          ${needsPin ? '<span class="ml-1 text-[10px] font-bold text-amber-300">&bull; Update PIN</span>' : ''}
+        </button>
       </div>
     `;
     setTimeout(() => {
@@ -3782,15 +4495,22 @@ function renderStudentPortal(el, tab) {
   }
 }
 
-function uploadStudentPhoto(e, stuId) {
+function uploadStudentPhoto(e, stuId, keepModalOpen = false) {
   const file = e.target.files[0];
   if (!file) return;
   const reader = new FileReader();
-  reader.onload = function(ev) {
+  reader.onload = async function(ev) {
     const s = appState.students.find(x => x.id === stuId);
-    s.photoDataUrl = ev.target.result;
+    if (!s) return;
+    s.photoDataUrl = await compressImageDataUrl(ev.target.result, 360, 440, 0.82);
     saveState();
     renderCurrentTab();
+    if (keepModalOpen) {
+      const preview = document.getElementById('profilePhotoPreview');
+      if (preview) {
+        preview.innerHTML = `<img src="${safeDataUrl(s.photoDataUrl, 'data:image/')}" class="w-full h-full object-cover" />`;
+      }
+    }
     showToast('Photo updated');
   };
   reader.readAsDataURL(file);
@@ -3799,8 +4519,14 @@ function uploadStudentPhoto(e, stuId) {
 function updateStudentField(stuId, field, val) {
   const s = appState.students.find(x => x.id === stuId);
   if (!s) return;
-  if (field === 'pin' && val.trim().length < 4) return;
-  s[field] = val.trim();
+  if (field === 'pin') {
+    const trimmed = val.trim();
+    if (trimmed.length < 4) return;
+    s.pin = trimmed;
+    if (trimmed !== '1234') s.pinChanged = true;
+  } else {
+    s[field] = val.trim();
+  }
   saveState();
   showToast('Profile updated');
 }

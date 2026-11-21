@@ -15,7 +15,20 @@ messaging.onBackgroundMessage((payload) => {
   const notificationTitle = payload.notification && payload.notification.title ? payload.notification.title : "TIKARIYA'S SCHOOL OF MUSIC";
   const notificationOptions = {
     body: payload.notification && payload.notification.body ? payload.notification.body : "New update",
-    icon: '/tsm-gem/favicon.png'
+    data: { url: (payload.data && payload.data.url) || '/' }
   };
   self.registration.showNotification(notificationTitle, notificationOptions);
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const targetUrl = (event.notification.data && event.notification.data.url) || '/';
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
+      for (const client of windowClients) {
+        if ('focus' in client) return client.focus();
+      }
+      if (clients.openWindow) return clients.openWindow(targetUrl);
+    })
+  );
 });

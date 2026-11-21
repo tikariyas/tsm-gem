@@ -74,7 +74,7 @@
           <label class="block font-semibold text-slate-700 mb-1">Choose PDF File</label>
           <label class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg font-semibold text-slate-700 cursor-pointer hover:bg-slate-100 flex items-center justify-center truncate">
             <span id="directPdfFileName" class="truncate">Select PDF...</span>
-            <input type="file" id="directPdfFileInput" accept="application/pdf" onchange="onDirectPdfFileSelected(event)" class="hidden" required />
+            <input type="file" id="directPdfFileInput" accept="application/pdf" onchange="onDirectPdfFileSelected(event)" class="hidden" />
           </label>
         </div>
         <div class="sm:col-span-2">
@@ -243,7 +243,7 @@ Keep wrist relaxed.</textarea>
           </div>
 
           <div class="pt-3 border-t border-slate-200 flex flex-col sm:flex-row gap-2">
-            <button type="button" onclick="saveStudioSheetToVault()" class="flex-1 py-2.5 px-4 bg-indigo-700 hover:bg-indigo-800 text-white font-bold rounded-lg shadow-sm transition">
+            <button type="button" id="publishSheetBtn" onclick="saveStudioSheetToVault()" class="flex-1 py-2.5 px-4 bg-indigo-700 hover:bg-indigo-800 text-white font-bold rounded-lg shadow-sm transition">
               Publish Sheet to Course Vault
             </button>
             <button type="button" onclick="exportCleanStudioPdf()" class="py-2.5 px-4 bg-[#0F172A] hover:bg-slate-800 text-white font-semibold rounded-lg shadow-sm transition">
@@ -266,6 +266,7 @@ Keep wrist relaxed.</textarea>
 
         <div id="canvasDropWrapper"
              ondragover="handleDragOver(event)"
+             ondragleave="handleDragLeave(event)"
              ondrop="handleDropDiagram(event)"
              class="w-full bg-white shadow-xl border border-slate-300 rounded-lg overflow-hidden flex justify-center">
           <canvas id="studioPreviewCanvas" width="794" height="1123" class="w-full h-auto cursor-move touch-none"></canvas>
@@ -275,6 +276,10 @@ Keep wrist relaxed.</textarea>
     </div>
 
   </main>
+
+  <div id="studioModalBackdrop" class="hidden fixed inset-0 bg-slate-900/50 z-50 flex items-center justify-center p-4">
+    <div id="studioModalBox" class="bg-white border border-slate-200 rounded-xl shadow-xl max-w-md w-full p-5"></div>
+  </div>
 
   <div id="toast" class="hidden fixed bottom-4 right-4 z-50 bg-slate-900 text-white text-xs font-medium px-4 py-2.5 rounded-lg shadow-lg"></div>
 
@@ -286,6 +291,35 @@ const STORAGE_KEY = 'tsm_pwa_state_v8';
 const SESSION_KEY = 'tsm_active_session_v8';
 const CONFIG_KEY = 'tsm_firebase_config_v1';
 const CUSTOM_FONT_KEY = 'tsm_custom_sargam_font_v1';
+
+// Enforce admin session guard before exposing studio vault tools
+(function enforceStudioAdminGuard() {
+  try {
+    const raw = localStorage.getItem(SESSION_KEY) || localStorage.getItem('tsm_active_session_v7');
+    const sess = raw ? JSON.parse(raw) : null;
+    if (!sess || sess.role !== 'admin') {
+      window.location.replace('index.html');
+    }
+  } catch (e) {
+    window.location.replace('index.html');
+  }
+})();
+
+function escapeHtml(str) {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function formatLocalDate(d = new Date()) {
+  const yr = d.getFullYear();
+  const mo = String(d.getMonth() + 1).padStart(2, '0');
+  const dy = String(d.getDate()).padStart(2, '0');
+  return `${yr}-${mo}-${dy}`;
+}
 
 const DEFAULT_FIREBASE_CONFIG = {
   apiKey: "AIzaSyD6UUHQL7hcWxvnOIFIzVxOPPU0wrSojFQ",
@@ -331,8 +365,56 @@ function openTsmBlobDb() {
   });
 }
 
-async function tsmSaveBlob(key, dataUrl) {
-  if (!dataUrl) return;
+let studioFirestoreReadyPromise = null;
+
+function studioDataUrlToUint8Array(dataUrl) {
+  const str = String(dataUrl || '').trim();
+  const commaIdx = str.indexOf(',');
+  const b64 = (commaIdx !== -1 ? str.slice(commaIdx + 1) : str).replace(/\s+/g, '');
+  const binStr = atob(b64);
+  const bytes = new Uint8Array(binStr.length);
+  for (let i = 0; i < binStr.length; i++) bytes[i] = binStr.charCodeAt(i);
+  return bytes;
+}
+
+function studioGetMimeFromDataUrl(dataUrl, fallback = 'application/pdf') {
+  const m = String(dataUrl || '').match(/^data:([^;,]+)/i);
+  return m ? m[1] : fallback;
+}
+
+async function ensureStudioFirestoreReady() {
+  if (db) return db;
+  if (studioFirestoreReadyPromise) {
+    await studioFirestoreReadyPromise;
+    return db;
+  }
+  studioFirestoreReadyPromise = (async () => {
+    try {
+      let cfg = DEFAULT_FIREBASE_CONFIG;
+      const cfgRaw = localStorage.getItem(CONFIG_KEY);
+      if (cfgRaw) {
+        const parsed = JSON.parse(cfgRaw);
+        if (parsed && parsed.apiKey && parsed.projectId) cfg = parsed;
+      }
+      if (!firebase.apps.length) firebase.initializeApp(cfg);
+      if (firebase.auth && !firebase.auth().currentUser) {
+        try { await firebase.auth().signInAnonymously(); } catch (e) {}
+      }
+      db = firebase.firestore();
+    } catch (e) {
+      console.warn('Studio Firestore init warning:', e);
+    }
+  })();
+  await studioFirestoreReadyPromise;
+  studioFirestoreReadyPromise = null;
+  return db;
+}
+
+async function tsmSaveBlob(key, dataUrl, meta = {}) {
+  if (!dataUrl) return { localOk: false, cloudOk: false };
+  let localOk = false;
+  let cloudOk = false;
+
   // 1. Save to IndexedDB (unlimited local capacity)
   try {
     const idb = await openTsmBlobDb();
@@ -342,28 +424,34 @@ async function tsmSaveBlob(key, dataUrl) {
       tx.oncomplete = () => res();
       tx.onerror = () => rej(tx.error);
     });
+    localOk = true;
   } catch (e) { console.warn('IDB save warning:', e); }
 
-  // 2. Save to Firestore `tsm_blobs` (chunked at 650KB so any PDF size syncs across all devices)
-  if (db) {
+  // 2. Save to Firestore `tsm_blobs` (chunked at 500KB so any PDF size syncs reliably across all devices)
+  const fsDb = await ensureStudioFirestoreReady();
+  if (fsDb) {
     try {
-      const CHUNK_SIZE = 650000;
+      const CHUNK_SIZE = 500000;
       const totalChunks = Math.ceil(dataUrl.length / CHUNK_SIZE);
-      await db.collection('tsm_blobs').doc(key).set({
+      await fsDb.collection('tsm_blobs').doc(key).set({
         key,
         totalChunks,
+        fileName: meta.fileName || '',
+        mimeType: meta.mimeType || studioGetMimeFromDataUrl(dataUrl, 'application/pdf'),
         data: dataUrl.slice(0, CHUNK_SIZE),
         updatedAt: Date.now()
       });
       for (let i = 1; i < totalChunks; i++) {
-        await db.collection('tsm_blobs').doc(`${key}_part_${i}`).set({
+        await fsDb.collection('tsm_blobs').doc(`${key}_part_${i}`).set({
           key,
           part: i,
           data: dataUrl.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE)
         });
       }
+      cloudOk = true;
     } catch (e) { console.warn('Cloud blob sync warning:', e); }
   }
+  return { localOk, cloudOk };
 }
 
 async function tsmLoadBlob(key) {
@@ -380,19 +468,25 @@ async function tsmLoadBlob(key) {
   } catch (e) {}
 
   // 2. Fallback to Firestore `tsm_blobs`
-  if (db) {
+  const fsDb = await ensureStudioFirestoreReady();
+  if (fsDb) {
     try {
-      const snap = await db.collection('tsm_blobs').doc(key).get();
+      const snap = await fsDb.collection('tsm_blobs').doc(key).get();
       if (snap.exists) {
-        const meta = snap.data();
+        const meta = snap.data() || {};
         let fullData = meta.data || '';
         const totalChunks = Number(meta.totalChunks || 1);
+        let allChunksLoaded = Boolean(fullData);
         for (let i = 1; i < totalChunks; i++) {
-          const partSnap = await db.collection('tsm_blobs').doc(`${key}_part_${i}`).get();
-          if (partSnap.exists) fullData += (partSnap.data().data || '');
+          const partSnap = await fsDb.collection('tsm_blobs').doc(`${key}_part_${i}`).get();
+          if (partSnap.exists && partSnap.data().data) {
+            fullData += partSnap.data().data;
+          } else {
+            allChunksLoaded = false;
+            break;
+          }
         }
-        if (fullData) {
-          // Cache in IndexedDB for instant subsequent loads
+        if (allChunksLoaded && fullData) {
           try {
             const idb = await openTsmBlobDb();
             const tx = idb.transaction('blobs', 'readwrite');
@@ -406,10 +500,36 @@ async function tsmLoadBlob(key) {
   return '';
 }
 
+async function tsmDeleteBlob(key) {
+  if (!key) return;
+  try {
+    const idb = await openTsmBlobDb();
+    await new Promise((res) => {
+      const tx = idb.transaction('blobs', 'readwrite');
+      tx.objectStore('blobs').delete(key);
+      tx.oncomplete = () => res();
+      tx.onerror = () => res();
+    });
+  } catch (e) {}
+  const fsDb = await ensureStudioFirestoreReady();
+  if (fsDb) {
+    try {
+      const docRef = fsDb.collection('tsm_blobs').doc(key);
+      const snap = await docRef.get();
+      const totalChunks = snap.exists ? Number(snap.data().totalChunks || 1) : 1;
+      await docRef.delete().catch(() => {});
+      for (let i = 1; i < totalChunks; i++) {
+        await fsDb.collection('tsm_blobs').doc(`${key}_part_${i}`).delete().catch(() => {});
+      }
+    } catch (e) {}
+  }
+}
+
 async function triggerSafeDownloadFromDataUrl(dataUrl, fileName) {
   try {
-    const res = await fetch(dataUrl);
-    const blob = await res.blob();
+    const bytes = studioDataUrlToUint8Array(dataUrl);
+    const mime = studioGetMimeFromDataUrl(dataUrl, 'application/pdf');
+    const blob = new Blob([bytes], { type: mime });
     const blobUrl = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = blobUrl;
@@ -422,7 +542,9 @@ async function triggerSafeDownloadFromDataUrl(dataUrl, fileName) {
     const link = document.createElement('a');
     link.href = dataUrl;
     link.download = fileName;
+    document.body.appendChild(link);
     link.click();
+    document.body.removeChild(link);
   }
 }
 
@@ -445,26 +567,28 @@ function loadState() {
 let appState = loadState();
 let db = null;
 
-function saveState() {
-  const slimState = {
-    ...appState,
-    customBrochureDataUrl: (appState.customBrochureDataUrl && appState.customBrochureDataUrl.length < 150000) ? appState.customBrochureDataUrl : '',
-    vaultItems: (appState.vaultItems || []).map(v => ({
+function buildSlimState(stateObj) {
+  return {
+    ...stateObj,
+    customBrochureDataUrl: (stateObj.customBrochureDataUrl && stateObj.customBrochureDataUrl.length < 150000) ? stateObj.customBrochureDataUrl : '',
+    vaultItems: (stateObj.vaultItems || []).map(v => ({
       ...v,
       pdfDataUrl: (v.pdfDataUrl && v.pdfDataUrl.length < 150000) ? v.pdfDataUrl : ''
     }))
   };
+}
+
+function saveState() {
+  const slimState = buildSlimState(appState);
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(slimState));
   } catch (e) {}
   if (db) {
+    // Merge only vaultItems into master_state so Studio can never overwrite students/attendance/settings
     db.collection('tsm_system').doc('master_state').set({
-      ...slimState,
+      vaultItems: slimState.vaultItems,
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    }).then(() => {
-      const b = document.getElementById('studioSyncBadge');
-      if (b) { b.textContent = 'Cloud Synced'; b.classList.remove('hidden'); }
-    }).catch(err => console.warn('Cloud sync warning:', err));
+    }, { merge: true }).catch(err => console.warn('Cloud sync warning:', err));
   }
 }
 
@@ -485,10 +609,14 @@ async function initFirebaseStudio() {
       if (doc.exists) {
         const remote = doc.data();
         if (remote) {
-          if (Array.isArray(remote.vaultItems)) appState.vaultItems = remote.vaultItems;
-          if (Array.isArray(remote.courses) && remote.courses.length) appState.courses = remote.courses;
-          if (Array.isArray(remote.students)) appState.students = remote.students;
-          try { localStorage.setItem(STORAGE_KEY, JSON.stringify(appState)); } catch (e) {}
+          appState = {
+            ...appState,
+            ...remote,
+            vaultItems: Array.isArray(remote.vaultItems) ? remote.vaultItems : (appState.vaultItems || []),
+            courses: (Array.isArray(remote.courses) && remote.courses.length) ? remote.courses : (appState.courses || DEFAULT_COURSES),
+            students: Array.isArray(remote.students) ? remote.students : (appState.students || [])
+          };
+          try { localStorage.setItem(STORAGE_KEY, JSON.stringify(buildSlimState(appState))); } catch (e) {}
           populateCourseDropdowns();
           renderVaultList();
         }
@@ -497,19 +625,47 @@ async function initFirebaseStudio() {
   } catch (e) {}
 }
 
-function confirmStudioLogout() {
-  if (confirm("Sign out of TIKARIYA'S SCHOOL OF MUSIC?")) {
-    localStorage.removeItem(SESSION_KEY);
-    window.location.href = 'index.html';
+function showStudioModal(html) {
+  const box = document.getElementById('studioModalBox');
+  const backdrop = document.getElementById('studioModalBackdrop');
+  if (box && backdrop) {
+    box.innerHTML = html;
+    backdrop.classList.remove('hidden');
   }
 }
 
+function closeStudioModal() {
+  const backdrop = document.getElementById('studioModalBackdrop');
+  if (backdrop) backdrop.classList.add('hidden');
+}
+
+function confirmStudioLogout() {
+  showStudioModal(`
+    <div class="space-y-4">
+      <h3 class="text-base font-bold text-[#0F172A]">Confirm Sign Out</h3>
+      <p class="text-xs text-slate-600">Are you sure you want to sign out of TIKARIYA'S SCHOOL OF MUSIC?</p>
+      <div class="flex justify-end gap-2 pt-2">
+        <button type="button" onclick="closeStudioModal()" class="px-4 py-2 text-xs font-semibold border border-slate-300 rounded-lg hover:bg-slate-50">Cancel</button>
+        <button type="button" onclick="executeStudioLogout()" class="px-4 py-2 text-xs font-semibold bg-[#B91C1C] text-white rounded-lg hover:bg-red-800">Sign Out</button>
+      </div>
+    </div>
+  `);
+}
+
+function executeStudioLogout() {
+  closeStudioModal();
+  localStorage.removeItem(SESSION_KEY);
+  window.location.href = 'index.html';
+}
+
+let toastTimer = null;
 function showToast(msg) {
   const t = document.getElementById('toast');
   if (!t) return;
   t.textContent = msg;
   t.classList.remove('hidden');
-  setTimeout(() => t.classList.add('hidden'), 2800);
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.add('hidden'), 2800);
 }
 
 // ==========================================
@@ -518,7 +674,7 @@ function showToast(msg) {
 function populateCourseDropdowns() {
   const courses = (appState.courses || DEFAULT_COURSES).map(c => c.name);
   const optionsHtml = [`<option value="All Courses">All Courses (Universal)</option>`]
-    .concat(courses.map(name => `<option value="${name}">${name}</option>`))
+    .concat(courses.map(name => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`))
     .join('');
 
   const sel1 = document.getElementById('targetCourseSelect');
@@ -544,10 +700,14 @@ function populateCourseDropdowns() {
 
 let pendingDirectPdfDataUrl = '';
 let pendingDirectPdfPages = 1;
+let isReadingDirectPdf = false;
 
 async function onDirectPdfFileSelected(e) {
   const file = e.target.files[0];
   if (!file) return;
+  pendingDirectPdfDataUrl = '';
+  pendingDirectPdfPages = 1;
+  isReadingDirectPdf = true;
   document.getElementById('directPdfFileName').textContent = file.name;
   const titleInp = document.getElementById('directUploadTitle');
   if (titleInp && !titleInp.value.trim()) {
@@ -563,7 +723,14 @@ async function onDirectPdfFileSelected(e) {
       showToast(`Loaded PDF (${pendingDirectPdfPages} pages)`);
     } catch (err) {
       pendingDirectPdfPages = 1;
+    } finally {
+      isReadingDirectPdf = false;
     }
+  };
+  reader.onerror = function() {
+    isReadingDirectPdf = false;
+    pendingDirectPdfDataUrl = '';
+    showToast('Failed to read selected PDF');
   };
   reader.readAsDataURL(file);
 }
@@ -574,6 +741,10 @@ async function handleDirectPdfVaultUpload(e) {
   const targetCourse = document.getElementById('directUploadCourse').value || 'All Courses';
   const category = document.getElementById('directUploadCategory').value || 'Study Material';
 
+  if (isReadingDirectPdf) {
+    showToast('PDF is still loading, please wait a moment');
+    return;
+  }
   if (!pendingDirectPdfDataUrl) {
     showToast('Please select a PDF file first');
     return;
@@ -582,36 +753,47 @@ async function handleDirectPdfVaultUpload(e) {
   const btn = document.getElementById('directUploadSubmitBtn');
   if (btn) { btn.disabled = true; btn.textContent = 'Uploading...'; }
 
-  const vaultId = 'v_' + Date.now();
-  const todayStr = new Date().toISOString().split('T')[0];
+  try {
+    const vaultId = 'v_' + Date.now();
+    const todayStr = formatLocalDate(new Date());
 
-  await tsmSaveBlob(vaultId, pendingDirectPdfDataUrl);
+    const blobRes = await tsmSaveBlob(vaultId, pendingDirectPdfDataUrl, { fileName: `${title}.pdf`, mimeType: 'application/pdf' });
 
-  const newEntry = {
-    id: vaultId,
-    title,
-    course: targetCourse,
-    targetCourse,
-    category,
-    grade: 'All Grades',
-    pages: pendingDirectPdfPages,
-    date: todayStr,
-    sourceType: 'uploaded_pdf',
-    pdfDataUrl: pendingDirectPdfDataUrl.length < 150000 ? pendingDirectPdfDataUrl : '',
-    hasCloudFile: true
-  };
+    const newEntry = {
+      id: vaultId,
+      title,
+      course: targetCourse,
+      targetCourse,
+      category,
+      grade: 'All Grades',
+      pages: pendingDirectPdfPages,
+      date: todayStr,
+      sourceType: 'uploaded_pdf',
+      pdfDataUrl: pendingDirectPdfDataUrl.length < 150000 ? pendingDirectPdfDataUrl : '',
+      hasCloudFile: blobRes.cloudOk
+    };
 
-  if (!Array.isArray(appState.vaultItems)) appState.vaultItems = [];
-  appState.vaultItems.unshift(newEntry);
-  saveState();
-  renderVaultList();
+    if (!Array.isArray(appState.vaultItems)) appState.vaultItems = [];
+    appState.vaultItems.unshift(newEntry);
+    saveState();
+    renderVaultList();
 
-  document.getElementById('directUploadTitle').value = '';
-  document.getElementById('directPdfFileName').textContent = 'Select PDF...';
-  document.getElementById('directPdfFileInput').value = '';
-  pendingDirectPdfDataUrl = '';
-  if (btn) { btn.disabled = false; btn.textContent = '+ Upload to Vault'; }
-  showToast(`Uploaded & synced "${title}" for ${targetCourse}`);
+    document.getElementById('directUploadTitle').value = '';
+    document.getElementById('directPdfFileName').textContent = 'Select PDF...';
+    document.getElementById('directPdfFileInput').value = '';
+    pendingDirectPdfDataUrl = '';
+    pendingDirectPdfPages = 1;
+    if (blobRes.cloudOk) {
+      showToast(`Uploaded & cloud-synced "${title}" for ${targetCourse}`);
+    } else {
+      showToast(`Saved "${title}" locally, but cloud sync failed — check internet/Firestore rules`);
+    }
+  } catch (err) {
+    console.error('Vault upload error:', err);
+    showToast('Failed to upload PDF to Vault');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '+ Upload to Vault'; }
+  }
 }
 
 function renderVaultList() {
@@ -635,19 +817,20 @@ function renderVaultList() {
   container.innerHTML = items.map(v => {
     const crs = v.targetCourse || v.course || 'All Courses';
     const cat = v.category || 'Study Material';
+    const safeId = escapeHtml(v.id);
     return `
       <div class="px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 hover:bg-slate-50">
         <div class="min-w-0 flex-1">
           <div class="flex flex-wrap items-center gap-1.5">
-            <span class="font-bold text-[#0F172A] truncate">${v.title}</span>
-            <span class="px-2 py-0.5 text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 rounded">${crs}</span>
-            <span class="px-2 py-0.5 text-[10px] font-semibold bg-slate-100 text-slate-700 rounded">${cat}</span>
+            <span class="font-bold text-[#0F172A] truncate">${escapeHtml(v.title)}</span>
+            <span class="px-2 py-0.5 text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 rounded">${escapeHtml(crs)}</span>
+            <span class="px-2 py-0.5 text-[10px] font-semibold bg-slate-100 text-slate-700 rounded">${escapeHtml(cat)}</span>
           </div>
-          <div class="text-[10px] text-slate-500 mt-0.5">${v.pages || 1} Page(s) &bull; Added: ${v.date || '-'}</div>
+          <div class="text-[10px] text-slate-500 mt-0.5">${Number(v.pages || 1)} Page(s) &bull; Added: ${escapeHtml(v.date || '-')}</div>
         </div>
         <div class="flex items-center gap-1.5 shrink-0">
-          <button type="button" onclick="previewVaultItemAdmin('${v.id}')" class="px-2.5 py-1 bg-[#0F172A] text-white text-[11px] font-semibold rounded hover:bg-slate-800">Test Download</button>
-          <button type="button" onclick="deleteVaultItem('${v.id}')" class="px-2.5 py-1 border border-red-200 text-red-700 bg-red-50 text-[11px] font-semibold rounded hover:bg-red-100">Delete</button>
+          <button type="button" onclick="previewVaultItemAdmin('${safeId}')" class="px-2.5 py-1 bg-[#0F172A] text-white text-[11px] font-semibold rounded hover:bg-slate-800">Test Download</button>
+          <button type="button" onclick="deleteVaultItem('${safeId}')" class="px-2.5 py-1 border border-red-200 text-red-700 bg-red-50 text-[11px] font-semibold rounded hover:bg-red-100">Delete</button>
         </div>
       </div>
     `;
@@ -655,9 +838,25 @@ function renderVaultList() {
 }
 
 function deleteVaultItem(id) {
-  if (!confirm('Remove this item from the Course Vault?')) return;
+  const item = (appState.vaultItems || []).find(x => x.id === id);
+  const titleText = item ? item.title : 'this item';
+  showStudioModal(`
+    <div class="space-y-4">
+      <h3 class="text-base font-bold text-[#0F172A]">Remove Study Material</h3>
+      <p class="text-xs text-slate-600">Remove <b>${escapeHtml(titleText)}</b> from the Course Vault?</p>
+      <div class="flex justify-end gap-2 pt-2">
+        <button type="button" onclick="closeStudioModal()" class="px-4 py-2 text-xs font-semibold border border-slate-300 rounded-lg hover:bg-slate-50">Cancel</button>
+        <button type="button" onclick="executeDeleteVaultItem('${escapeHtml(id)}')" class="px-4 py-2 text-xs font-semibold bg-[#B91C1C] text-white rounded-lg hover:bg-red-800">Delete</button>
+      </div>
+    </div>
+  `);
+}
+
+async function executeDeleteVaultItem(id) {
+  closeStudioModal();
   appState.vaultItems = (appState.vaultItems || []).filter(x => x.id !== id);
   try { localStorage.removeItem('tsm_pdf_' + id); } catch (e) {}
+  await tsmDeleteBlob(id);
   if (db) {
     db.collection('tsm_vault_files').doc(id).delete().catch(() => {});
   }
@@ -678,7 +877,7 @@ async function previewVaultItemAdmin(vaultId) {
     } catch (e) {}
   }
   if (dataUrl) {
-    await triggerSafeDownloadFromDataUrl(dataUrl, `${v.title.replace(/\s+/g, '_')}.pdf`);
+    await triggerSafeDownloadFromDataUrl(dataUrl, `${String(v.title || 'Material').replace(/\s+/g, '_')}.pdf`);
   } else {
     showToast('PDF binary not found in cache.');
   }
@@ -736,7 +935,9 @@ function insertTextAtCursor(ta, textToInsert) {
 function insertKey(k) {
   const ta = getActiveTextarea();
   if (!ta) return;
-  const prefix = (ta.value.length > 0 && !ta.value.endsWith(' ') && !ta.value.endsWith('\n')) ? ' ' : '';
+  const start = ta.selectionStart ?? ta.value.length;
+  const prevChar = start > 0 ? ta.value[start - 1] : '';
+  const prefix = (prevChar && prevChar !== ' ' && prevChar !== '\n') ? ' ' : '';
   insertTextAtCursor(ta, prefix + k + ' ');
 }
 
@@ -779,7 +980,7 @@ function setFontMode(mode) {
 
   if (statusEl) {
     if (mode === 'plain') statusEl.innerHTML = `Active Mode: <b>Plain English / Lyrics</b>`;
-    else if (mode === 'sargam') statusEl.innerHTML = `Active Mode: <b>Saregama Notation ${loadedCustomFontName ? '(' + loadedCustomFontName + ')' : '(Built-in Sargam Styling)'}</b>`;
+    else if (mode === 'sargam') statusEl.innerHTML = `Active Mode: <b>Saregama Notation ${loadedCustomFontName ? '(' + escapeHtml(loadedCustomFontName) + ')' : '(Built-in Sargam Styling)'}</b>`;
     else if (mode === 'staff') statusEl.innerHTML = `Active Mode: <b>5-Line Western Staff Notation</b> (Notes automatically plot onto 5-line staff)`;
   }
 
@@ -837,6 +1038,7 @@ function handleStudioFontUpload(e) {
     showToast(`Uploaded & activated ${file.name}`);
   };
   reader.readAsArrayBuffer(file);
+  e.target.value = '';
 }
 
 function restoreSavedCustomFont() {
@@ -885,6 +1087,7 @@ function handleStudioImageUpload(e) {
   if (files && files.length) {
     processImageFiles(files);
   }
+  e.target.value = '';
 }
 
 function processImageFiles(files) {
@@ -979,8 +1182,9 @@ function clearDrawnLines() {
 
 function getCanvasCoords(canvas, e) {
   const rect = canvas.getBoundingClientRect();
-  const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-  const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+  const touch = (e.touches && e.touches.length > 0) ? e.touches[0] : (e.changedTouches && e.changedTouches.length > 0 ? e.changedTouches[0] : null);
+  const clientX = touch ? touch.clientX : e.clientX;
+  const clientY = touch ? touch.clientY : e.clientY;
   return {
     x: (clientX - rect.left) * (canvas.width / rect.width),
     y: (clientY - rect.top) * (canvas.height / rect.height)
@@ -1114,10 +1318,14 @@ function drawTextOrNotationBlock(ctx, textContent, startX, startY, maxWidth) {
 
         // Plot notes / tokens along the staff
         const tokens = trimmed.split(/\s+/);
-        const notePitchOffsets = {
-          "S": 32, "R": 28, "G": 24, "M": 21, "P": 17, "D": 14, "N": 10, "S'": 7,
-          "C": 32, "D": 28, "E": 24, "F": 21, "G": 17, "A": 14, "B": 10
+        const sargamPitchOffsets = {
+          "S": 32, "R": 28, "G": 24, "M": 21, "P": 17, "D": 14, "N": 10, "S'": 7
         };
+        const westernPitchOffsets = {
+          "C": 32, "D": 28, "E": 24, "F": 21, "G": 17, "A": 14, "B": 10, "C'": 7
+        };
+        const isWesternLine = tokens.some(t => /^[CEFAB]/i.test(t.replace(/[^A-Za-z']/g, '')));
+        const notePitchOffsets = isWesternLine ? westernPitchOffsets : sargamPitchOffsets;
         let nx = startX + 38;
         const stepX = Math.min(42, Math.max(22, (maxWidth - 48) / Math.max(1, tokens.length)));
 
@@ -1326,15 +1534,23 @@ async function saveStudioSheetToVault() {
     return;
   }
 
-  const pdfBytes = await buildCleanSheetPdfBytes();
-  const blob = new Blob([pdfBytes], { type: 'application/pdf' });
-  const reader = new FileReader();
-  reader.onload = async function(ev) {
-    const pdfDataUrl = ev.target.result;
-    const vaultId = 'v_' + Date.now();
-    const todayStr = new Date().toISOString().split('T')[0];
+  const btn = document.getElementById('publishSheetBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Publishing...'; }
 
-    await tsmSaveBlob(vaultId, pdfDataUrl);
+  try {
+    const pdfBytes = await buildCleanSheetPdfBytes();
+    const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+    const pdfDataUrl = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = ev => resolve(ev.target.result);
+      reader.onerror = () => reject(new Error('Failed to encode PDF'));
+      reader.readAsDataURL(blob);
+    });
+
+    const vaultId = 'v_' + Date.now();
+    const todayStr = formatLocalDate(new Date());
+
+    const blobRes = await tsmSaveBlob(vaultId, pdfDataUrl, { fileName: `${title}.pdf`, mimeType: 'application/pdf' });
 
     const vaultEntry = {
       id: vaultId,
@@ -1347,28 +1563,45 @@ async function saveStudioSheetToVault() {
       date: todayStr,
       sourceType: 'studio_sheet',
       pdfDataUrl: pdfDataUrl.length < 150000 ? pdfDataUrl : '',
-      hasCloudFile: true
+      hasCloudFile: blobRes.cloudOk
     };
 
     if (!Array.isArray(appState.vaultItems)) appState.vaultItems = [];
     appState.vaultItems.unshift(vaultEntry);
     saveState();
     renderVaultList();
-    showToast(`Published "${title}" to ${targetCourse} Vault!`);
-  };
-  reader.readAsDataURL(blob);
+    if (blobRes.cloudOk) {
+      showToast(`Published & cloud-synced "${title}" to ${targetCourse} Vault!`);
+    } else {
+      showToast(`Published "${title}" locally, cloud sync failed — check internet/rules`);
+    }
+  } catch (err) {
+    console.error('Publish sheet error:', err);
+    showToast('Failed to publish sheet to Vault');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Publish Sheet to Course Vault'; }
+  }
 }
 
 async function exportCleanStudioPdf() {
-  const title = document.getElementById('sheetTitleInput').value.trim() || 'TSM_Sheet';
-  const targetCourse = document.getElementById('targetCourseSelect').value || 'All_Courses';
-  const bytes = await buildCleanSheetPdfBytes();
-  const blob = new Blob([bytes], { type: 'application/pdf' });
-  const link = document.createElement('a');
-  link.href = URL.createObjectURL(blob);
-  link.download = `${title.replace(/\s+/g, '_')}_${targetCourse.replace(/\s+/g, '_')}.pdf`;
-  link.click();
-  showToast('Downloaded clean Studio PDF');
+  try {
+    const title = document.getElementById('sheetTitleInput').value.trim() || 'TSM_Sheet';
+    const targetCourse = document.getElementById('targetCourseSelect').value || 'All_Courses';
+    const bytes = await buildCleanSheetPdfBytes();
+    const blob = new Blob([bytes], { type: 'application/pdf' });
+    const blobUrl = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = blobUrl;
+    link.download = `${title.replace(/\s+/g, '_')}_${targetCourse.replace(/\s+/g, '_')}.pdf`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
+    showToast('Downloaded clean Studio PDF');
+  } catch (err) {
+    console.error('Export PDF error:', err);
+    showToast('Failed to export PDF');
+  }
 }
 
 // Initialize Studio
