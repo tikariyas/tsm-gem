@@ -4,15 +4,17 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <meta name="theme-color" content="#0F172A" />
+  <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-title" content="TSM" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="TSM Music" />
   <title>TIKARIYA'S SCHOOL OF MUSIC</title>
   <meta name="description" content="Official management portal, attendance tracker, QR verification, and study material studio for Tikariya's School of Music — B. S. Tikariya Cultural Foundation." />
   <meta property="og:title" content="TIKARIYA'S SCHOOL OF MUSIC" />
   <meta property="og:description" content="Official management portal, attendance tracker, QR verification, and study material studio for Tikariya's School of Music." />
-  <link id="faviconLink" rel="icon" type="image/png" href="" />
-  <link id="appleIconLink" rel="apple-touch-icon" href="" />
-  <link id="manifestLink" rel="manifest" href="" />
+  <link id="faviconLink" rel="icon" type="image/png" href="./favicon.png" />
+  <link id="appleIconLink" rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png" />
+  <link id="manifestLink" rel="manifest" href="./manifest.webmanifest" />
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/opentype.js@1.3.4/dist/opentype.min.js"></script>
@@ -38,6 +40,42 @@
     @media (prefers-reduced-motion: reduce) {
       .tsm-marquee-track { animation: none; white-space: normal; }
       .tsm-marquee-dup { display: none; }
+    }
+    .tsm-metro-range {
+      -webkit-appearance: none;
+      appearance: none;
+      height: 8px;
+      border-radius: 9999px;
+      background: #172554;
+      outline: none;
+    }
+    .tsm-metro-range::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 24px;
+      height: 24px;
+      border-radius: 9999px;
+      background: #22C55E;
+      border: 3px solid #050810;
+      box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.45);
+      cursor: pointer;
+    }
+    .tsm-metro-range::-moz-range-thumb {
+      width: 24px;
+      height: 24px;
+      border-radius: 9999px;
+      background: #22C55E;
+      border: 3px solid #050810;
+      box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.45);
+      cursor: pointer;
+    }
+    .tsm-metro-range-red::-webkit-slider-thumb {
+      background: #EF4444;
+      box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.45);
+    }
+    .tsm-metro-range-red::-moz-range-thumb {
+      background: #EF4444;
+      box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.45);
     }
   </style>
 </head>
@@ -66,9 +104,13 @@
           <button type="submit" class="w-full py-2.5 bg-[#0F172A] hover:bg-slate-800 text-white text-sm font-semibold rounded-lg transition">Sign In</button>
         </form>
 
-        <div class="mt-4 pt-4 border-t border-slate-100 text-center">
+        <div class="mt-4 pt-4 border-t border-slate-100 flex flex-col items-center gap-2.5 text-center">
           <button type="button" onclick="downloadActiveBrochure()" class="text-xs font-semibold text-indigo-700 hover:text-indigo-900 hover:underline">
             Download Academy Brochure (PDF)
+          </button>
+          <button id="loginInstallPwaBtn" type="button" onclick="triggerPwaInstall()" class="hidden inline-flex items-center justify-center gap-1.5 px-3.5 py-2 border border-slate-300 hover:bg-slate-50 text-[#0F172A] text-xs font-semibold rounded-lg transition">
+            <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3"/></svg>
+            <span>Install TSM Music App</span>
           </button>
         </div>
 
@@ -109,6 +151,12 @@
   <!-- TOAST NOTIFICATION -->
   <div id="toast" class="hidden fixed bottom-4 right-4 z-50 bg-slate-900 text-white text-xs font-medium px-4 py-2.5 rounded-lg shadow-lg"></div>
 
+  <!-- OFFLINE INDICATOR -->
+  <div id="offlineIndicator" class="hidden fixed bottom-4 left-4 z-50 flex items-center gap-2 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white shadow-lg">
+    <span class="h-2 w-2 rounded-full bg-white animate-pulse"></span>
+    <span>Offline Mode — Showing cached data</span>
+  </div>
+
 <script>
 // ==========================================
 // 0. CORE SECURITY, DATE & DOWNLOAD UTILITIES
@@ -126,6 +174,43 @@ function safeDataUrl(url, prefix) {
   const s = String(url || '').trim();
   if (!s || !s.startsWith(prefix)) return '';
   return s.replace(/["'<>\\()]/g, '');
+}
+
+function safeStorageGet(key, fallback = '') {
+  try {
+    const v = localStorage.getItem(key);
+    if (v !== null) return v;
+  } catch (_) {}
+  try {
+    const v = sessionStorage.getItem(key);
+    if (v !== null) return v;
+  } catch (_) {}
+  return fallback;
+}
+
+function safeStorageSet(key, val) {
+  try {
+    localStorage.setItem(key, val);
+    return true;
+  } catch (_) {
+    try {
+      localStorage.removeItem('tsm_pwa_state_v6');
+      localStorage.removeItem('tsm_pwa_state_v7');
+      localStorage.removeItem('tsm_active_session_v7');
+      localStorage.setItem(key, val);
+      return true;
+    } catch (_) {}
+  }
+  try {
+    sessionStorage.setItem(key, val);
+    return true;
+  } catch (_) {}
+  return false;
+}
+
+function safeStorageRemove(key) {
+  try { localStorage.removeItem(key); } catch (_) {}
+  try { sessionStorage.removeItem(key); } catch (_) {}
 }
 
 function formatLocalDate(d = new Date()) {
@@ -521,8 +606,8 @@ function openInAppPhotoCamera(stuId, previewElId = 'profilePhotoPreview', defaul
     previewElId,
     facingMode: defaultFacing === 'environment' ? 'environment' : 'user'
   };
-  const safeId = escapeAttr(stuId);
-  const safePreviewId = escapeAttr(previewElId);
+  const safeId = escapeHtml(stuId);
+  const safePreviewId = escapeHtml(previewElId);
   const captureAttr = photoCameraState.facingMode === 'environment' ? 'environment' : 'user';
 
   const overlay = document.createElement('div');
@@ -751,9 +836,17 @@ function setSpecificDayStatus(stuId, dateStr, status) {
 }
 
 // ==========================================
-// 1. ISOLATED PWA MANIFEST (/tsm-gem/), ICONS & REAL FCM SERVICE WORKER
+// 1. ISOLATED SUBPATH PWA MANIFEST, ICONS & REAL FCM SERVICE WORKER
 // ==========================================
 const FCM_VAPID_KEY = "BOjkdHDAmnmcprZ3U0pS0YT4C8IN-UWavlHXNusmSW8_qHql4FtTyIXyqz2E01oPUFdDLk2Ul1c9sTM771hJ5Pg";
+
+function getAppBaseUrl() {
+  try {
+    return new URL('./', window.location.href).href;
+  } catch (_) {
+    return 'https://tikariyas.github.io/tsm_gem/';
+  }
+}
 
 function generateAppIconPng(size) {
   const c = document.createElement('canvas');
@@ -787,58 +880,65 @@ function generateAppIconPng(size) {
   return c.toDataURL('image/png');
 }
 
+function isRunningStandalonePwa() {
+  return (
+    (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
+    window.navigator.standalone === true
+  );
+}
+
+function updatePwaInstallButtons() {
+  const loginBtn = document.getElementById('loginInstallPwaBtn');
+  if (!loginBtn) return;
+  if (isRunningStandalonePwa()) {
+    loginBtn.classList.add('hidden');
+  } else {
+    loginBtn.classList.remove('hidden');
+  }
+}
+
+function updateOfflineIndicator() {
+  const el = document.getElementById('offlineIndicator');
+  if (!el) return;
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    el.classList.remove('hidden');
+  } else {
+    el.classList.add('hidden');
+  }
+}
+
 function initPwaIconsAndManifest() {
+  // Keep the static ./manifest.webmanifest and static PNG icons intact so Android Chrome
+  // mints a completely separate WebAPK isolated to this subpath (scope: "./").
+  // Register the subpath-scoped service worker immediately on load.
   try {
-    const icon64 = generateAppIconPng(64);
-    const icon192 = generateAppIconPng(192);
-    const icon512 = generateAppIconPng(512);
-
-    const fav = document.getElementById('faviconLink');
-    const apple = document.getElementById('appleIconLink');
-    if (fav) fav.href = icon64;
-    if (apple) apple.href = icon192;
-
-    const isGhPages = window.location.hostname.includes('github.io');
-    const startUrl = isGhPages ? "https://tikariyas.github.io/tsm-gem/" : window.location.href.split('?')[0].split('#')[0];
-    const scopeUrl = isGhPages ? "https://tikariyas.github.io/tsm-gem/" : startUrl;
-
-    const manifestObj = {
-      id: "/tsm-gem/",
-      name: "TIKARIYA'S SCHOOL OF MUSIC",
-      short_name: "TSM",
-      description: "TIKARIYA'S SCHOOL OF MUSIC - B. S. TIKARIYA CULTURAL FOUNDATION",
-      start_url: startUrl,
-      scope: scopeUrl,
-      display: "standalone",
-      background_color: "#F8FAFC",
-      theme_color: "#0F172A",
-      icons: [
-        { src: icon192, sizes: "192x192", type: "image/png", purpose: "any" },
-        { src: icon512, sizes: "512x512", type: "image/png", purpose: "any" }
-      ]
-    };
-
-    const encodedManifest = "data:application/manifest+json;charset=utf-8," + encodeURIComponent(JSON.stringify(manifestObj));
-    const manifestLink = document.getElementById('manifestLink');
-    if (manifestLink) manifestLink.setAttribute('href', encodedManifest);
+    updatePwaInstallButtons();
+    updateOfflineIndicator();
+    window.addEventListener('online', updateOfflineIndicator);
+    window.addEventListener('offline', updateOfflineIndicator);
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('./firebase-messaging-sw.js', { scope: './' })
+        .then((reg) => { swRegistration = reg; })
+        .catch(() => {});
+    }
   } catch (e) {}
 }
 
 let swRegistration = null;
 let fcmMessaging = null;
-let currentDeviceFcmToken = localStorage.getItem('tsm_fcm_token') || '';
+let currentDeviceFcmToken = safeStorageGet('tsm_fcm_token', '');
 
 async function initBackgroundFcmServiceWorker() {
   if (!('serviceWorker' in navigator)) return;
   try {
-    swRegistration = await navigator.serviceWorker.register('./firebase-messaging-sw.js').catch(() => null);
-    if (firebase.messaging && firebase.messaging.isSupported()) {
+    swRegistration = swRegistration || await navigator.serviceWorker.register('./firebase-messaging-sw.js', { scope: './' }).catch(() => null);
+    if (typeof firebase !== 'undefined' && firebase.messaging && firebase.messaging.isSupported()) {
       fcmMessaging = firebase.messaging();
       fcmMessaging.onMessage((payload) => {
         const title = (payload.notification && payload.notification.title) || "TIKARIYA'S SCHOOL OF MUSIC";
         const body = (payload.notification && payload.notification.body) || "New academy update";
         showToast(`${title}: ${body}`);
-        if (Notification.permission === 'granted') {
+        if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
           if (swRegistration && swRegistration.showNotification) {
             swRegistration.showNotification(title, { body, icon: generateAppIconPng(192), tag: 'tsm-fg' });
           } else {
@@ -855,14 +955,24 @@ async function enableFcmPushForCurrentUser(silent = false) {
     if (!silent) showToast('Notifications not supported in this browser');
     return;
   }
-  const perm = Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission();
+  if (silent && Notification.permission !== 'granted') {
+    return;
+  }
+  let perm = Notification.permission;
+  if (perm !== 'granted') {
+    try {
+      perm = await Notification.requestPermission();
+    } catch (_) {
+      perm = 'denied';
+    }
+  }
   if (perm !== 'granted') {
     if (!silent) showToast('Notification permission blocked in browser settings');
     return;
   }
   try {
     if (!swRegistration && 'serviceWorker' in navigator) {
-      swRegistration = await navigator.serviceWorker.register('./firebase-messaging-sw.js').catch(() => null);
+      swRegistration = await navigator.serviceWorker.register('./firebase-messaging-sw.js', { scope: './' }).catch(() => null);
     }
     if (fcmMessaging && swRegistration) {
       const token = await fcmMessaging.getToken({
@@ -871,7 +981,7 @@ async function enableFcmPushForCurrentUser(silent = false) {
       });
       if (token) {
         currentDeviceFcmToken = token;
-        localStorage.setItem('tsm_fcm_token', token);
+        safeStorageSet('tsm_fcm_token', token);
         saveDeviceTokenToState(token);
         if (!silent) showToast('Background Push Notifications Enabled');
         return;
@@ -902,6 +1012,12 @@ let deferredInstallPrompt = null;
 window.addEventListener('beforeinstallprompt', (e) => {
   e.preventDefault();
   deferredInstallPrompt = e;
+  updatePwaInstallButtons();
+});
+window.addEventListener('appinstalled', () => {
+  deferredInstallPrompt = null;
+  updatePwaInstallButtons();
+  showToast('TSM Music App installed separately');
 });
 
 async function triggerPwaInstall() {
@@ -909,19 +1025,31 @@ async function triggerPwaInstall() {
     deferredInstallPrompt.prompt();
     const res = await deferredInstallPrompt.userChoice;
     deferredInstallPrompt = null;
-    if (res.outcome === 'accepted') showToast('TSM App installed with dedicated icon');
+    updatePwaInstallButtons();
+    if (res.outcome === 'accepted') showToast('TSM Music App installed with dedicated icon');
   } else {
+    const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent || '');
+    const currentAppUrl = escapeHtml(window.location.origin + window.location.pathname);
     showModal(`
       <div class="space-y-3 text-xs">
-        <div class="flex items-center justify-between">
-          <h3 class="text-sm font-bold text-[#0F172A]">Separate TSM App Icon Setup</h3>
-          <button onclick="closeModal()" class="text-slate-500 font-semibold">Close</button>
+        <div class="flex items-center justify-between border-b border-slate-200 pb-2">
+          <h3 class="text-sm font-bold text-[#0F172A]">Install Separate TSM Music App</h3>
+          <button type="button" onclick="closeModal()" class="text-slate-500 hover:text-slate-900 font-semibold">Close</button>
         </div>
-        <p class="text-slate-600">This build uses isolated <code>id: "/tsm-gem/"</code> so it installs completely separate from Sing From Home (SFH):</p>
-        <ol class="list-decimal pl-5 space-y-1.5 text-slate-700">
-          <li><b>PC Chrome:</b> Open <code>chrome://apps</code>, remove any old merged shortcut if needed, reload <code>tikariyas.github.io/tsm-gem/</code>, and click the <b>Install</b> icon in the address bar.</li>
-          <li><b>Android Chrome:</b> Tap the address bar lock/settings icon &rarr; <b>Site settings</b> &rarr; <b>Clear &amp; reset</b>, reload, and tap <b>&vellip; &rarr; Install app</b>.</li>
-        </ol>
+        ${isIOS ? `
+          <p class="text-slate-600">To install on iPhone / iPad:</p>
+          <ol class="list-decimal pl-5 space-y-1.5 text-slate-700">
+            <li>Tap the <b>Share</b> button in Safari's toolbar.</li>
+            <li>Scroll down and tap <b>Add to Home Screen</b>.</li>
+          </ol>
+        ` : `
+          <p class="text-slate-600">This app uses its own static <code>manifest.webmanifest</code> with isolated <code>scope: "./"</code> and unique <code>id: "./?app=tsm-academy"</code> so Android Chrome installs it as a <b>separate app</b> from <code>tikariyas.github.io</code>.</p>
+          <ol class="list-decimal pl-5 space-y-1.5 text-slate-700">
+            <li>If Chrome says <b>"Open in app"</b>, it is matching your already-installed root app (<code>tikariyas.github.io</code>, which has <code>scope: "/"</code>).</li>
+            <li><b>One-time fix on Android:</b> Temporarily uninstall the root app shortcut, open <code>${currentAppUrl}</code> directly in Chrome, and tap <b>&vellip; &rarr; Install app</b> (Chrome installs <b>TSM Music</b> as its own WebAPK).</li>
+            <li>Then open <code>https://tikariyas.github.io/</code> in Chrome and install it again — both apps will now stay installed side by side with separate icons.</li>
+          </ol>
+        `}
       </div>
     `);
   }
@@ -971,6 +1099,22 @@ const DEFAULT_BATCHES = [
   '8:30 AM', '9:30 AM', '10:30 AM', '4:00 PM', '5:00 PM', '6:00 PM'
 ];
 
+const DEFAULT_METRONOME_CONFIG = {
+  defaultSoundMode: 'default',
+  tonePreset: 'woodblock',
+  waveform: 'triangle',
+  accentFreq: 1620,
+  regularFreq: 1020,
+  subFreq: 680,
+  decayMs: 42,
+  clickSnap: 0.75,
+  loudnessBoost: 1.55,
+  customAccentDataUrl: '',
+  customAccentName: '',
+  customRegularDataUrl: '',
+  customRegularName: ''
+};
+
 const DEFAULT_STATE = {
   adminRollNo: 'MUSICSNSOUNDS',
   adminPin: '1995',
@@ -983,6 +1127,7 @@ const DEFAULT_STATE = {
   customBrochureName: '',
   idCardBgDataUrl: '',
   certBgDataUrl: '',
+  metronomeConfig: { ...DEFAULT_METRONOME_CONFIG },
   holidays: {},
   certs: [],
   pushAlerts: [],
@@ -998,6 +1143,8 @@ const DEFAULT_STATE = {
   ]
 };
 
+const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
+
 let appState = loadState();
 let currentUser = loadSession();
 let activeTab = currentUser ? (currentUser.role === 'admin' ? 'dashboard' : 'student_home') : 'dashboard';
@@ -1009,6 +1156,7 @@ let adminChatRoll = appState.students[0]?.rollNo || 'TSM-0001';
 let selectedReceiptIds = [];
 let db = null;
 let masterStateUnsubscribe = null;
+let hasSyncedMasterStateFromCloud = false;
 let cloudSyncStatus = 'Connecting...';
 let loadedCustomFont = null;
 let loadedFontName = '';
@@ -1017,7 +1165,7 @@ let attachedImageDataUrl = null;
 let uploadedBasePdfBytes = null;
 let uploadedBasePdfName = '';
 let html5QrScanner = null;
-let lastSeenPushId = localStorage.getItem('tsm_last_push_id') || '';
+let lastSeenPushId = safeStorageGet('tsm_last_push_id', '');
 let toastTimer = null;
 
 // In-App Audio Recorder State
@@ -1028,8 +1176,15 @@ let recordedDurationSec = 0;
 let recordingTimerInterval = null;
 let isRecordingAudio = false;
 let discardAudioOnStop = false;
-
-const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
+let recordAutoStartMetronome = true;
+let recordMixMetronome = true;
+let recordedMetronomeMeta = '';
+let metronomeAutoStartedByRec = false;
+let recMixCleanup = null;
+let recErrorMessage = '';
+let recMeterRafId = null;
+let recAnalyserNode = null;
+let recMeterAudioCtx = null;
 
 function getNextRollNumber() {
   let maxNum = 0;
@@ -1204,6 +1359,7 @@ let firestoreReadyPromise = null;
 
 async function ensureFirestoreReady() {
   if (db) return db;
+  if (typeof firebase === 'undefined') return null;
   if (firestoreReadyPromise) {
     await firestoreReadyPromise;
     return db;
@@ -1211,14 +1367,17 @@ async function ensureFirestoreReady() {
   firestoreReadyPromise = (async () => {
     try {
       let cfg = DEFAULT_FIREBASE_CONFIG;
-      const cfgRaw = localStorage.getItem(CONFIG_KEY);
+      const cfgRaw = safeStorageGet(CONFIG_KEY, '');
       if (cfgRaw) {
         const parsed = JSON.parse(cfgRaw);
         if (parsed && parsed.apiKey && parsed.projectId) cfg = parsed;
       }
       if (!firebase.apps.length) firebase.initializeApp(cfg);
       if (firebase.auth && !firebase.auth().currentUser) {
-        try { await firebase.auth().signInAnonymously(); } catch (e) {}
+        await Promise.race([
+          firebase.auth().signInAnonymously().catch(() => {}),
+          new Promise(r => setTimeout(r, 6000))
+        ]);
       }
       db = firebase.firestore();
     } catch (e) {
@@ -1394,18 +1553,24 @@ async function triggerSafeDownloadFromDataUrl(dataUrl, fileName) {
 
 function loadState() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY) || localStorage.getItem('tsm_pwa_state_v7') || localStorage.getItem('tsm_pwa_state_v6');
+    const raw = safeStorageGet(STORAGE_KEY, '') || safeStorageGet('tsm_pwa_state_v7', '') || safeStorageGet('tsm_pwa_state_v6', '');
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (parsed && parsed.students) {
+      if (parsed && Array.isArray(parsed.students)) {
         if (!parsed.adminRollNo) parsed.adminRollNo = 'MUSICSNSOUNDS';
-        if (!parsed.courses) parsed.courses = DEFAULT_COURSES;
-        if (!parsed.batches) parsed.batches = DEFAULT_BATCHES;
+        if (!parsed.adminPin) parsed.adminPin = '1995';
+        if (!parsed.courses || !parsed.courses.length) parsed.courses = DEFAULT_COURSES;
+        if (!parsed.batches || !parsed.batches.length) parsed.batches = DEFAULT_BATCHES;
         if (!parsed.audioClips) parsed.audioClips = [];
         if (!parsed.holidays) parsed.holidays = {};
         if (!parsed.certs) parsed.certs = [];
         if (!parsed.pushAlerts) parsed.pushAlerts = [];
         if (!parsed.fcmTokens) parsed.fcmTokens = {};
+        if (!parsed.attendance) parsed.attendance = {};
+        if (!parsed.messages) parsed.messages = [];
+        if (!parsed.campaigns) parsed.campaigns = [];
+        if (!parsed.vaultItems) parsed.vaultItems = [];
+        parsed.metronomeConfig = { ...DEFAULT_METRONOME_CONFIG, ...(parsed.metronomeConfig || {}) };
         parsed.students = purgeTestStudent(parsed.students.map(normalizeStudent));
         purgeExpiredAudioData(parsed);
         return parsed;
@@ -1426,21 +1591,29 @@ function buildSlimState(stateObj) {
   };
 }
 
-function saveState() {
+let lastKnownCloudStudentCount = 0;
+
+function saveState(options = {}) {
   purgeExpiredAudioData(appState);
   // Create a lightweight state copy for localStorage & Firestore master_state (large PDFs live in IndexedDB + tsm_blobs)
   const slimState = buildSlimState(appState);
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(slimState));
-  } catch (e) {
-    console.warn('localStorage slim write note:', e);
+  safeStorageSet(STORAGE_KEY, JSON.stringify(slimState));
+
+  // Protect cloud master_state from ever being overwritten by an unauthenticated or unsynced empty browser tab
+  if (!db) return;
+  const forceCloudWrite = Boolean(options && options.forceCloudWrite);
+  const allowEmptyStudents = Boolean(options && options.allowEmptyStudents);
+  if (!currentUser && !forceCloudWrite) return;
+  if (!hasSyncedMasterStateFromCloud && !forceCloudWrite) return;
+  if (slimState.students.length === 0 && lastKnownCloudStudentCount > 0 && !allowEmptyStudents) {
+    console.warn('Blocked accidental empty-student overwrite to Firestore master_state.');
+    return;
   }
-  if (db) {
-    db.collection('tsm_system').doc('master_state').set({
-      ...slimState,
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    }).catch(err => console.warn('Cloud sync error:', err));
-  }
+
+  db.collection('tsm_system').doc('master_state').set({
+    ...slimState,
+    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+  }).catch(err => console.warn('Cloud sync error:', err));
 }
 
 function dispatchPushAlert(targetRoll, title, body) {
@@ -1479,7 +1652,7 @@ function dispatchPushAlert(targetRoll, title, body) {
     fetch(appState.pushRelayUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tokens: targetTokens, title, body, url: '/tsm-gem/' })
+      body: JSON.stringify({ tokens: targetTokens, title, body, url: getAppBaseUrl() })
     }).catch(() => {});
   }
 }
@@ -1504,8 +1677,8 @@ function checkIncomingPushAlerts() {
 
   if (isMatch) {
     lastSeenPushId = latest.id;
-    localStorage.setItem('tsm_last_push_id', latest.id);
-    if (Notification.permission === 'granted') {
+    safeStorageSet('tsm_last_push_id', latest.id);
+    if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
       if (swRegistration && swRegistration.showNotification) {
         swRegistration.showNotification(latest.title, { body: latest.body, icon: generateAppIconPng(192), tag: 'tsm-alert' });
       } else {
@@ -1517,26 +1690,108 @@ function checkIncomingPushAlerts() {
 
 function loadSession() {
   try {
-    const raw = localStorage.getItem(SESSION_KEY) || localStorage.getItem('tsm_active_session_v7');
+    const raw = safeStorageGet(SESSION_KEY, '') || safeStorageGet('tsm_active_session_v7', '');
     if (raw) return JSON.parse(raw);
   } catch (e) {}
   return null;
 }
 
 function saveSession(userObj) {
-  if (userObj) localStorage.setItem(SESSION_KEY, JSON.stringify(userObj));
-  else localStorage.removeItem(SESSION_KEY);
+  if (userObj) safeStorageSet(SESSION_KEY, JSON.stringify(userObj));
+  else safeStorageRemove(SESSION_KEY);
 }
+
+function applyRemoteMasterState(remote) {
+  if (!remote || !Array.isArray(remote.students)) return false;
+  if (!remote.adminRollNo) remote.adminRollNo = 'MUSICSNSOUNDS';
+  if (!remote.adminPin) remote.adminPin = '1995';
+  if (!remote.courses || !remote.courses.length) remote.courses = DEFAULT_COURSES;
+  if (!remote.batches || !remote.batches.length) remote.batches = DEFAULT_BATCHES;
+  if (!remote.audioClips) remote.audioClips = [];
+  if (!remote.holidays) remote.holidays = {};
+  if (!remote.certs) remote.certs = [];
+  if (!remote.pushAlerts) remote.pushAlerts = [];
+  if (!remote.fcmTokens) remote.fcmTokens = {};
+  if (!remote.messages) remote.messages = [];
+  if (!remote.campaigns) remote.campaigns = [];
+  if (!remote.vaultItems) remote.vaultItems = [];
+  if (!remote.attendance) remote.attendance = {};
+  remote.metronomeConfig = { ...DEFAULT_METRONOME_CONFIG, ...(remote.metronomeConfig || {}) };
+  remote.students = purgeTestStudent(remote.students.map(normalizeStudent));
+
+  // Protect a device's populated local cache from being wiped if cloud currently has 0 students
+  const localCount = Array.isArray(appState.students) ? appState.students.length : 0;
+  if (remote.students.length === 0 && localCount > 0 && !hasSyncedMasterStateFromCloud) {
+    hasSyncedMasterStateFromCloud = true;
+    console.warn('Preserved local student roster because cloud master_state currently has 0 students.');
+    if (currentUser && currentUser.role === 'admin') {
+      showToast(`Preserved ${localCount} local students (cloud had 0). Save any edit or restore backup to sync to cloud.`);
+    }
+    return false;
+  }
+
+  const didPurge = purgeExpiredAudioData(remote);
+  appState = remote;
+  hasSyncedMasterStateFromCloud = true;
+  if (remote.students.length > 0) {
+    lastKnownCloudStudentCount = remote.students.length;
+  }
+  safeStorageSet(STORAGE_KEY, JSON.stringify(buildSlimState(appState)));
+  if (didPurge && currentUser) saveState();
+  checkIncomingPushAlerts();
+  if (typeof syncMetronomeBuffersFromState === 'function') {
+    syncMetronomeBuffersFromState();
+  }
+  if (currentUser) {
+    if (currentDeviceFcmToken) saveDeviceTokenToState(currentDeviceFcmToken);
+    const onLiveAudioOrMetronome = (activeTab === 'audio' || activeTab === 'student_audio') &&
+      ((typeof metronomeState !== 'undefined' && metronomeState.isPlaying) || isRecordingAudio);
+    if (!onLiveAudioOrMetronome) {
+      renderCurrentTab();
+    } else if (activeTab === 'audio' && currentUser.role === 'admin' && typeof refreshAdminAudioClipsList === 'function') {
+      refreshAdminAudioClipsList();
+    }
+  }
+  checkPublicQrVerify();
+  return true;
+}
+
+async function syncMasterStateOnce(timeoutMs = 6000) {
+  try {
+    const fsDb = await Promise.race([
+      ensureFirestoreReady(),
+      new Promise(r => setTimeout(() => r(null), timeoutMs))
+    ]);
+    if (!fsDb) return false;
+    const snap = await Promise.race([
+      fsDb.collection('tsm_system').doc('master_state').get(),
+      new Promise(r => setTimeout(() => r(null), timeoutMs))
+    ]);
+    if (snap && snap.exists) {
+      cloudSyncStatus = 'Cloud Synced (tikariya-music---foundation)';
+      return applyRemoteMasterState(snap.data());
+    }
+  } catch (e) {
+    console.warn('Cloud login sync warning:', e);
+  }
+  return false;
+}
+
+let firebasePermissionRetried = false;
 
 async function initFirebaseAuto(forceReinit = false) {
   try {
+    if (typeof firebase === 'undefined') {
+      cloudSyncStatus = 'Local Cache Mode';
+      return;
+    }
     let cfg = DEFAULT_FIREBASE_CONFIG;
-    const cfgRaw = localStorage.getItem(CONFIG_KEY);
+    const cfgRaw = safeStorageGet(CONFIG_KEY, '');
     if (cfgRaw) {
       const parsed = JSON.parse(cfgRaw);
       if (parsed && parsed.apiKey && parsed.projectId) cfg = parsed;
     } else {
-      localStorage.setItem(CONFIG_KEY, JSON.stringify(DEFAULT_FIREBASE_CONFIG));
+      safeStorageSet(CONFIG_KEY, JSON.stringify(DEFAULT_FIREBASE_CONFIG));
     }
 
     if (masterStateUnsubscribe) {
@@ -1550,7 +1805,10 @@ async function initFirebaseAuto(forceReinit = false) {
     }
     if (!firebase.apps.length) firebase.initializeApp(cfg);
     if (firebase.auth && !firebase.auth().currentUser) {
-      try { await firebase.auth().signInAnonymously(); } catch (e) {}
+      await Promise.race([
+        firebase.auth().signInAnonymously().catch(() => {}),
+        new Promise(r => setTimeout(r, 6000))
+      ]);
     }
 
     db = firebase.firestore();
@@ -1558,42 +1816,17 @@ async function initFirebaseAuto(forceReinit = false) {
     masterStateUnsubscribe = db.collection('tsm_system').doc('master_state').onSnapshot(doc => {
       cloudSyncStatus = 'Cloud Synced (tikariya-music---foundation)';
       if (doc.exists) {
-        const remote = doc.data();
-        if (remote && Array.isArray(remote.students)) {
-          if (!remote.adminRollNo) remote.adminRollNo = 'MUSICSNSOUNDS';
-          if (!remote.courses || !remote.courses.length) remote.courses = DEFAULT_COURSES;
-          if (!remote.batches || !remote.batches.length) remote.batches = DEFAULT_BATCHES;
-          if (!remote.audioClips) remote.audioClips = [];
-          if (!remote.holidays) remote.holidays = {};
-          if (!remote.certs) remote.certs = [];
-          if (!remote.pushAlerts) remote.pushAlerts = [];
-          if (!remote.fcmTokens) remote.fcmTokens = {};
-          if (!remote.messages) remote.messages = [];
-          if (!remote.campaigns) remote.campaigns = [];
-          if (!remote.vaultItems) remote.vaultItems = [];
-          if (!remote.attendance) remote.attendance = {};
-          remote.students = purgeTestStudent(remote.students.map(normalizeStudent));
-
-          const didPurge = purgeExpiredAudioData(remote);
-          appState = remote;
-          try {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(buildSlimState(appState)));
-          } catch (e) {
-            console.warn('localStorage cache write skipped:', e);
-          }
-          if (didPurge) saveState();
-          checkIncomingPushAlerts();
-          if (currentUser) {
-            if (currentDeviceFcmToken) saveDeviceTokenToState(currentDeviceFcmToken);
-            renderCurrentTab();
-          }
-          checkPublicQrVerify();
-        }
+        applyRemoteMasterState(doc.data());
       } else {
-        saveState();
+        // Never overwrite cloud master_state from an empty read snapshot
+        hasSyncedMasterStateFromCloud = true;
       }
-    }, () => {
+    }, (err) => {
       cloudSyncStatus = 'Local Cache (Check Firestore Rules)';
+      if (err && err.code === 'permission-denied' && !firebasePermissionRetried) {
+        firebasePermissionRetried = true;
+        setTimeout(() => initFirebaseAuto(false), 1500);
+      }
     });
   } catch (e) {
     cloudSyncStatus = 'Local Cache Mode';
@@ -1806,7 +2039,7 @@ function handleRestoreBackupFile(e) {
       if (d.adminRollNo) appState.adminRollNo = d.adminRollNo;
       if (d.adminPin) appState.adminPin = d.adminPin;
 
-      saveState();
+      saveState({ forceCloudWrite: true, allowEmptyStudents: true });
       renderCurrentTab();
       showToast(`Restored ${restoredStudents.length} students & recalculated genuine/bonus days`);
     } catch (err) {
@@ -2021,39 +2254,89 @@ function drawStyledAcademyTitlePdf(page, x, y, size, fontBold) {
 let studentSecurityPopupDismissed = false;
 let attendanceSearchQuery = '';
 
-function handleUnifiedLogin(e) {
-  e.preventDefault();
-  const roll = document.getElementById('loginRollInput').value.trim().toUpperCase();
-  const pin = document.getElementById('loginPinInput').value.trim();
-
+function matchLoginCredentials(roll, pin) {
   const expectedAdminRoll = String(appState.adminRollNo || 'MUSICSNSOUNDS').trim().toUpperCase();
   const expectedAdminPin = String(appState.adminPin || '1995').trim();
-
   if (roll === expectedAdminRoll && pin === expectedAdminPin) {
-    currentUser = { role: 'admin' };
-    saveSession(currentUser);
-    activeTab = 'dashboard';
-    enterApp();
-    enableFcmPushForCurrentUser(true);
-    return;
+    return { role: 'admin' };
   }
-
-  const stu = appState.students.find(s => s.rollNo.toUpperCase() === roll && String(s.pin) === pin);
+  const list = Array.isArray(appState.students) ? appState.students : [];
+  const stu = list.find(s =>
+    s &&
+    String(s.rollNo || '').trim().toUpperCase() === roll &&
+    String(s.pin ?? '').trim() === pin
+  );
   if (stu) {
-    studentSecurityPopupDismissed = false;
-    currentUser = { role: 'student', studentId: stu.id };
-    saveSession(currentUser);
-    activeTab = 'student_home';
-    calendarMonth = (stu.admissionDate || selectedDate).slice(0, 7);
-    enterApp();
-    enableFcmPushForCurrentUser(true);
-  } else {
+    return { role: 'student', student: stu };
+  }
+  return null;
+}
+
+async function handleUnifiedLogin(e) {
+  e.preventDefault();
+  const errEl = document.getElementById('loginError');
+  if (errEl) errEl.classList.add('hidden');
+
+  const form = document.getElementById('unifiedLoginForm');
+  const submitBtn = form ? form.querySelector('button[type="submit"]') : null;
+  const origBtnText = submitBtn ? submitBtn.textContent : 'Sign In';
+
+  try {
+    const roll = String(document.getElementById('loginRollInput')?.value || '').trim().toUpperCase();
+    const pin = String(document.getElementById('loginPinInput')?.value || '').trim();
+    if (!roll || !pin) {
+      showLoginError('Please enter both Roll Number and Access PIN.');
+      return;
+    }
+
+    let match = matchLoginCredentials(roll, pin);
+
+    // If not matched locally yet (e.g., fresh browser before Firestore snapshot arrives, or updated PIN in cloud), fetch latest cloud state once
+    if (!match) {
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Signing In...';
+      }
+      await syncMasterStateOnce(5000);
+      match = matchLoginCredentials(roll, pin);
+    }
+
+    if (match && match.role === 'admin') {
+      currentUser = { role: 'admin' };
+      saveSession(currentUser);
+      activeTab = 'dashboard';
+      enterApp();
+      enableFcmPushForCurrentUser(true).catch(() => {});
+      return;
+    }
+
+    if (match && match.role === 'student' && match.student) {
+      const stu = match.student;
+      studentSecurityPopupDismissed = false;
+      currentUser = { role: 'student', studentId: stu.id };
+      saveSession(currentUser);
+      activeTab = 'student_home';
+      calendarMonth = (stu.admissionDate || selectedDate).slice(0, 7);
+      enterApp();
+      enableFcmPushForCurrentUser(true).catch(() => {});
+      return;
+    }
+
     showLoginError('Invalid Roll Number or Access PIN.');
+  } catch (err) {
+    console.error('Sign in error:', err);
+    showLoginError('Sign in failed due to a browser error. Please refresh and try again.');
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = origBtnText;
+    }
   }
 }
 
 function showLoginError(msg) {
   const err = document.getElementById('loginError');
+  if (!err) return;
   err.textContent = msg;
   err.classList.remove('hidden');
 }
@@ -2085,6 +2368,7 @@ function confirmLogout() {
 function executeLogout() {
   closeModal();
   stopAudioRecording(true);
+  if (typeof stopMetronome === 'function') stopMetronome();
   studentSecurityPopupDismissed = false;
   currentUser = null;
   saveSession(null);
@@ -2133,6 +2417,9 @@ function renderNavTabs() {
 function switchTab(id) {
   stopQrCamera();
   stopAudioRecording(true);
+  if (id !== 'audio' && id !== 'student_audio' && typeof stopMetronome === 'function') {
+    stopMetronome();
+  }
   if (id === 'vault' && currentUser && currentUser.role === 'admin') {
     window.location.href = 'studio.html';
     return;
@@ -3342,7 +3629,7 @@ function deleteStudent(stuId) {
 
 function executeDeleteStudent(stuId) {
   appState.students = appState.students.filter(s => s.id !== stuId);
-  saveState();
+  saveState({ allowEmptyStudents: true });
   closeModal();
   renderCurrentTab();
   showToast('Student record removed');
@@ -3383,14 +3670,289 @@ function openIdCardModal(stuId) {
         <div id="modalQrBox" class="p-0.5 bg-white border border-slate-300 rounded"></div>
       </div>
     </div>
-    <div class="mt-4 flex justify-center">
-      <button onclick="window.print()" class="px-4 py-2 bg-[#0F172A] text-white text-xs font-semibold rounded-lg">Print CR80 ID Card</button>
+    <div class="mt-4 flex flex-wrap items-center justify-center gap-2">
+      <button type="button" onclick="downloadIdCardPdf('${escapeHtml(s.id)}')" class="min-h-[40px] px-4 py-2 bg-[#0F172A] hover:bg-slate-800 text-white text-xs font-bold rounded-lg shadow-sm transition">Download ID Card PDF</button>
+      <button type="button" onclick="window.print()" class="min-h-[40px] px-3.5 py-2 border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-semibold rounded-lg transition">Print</button>
     </div>
   `);
   setTimeout(() => {
     const box = document.getElementById('modalQrBox');
-    if (box) new QRCode(box, { text: `https://tikariyas.github.io/tsm-gem/?verify=${s.rollNo}`, width: 88, height: 88, correctLevel: QRCode.CorrectLevel.H });
+    if (box) new QRCode(box, { text: `${getAppBaseUrl()}?verify=${encodeURIComponent(s.rollNo || '')}`, width: 88, height: 88, correctLevel: QRCode.CorrectLevel.H });
   }, 50);
+}
+
+async function embedImageDataUrlInPdf(pdfDoc, dataUrl) {
+  const src = String(dataUrl || '').trim();
+  if (!src || !src.startsWith('data:image/')) return null;
+  try {
+    if (src.startsWith('data:image/png')) {
+      return await pdfDoc.embedPng(src);
+    }
+    if (src.startsWith('data:image/jpeg') || src.startsWith('data:image/jpg')) {
+      return await pdfDoc.embedJpg(src);
+    }
+    // Convert WebP/GIF/other image data URLs to PNG via offscreen canvas for PDFLib
+    const pngUrl = await new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        const c = document.createElement('canvas');
+        c.width = img.naturalWidth || img.width || 300;
+        c.height = img.naturalHeight || img.height || 360;
+        const ctx = c.getContext('2d');
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(0, 0, c.width, c.height);
+        ctx.drawImage(img, 0, 0, c.width, c.height);
+        resolve(c.toDataURL('image/png'));
+      };
+      img.onerror = () => reject(new Error('Image decode failed'));
+      img.src = src;
+    });
+    return await pdfDoc.embedPng(pngUrl);
+  } catch (err) {
+    console.warn('Could not embed image in PDF:', err);
+    return null;
+  }
+}
+
+async function generateQrPngDataUrl(qrText, size = 256) {
+  const host = document.createElement('div');
+  host.style.position = 'fixed';
+  host.style.left = '-9999px';
+  host.style.top = '-9999px';
+  host.style.opacity = '0';
+  host.style.pointerEvents = 'none';
+  document.body.appendChild(host);
+  try {
+    new QRCode(host, {
+      text: qrText,
+      width: size,
+      height: size,
+      colorDark: '#0F172A',
+      colorLight: '#FFFFFF',
+      correctLevel: QRCode.CorrectLevel.H
+    });
+    await new Promise(r => setTimeout(r, 40));
+    const canvas = host.querySelector('canvas');
+    if (canvas) return canvas.toDataURL('image/png');
+    const img = host.querySelector('img');
+    if (img && img.src && img.src.startsWith('data:image/')) return img.src;
+    return '';
+  } finally {
+    host.remove();
+  }
+}
+
+function fitPdfFontSize(text, font, maxWidth, startSize, minSize = 5.5) {
+  let size = startSize;
+  while (size > minSize && font.widthOfTextAtSize(text, size) > maxWidth) {
+    size -= 0.4;
+  }
+  return size;
+}
+
+async function downloadIdCardPdf(stuId) {
+  const s = appState.students.find(x => x.id === stuId);
+  if (!s) {
+    showToast('Student record not found');
+    return;
+  }
+  showToast('Generating CR80 Smart ID Card PDF...');
+  try {
+    const { PDFDocument, StandardFonts, rgb } = PDFLib;
+    const pdfDoc = await PDFDocument.create();
+    const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+    const fontReg = await pdfDoc.embedFont(StandardFonts.Helvetica);
+
+    // Exact CR80 Portrait dimensions: 54mm x 85.6mm (153.07pt x 242.65pt)
+    const W = 153.07;
+    const H = 242.65;
+    const page = pdfDoc.addPage([W, H]);
+
+    // White base fill
+    page.drawRectangle({ x: 0, y: 0, width: W, height: H, color: rgb(1, 1, 1) });
+
+    // Optional uploaded custom ID Card template background
+    if (appState.idCardBgDataUrl) {
+      const bgImg = await embedImageDataUrlInPdf(pdfDoc, appState.idCardBgDataUrl);
+      if (bgImg) {
+        page.drawImage(bgImg, { x: 0, y: 0, width: W, height: H });
+      }
+    }
+
+    // Header translucent panel & top navy bar
+    const headerH = 42;
+    page.drawRectangle({ x: 0, y: H - headerH, width: W, height: headerH, color: rgb(1, 1, 1), opacity: 0.92 });
+    page.drawRectangle({ x: 0, y: H - 5, width: W, height: 5, color: rgb(0.06, 0.09, 0.16) });
+    page.drawLine({
+      start: { x: 0, y: H - headerH },
+      end: { x: W, y: H - headerH },
+      thickness: 0.6,
+      color: rgb(0.8, 0.84, 0.88)
+    });
+
+    const foundText = 'B. S. TIKARIYA CULTURAL FOUNDATION';
+    const foundSize = fitPdfFontSize(foundText, fontBold, W - 14, 5.4, 4.5);
+    page.drawText(foundText, {
+      x: (W - fontBold.widthOfTextAtSize(foundText, foundSize)) / 2,
+      y: H - 14.5,
+      size: foundSize,
+      font: fontBold,
+      color: rgb(0.28, 0.33, 0.41)
+    });
+
+    const cinText = 'CIN: U88900MH2025NPL454435';
+    const cinSize = 4.6;
+    page.drawText(cinText, {
+      x: (W - fontReg.widthOfTextAtSize(cinText, cinSize)) / 2,
+      y: H - 22,
+      size: cinSize,
+      font: fontReg,
+      color: rgb(0.39, 0.45, 0.55)
+    });
+
+    const brandFull = "TIKARIYA'S SCHOOL OF MUSIC";
+    const brandSize = fitPdfFontSize(brandFull, fontBold, W - 12, 8.2, 6.2);
+    const brandW = fontBold.widthOfTextAtSize(brandFull, brandSize);
+    drawStyledAcademyTitlePdf(page, (W - brandW) / 2, H - 34.5, brandSize, fontBold);
+
+    // Center student panel
+    const footerH = 60;
+    page.drawRectangle({ x: 0, y: footerH, width: W, height: H - headerH - footerH, color: rgb(1, 1, 1), opacity: 0.86 });
+
+    // Portrait 5:6 Photo Frame
+    const photoW = 50;
+    const photoH = 60;
+    const photoX = (W - photoW) / 2;
+    const photoY = H - headerH - 8 - photoH;
+
+    page.drawRectangle({
+      x: photoX,
+      y: photoY,
+      width: photoW,
+      height: photoH,
+      color: rgb(0.95, 0.96, 0.98),
+      borderColor: rgb(0.58, 0.64, 0.72),
+      borderWidth: 0.8
+    });
+
+    let drewPhoto = false;
+    if (s.photoDataUrl) {
+      const photoImg = await embedImageDataUrlInPdf(pdfDoc, s.photoDataUrl);
+      if (photoImg) {
+        page.drawImage(photoImg, {
+          x: photoX + 0.6,
+          y: photoY + 0.6,
+          width: photoW - 1.2,
+          height: photoH - 1.2
+        });
+        drewPhoto = true;
+      }
+    }
+    if (!drewPhoto) {
+      const ph = 'PHOTO';
+      page.drawText(ph, {
+        x: photoX + (photoW - fontBold.widthOfTextAtSize(ph, 7.5)) / 2,
+        y: photoY + photoH / 2 - 3,
+        size: 7.5,
+        font: fontBold,
+        color: rgb(0.45, 0.5, 0.58)
+      });
+    }
+
+    // Student Identity Text
+    const rollText = sanitizePdfText(s.rollNo || '');
+    const rollSize = fitPdfFontSize(rollText, fontBold, W - 16, 7.8, 6);
+    page.drawText(rollText, {
+      x: (W - fontBold.widthOfTextAtSize(rollText, rollSize)) / 2,
+      y: photoY - 12,
+      size: rollSize,
+      font: fontBold,
+      color: rgb(0.26, 0.22, 0.79)
+    });
+
+    const nameText = sanitizePdfText(s.name || 'Student');
+    const nameSize = fitPdfFontSize(nameText, fontBold, W - 14, 9.6, 6.8);
+    page.drawText(nameText, {
+      x: (W - fontBold.widthOfTextAtSize(nameText, nameSize)) / 2,
+      y: photoY - 25,
+      size: nameSize,
+      font: fontBold,
+      color: rgb(0.06, 0.09, 0.16)
+    });
+
+    const courseText = sanitizePdfText(`${s.grade || ''} - ${s.course || ''}`);
+    const courseSize = fitPdfFontSize(courseText, fontBold, W - 14, 6.8, 5.2);
+    page.drawText(courseText, {
+      x: (W - fontBold.widthOfTextAtSize(courseText, courseSize)) / 2,
+      y: photoY - 36.5,
+      size: courseSize,
+      font: fontBold,
+      color: rgb(0.2, 0.25, 0.33)
+    });
+
+    const batchText = sanitizePdfText(`Batch: ${s.batch || '-'} | Adm: ${s.admissionDate || '-'}`);
+    const batchSize = fitPdfFontSize(batchText, fontReg, W - 14, 5.8, 4.6);
+    page.drawText(batchText, {
+      x: (W - fontReg.widthOfTextAtSize(batchText, batchSize)) / 2,
+      y: photoY - 47,
+      size: batchSize,
+      font: fontReg,
+      color: rgb(0.39, 0.45, 0.55)
+    });
+
+    // Bottom QR Verification Band
+    page.drawRectangle({ x: 0, y: 0, width: W, height: footerH, color: rgb(0.97, 0.98, 0.99), opacity: 0.96 });
+    page.drawLine({
+      start: { x: 0, y: footerH },
+      end: { x: W, y: footerH },
+      thickness: 0.6,
+      color: rgb(0.8, 0.84, 0.88)
+    });
+
+    page.drawText('SCAN FOR', { x: 10, y: 37, size: 6.4, font: fontBold, color: rgb(0.06, 0.09, 0.16) });
+    page.drawText('CHECK-IN & VERIFY', { x: 10, y: 28, size: 5.5, font: fontReg, color: rgb(0.28, 0.33, 0.41) });
+    page.drawText('OFFICIAL SMART ID', { x: 10, y: 17, size: 4.8, font: fontBold, color: rgb(0.45, 0.5, 0.58) });
+
+    const qrBoxSize = 46;
+    const qrX = W - qrBoxSize - 9;
+    const qrY = (footerH - qrBoxSize) / 2;
+    page.drawRectangle({
+      x: qrX - 2,
+      y: qrY - 2,
+      width: qrBoxSize + 4,
+      height: qrBoxSize + 4,
+      color: rgb(1, 1, 1),
+      borderColor: rgb(0.8, 0.84, 0.88),
+      borderWidth: 0.6
+    });
+
+    const verifyUrl = `${getAppBaseUrl()}?verify=${encodeURIComponent(s.rollNo || '')}`;
+    const qrDataUrl = await generateQrPngDataUrl(verifyUrl, 256);
+    if (qrDataUrl) {
+      const qrImg = await embedImageDataUrlInPdf(pdfDoc, qrDataUrl);
+      if (qrImg) {
+        page.drawImage(qrImg, { x: qrX, y: qrY, width: qrBoxSize, height: qrBoxSize });
+      }
+    }
+
+    // Crisp outer card border
+    page.drawRectangle({
+      x: 0.5,
+      y: 0.5,
+      width: W - 1,
+      height: H - 1,
+      borderColor: rgb(0.75, 0.8, 0.86),
+      borderWidth: 1
+    });
+
+    const bytes = await pdfDoc.save();
+    const safeRoll = String(s.rollNo || 'Student').replace(/[^A-Za-z0-9_-]/g, '_');
+    triggerBlobDownload(new Blob([bytes], { type: 'application/pdf' }), `TSM_ID_Card_${safeRoll}.pdf`);
+    showToast('ID Card PDF downloaded');
+  } catch (err) {
+    console.error('ID Card PDF generation error:', err);
+    showToast('Could not generate ID Card PDF. Please try again.');
+  }
 }
 
 function openCertificateModal(stuId) {
@@ -3441,7 +4003,7 @@ function openCertificateModal(stuId) {
   `);
   setTimeout(() => {
     const box = document.getElementById('certQrBox');
-    if (box) new QRCode(box, { text: `https://tikariyas.github.io/tsm-gem/?cert=${certSerial}`, width: 64, height: 64 });
+    if (box) new QRCode(box, { text: `${getAppBaseUrl()}?cert=${encodeURIComponent(certSerial)}`, width: 64, height: 64 });
   }, 50);
 }
 
@@ -3805,6 +4367,137 @@ function generateAutoAudioClipName(stu) {
   return `${stu.rollNo}_${safeName}_${safeCourse}_${selectedDate}_Clip${sameDayCount}`;
 }
 
+function setRecordMetronomeOption(key, checked) {
+  if (key === 'autoStart') recordAutoStartMetronome = !!checked;
+  else if (key === 'mixClick') recordMixMetronome = !!checked;
+}
+
+function stopRecLevelMeter() {
+  if (recMeterRafId) {
+    cancelAnimationFrame(recMeterRafId);
+    recMeterRafId = null;
+  }
+  recAnalyserNode = null;
+  if (recMeterAudioCtx) {
+    try { recMeterAudioCtx.close(); } catch (_) {}
+    recMeterAudioCtx = null;
+  }
+  const bar = document.getElementById('recLevelBarFill');
+  if (bar) bar.style.width = '0%';
+}
+
+function startRecLevelMeterLoop() {
+  if (!recAnalyserNode) return;
+  const data = new Uint8Array(recAnalyserNode.fftSize);
+  const tick = () => {
+    if (!isRecordingAudio || !recAnalyserNode) {
+      recMeterRafId = null;
+      return;
+    }
+    recAnalyserNode.getByteTimeDomainData(data);
+    let sumSq = 0;
+    for (let i = 0; i < data.length; i++) {
+      const v = (data[i] - 128) / 128;
+      sumSq += v * v;
+    }
+    const rms = Math.sqrt(sumSq / data.length);
+    const pct = Math.min(100, Math.max(4, Math.round(rms * 320)));
+    const bar = document.getElementById('recLevelBarFill');
+    if (bar) {
+      bar.style.width = pct + '%';
+      bar.style.backgroundColor = pct > 82 ? '#EF4444' : pct > 45 ? '#22C55E' : '#3B82F6';
+    }
+    recMeterRafId = requestAnimationFrame(tick);
+  };
+  recMeterRafId = requestAnimationFrame(tick);
+}
+
+function cleanupRecAudioMix() {
+  stopRecLevelMeter();
+  if (typeof recMixCleanup === 'function') {
+    try { recMixCleanup(); } catch (_) {}
+    recMixCleanup = null;
+  }
+}
+
+function getPreferredAudioRecorderMime() {
+  if (typeof MediaRecorder === 'undefined' || typeof MediaRecorder.isTypeSupported !== 'function') return '';
+  const candidates = [
+    'audio/webm;codecs=opus',
+    'audio/webm',
+    'audio/mp4;codecs=mp4a.40.2',
+    'audio/mp4',
+    'audio/ogg;codecs=opus'
+  ];
+  for (const m of candidates) {
+    try {
+      if (MediaRecorder.isTypeSupported(m)) return m;
+    } catch (_) {}
+  }
+  return '';
+}
+
+function createSafeMediaRecorder(primaryStream, fallbackStream) {
+  const mimeType = getPreferredAudioRecorderMime();
+  const attempts = [];
+  if (mimeType) attempts.push([primaryStream, { mimeType, audioBitsPerSecond: 24000 }]);
+  if (mimeType) attempts.push([primaryStream, { mimeType }]);
+  attempts.push([primaryStream, { audioBitsPerSecond: 24000 }]);
+  attempts.push([primaryStream, null]);
+  if (fallbackStream && fallbackStream !== primaryStream) {
+    if (mimeType) attempts.push([fallbackStream, { mimeType }]);
+    attempts.push([fallbackStream, null]);
+  }
+  let lastErr = null;
+  for (const [s, opts] of attempts) {
+    try {
+      return opts ? new MediaRecorder(s, opts) : new MediaRecorder(s);
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw lastErr || new Error('MediaRecorder unavailable');
+}
+
+async function acquireMicrophoneStream() {
+  if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== 'function') {
+    const err = new Error('Microphone API unavailable');
+    err.name = 'UnsupportedContextError';
+    throw err;
+  }
+  try {
+    return await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: false,
+        autoGainControl: false
+      }
+    });
+  } catch (err) {
+    if (err && (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError' || err.name === 'SecurityError')) {
+      throw err;
+    }
+    return await navigator.mediaDevices.getUserMedia({ audio: true });
+  }
+}
+
+function formatMicErrorMessage(err) {
+  const name = err && err.name ? err.name : '';
+  if (name === 'UnsupportedContextError') {
+    return 'In-app microphone requires HTTPS or a modern browser. You can still use Upload Audio Clip below.';
+  }
+  if (name === 'NotAllowedError' || name === 'PermissionDeniedError' || name === 'SecurityError') {
+    return 'Microphone permission was blocked. Allow microphone access in browser/app permissions and tap Start Recording again, or use Upload Audio Clip.';
+  }
+  if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+    return 'No microphone was found on this device. Connect a mic or use Upload Audio Clip.';
+  }
+  if (name === 'NotReadableError' || name === 'TrackStartError') {
+    return 'Microphone is currently busy in another app. Close other audio apps and retry.';
+  }
+  return 'Could not start microphone recording on this browser. Please retry or use Upload Audio Clip.';
+}
+
 async function toggleInAppAudioRecord(stuId) {
   const stu = appState.students.find(x => x.id === stuId);
   if (!stu) return;
@@ -3814,56 +4507,166 @@ async function toggleInAppAudioRecord(stuId) {
     return;
   }
 
+  recErrorMessage = '';
+  let micStream = null;
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        channelCount: 1,
-        sampleRate: 16000,
-        echoCancellation: true,
-        noiseSuppression: true
-      }
-    });
+    micStream = await acquireMicrophoneStream();
 
     recordedChunks = [];
     recordedAudioDataUrl = '';
     recordedDurationSec = 0;
+    discardAudioOnStop = false;
+    metronomeAutoStartedByRec = false;
 
-    const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : '';
-    const options = mimeType ? { mimeType, audioBitsPerSecond: 24000 } : { audioBitsPerSecond: 24000 };
-    mediaRecorder = new MediaRecorder(stream, options);
+    // Auto-start metronome if student enabled sync and metronome isn't already running
+    const metroWasPlaying = typeof metronomeState !== 'undefined' && metronomeState.isPlaying;
+    if (recordAutoStartMetronome && !metroWasPlaying && typeof startMetronome === 'function') {
+      await startMetronome();
+      metronomeAutoStartedByRec = true;
+    }
+
+    const metroNowPlaying = typeof metronomeState !== 'undefined' && metronomeState.isPlaying;
+    recordedMetronomeMeta = metroNowPlaying
+      ? `${metronomeState.beatsPerBar}/${metronomeState.beatUnit} · ${metronomeState.bpm} BPM`
+      : '';
+
+    // Build recording stream: mix live Web Audio metronome click with mic if enabled, plus drive VU level meter
+    let recordStream = micStream;
+    cleanupRecAudioMix();
+    try {
+      const audioCtx = typeof ensureMetronomeAudio === 'function' ? ensureMetronomeAudio() : null;
+      if (audioCtx) {
+        const micSource = audioCtx.createMediaStreamSource(micStream);
+        const analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 256;
+        micSource.connect(analyser);
+        recAnalyserNode = analyser;
+
+        let micGain = null;
+        let metroTapGain = null;
+        if (recordMixMetronome && typeof audioCtx.createMediaStreamDestination === 'function' && metronomeMakeupGain) {
+          const mixDest = audioCtx.createMediaStreamDestination();
+          micGain = audioCtx.createGain();
+          micGain.gain.setValueAtTime(1.15, audioCtx.currentTime);
+          micSource.connect(micGain);
+          micGain.connect(mixDest);
+
+          metroTapGain = audioCtx.createGain();
+          metroTapGain.gain.setValueAtTime(0.42, audioCtx.currentTime);
+          metronomeMakeupGain.connect(metroTapGain);
+          metroTapGain.connect(mixDest);
+
+          recordStream = mixDest.stream;
+        }
+        recMixCleanup = () => {
+          try { micSource.disconnect(); } catch (_) {}
+          try { if (micGain) micGain.disconnect(); } catch (_) {}
+          try { if (metroTapGain && metronomeMakeupGain) metronomeMakeupGain.disconnect(metroTapGain); } catch (_) {}
+          try { if (metroTapGain) metroTapGain.disconnect(); } catch (_) {}
+        };
+      }
+    } catch (mixErr) {
+      console.warn('Metronome-mic mix fallback to mic only:', mixErr);
+      recordStream = micStream;
+    }
+
+    mediaRecorder = createSafeMediaRecorder(recordStream, micStream);
 
     mediaRecorder.ondataavailable = e => {
       if (e.data && e.data.size > 0) recordedChunks.push(e.data);
     };
 
     mediaRecorder.onstop = () => {
-      stream.getTracks().forEach(t => t.stop());
+      cleanupRecAudioMix();
+      if (micStream) micStream.getTracks().forEach(t => t.stop());
+      if (metronomeAutoStartedByRec && typeof stopMetronome === 'function') {
+        stopMetronome();
+      }
+      metronomeAutoStartedByRec = false;
+
+      if (discardAudioOnStop) {
+        discardAudioOnStop = false;
+        recordedChunks = [];
+        recordedAudioDataUrl = '';
+        recordedDurationSec = 0;
+        recordedMetronomeMeta = '';
+        if (typeof refreshStudentAudioPanels === 'function') refreshStudentAudioPanels(stuId);
+        return;
+      }
+
       const blob = new Blob(recordedChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
       const reader = new FileReader();
       reader.onload = ev => {
         recordedAudioDataUrl = ev.target.result;
         const sizeKb = Math.round(blob.size / 1024);
         showToast(`Recorded ${recordedDurationSec}s (${sizeKb} KB)`);
-        renderCurrentTab();
+        if (typeof refreshStudentAudioPanels === 'function') refreshStudentAudioPanels(stuId);
+        else renderCurrentTab();
       };
       reader.readAsDataURL(blob);
     };
 
-    mediaRecorder.start();
+    mediaRecorder.start(250);
     isRecordingAudio = true;
-    renderCurrentTab();
+    if (typeof refreshStudentAudioPanels === 'function') refreshStudentAudioPanels(stuId);
+    else renderCurrentTab();
+    startRecLevelMeterLoop();
 
     recordingTimerInterval = setInterval(() => {
       recordedDurationSec++;
       const timerEl = document.getElementById('recTimerText');
       if (timerEl) timerEl.textContent = `${recordedDurationSec}s / 45s`;
+      const recHdrEl = document.getElementById('recHeaderStatusText');
+      if (recHdrEl) recHdrEl.textContent = `REC · ${recordedDurationSec}s / 45s`;
+      const progEl = document.getElementById('recProgressFill');
+      if (progEl) progEl.style.width = `${Math.min(100, Math.round((recordedDurationSec / 45) * 100))}%`;
       if (recordedDurationSec >= 45) {
         stopAudioRecording(false);
       }
     }, 1000);
   } catch (err) {
-    showToast('Microphone access denied or unavailable');
+    console.warn('In-app audio recording error:', err);
+    if (micStream) {
+      try { micStream.getTracks().forEach(t => t.stop()); } catch (_) {}
+    }
+    cleanupRecAudioMix();
+    if (metronomeAutoStartedByRec && typeof stopMetronome === 'function') {
+      stopMetronome();
+      metronomeAutoStartedByRec = false;
+    }
+    recErrorMessage = formatMicErrorMessage(err);
+    showToast(recErrorMessage);
+    if (typeof refreshStudentAudioPanels === 'function') refreshStudentAudioPanels(stuId);
   }
+}
+
+function uploadStudentPracticeAudioFile(e, stuId) {
+  const input = e.target;
+  const file = input && input.files && input.files[0];
+  if (!file) return;
+  if (file.size > 4 * 1024 * 1024) {
+    showToast('Audio file is too large (max 4 MB). Please record or trim a shorter clip.');
+    input.value = '';
+    return;
+  }
+  recErrorMessage = '';
+  const reader = new FileReader();
+  reader.onload = ev => {
+    recordedAudioDataUrl = ev.target.result;
+    recordedDurationSec = 0;
+    recordedMetronomeMeta = (typeof metronomeState !== 'undefined')
+      ? `${metronomeState.beatsPerBar}/${metronomeState.beatUnit} · ${metronomeState.bpm} BPM`
+      : '';
+    showToast(`Loaded audio clip (${Math.round(file.size / 1024)} KB)`);
+    if (typeof refreshStudentAudioPanels === 'function') refreshStudentAudioPanels(stuId);
+    else renderCurrentTab();
+    input.value = '';
+  };
+  reader.onerror = () => {
+    showToast('Could not read audio file.');
+    input.value = '';
+  };
+  reader.readAsDataURL(file);
 }
 
 function stopAudioRecording(discard) {
@@ -3873,13 +4676,28 @@ function stopAudioRecording(discard) {
   }
   isRecordingAudio = false;
   if (discard) {
+    discardAudioOnStop = true;
     recordedChunks = [];
     recordedAudioDataUrl = '';
     recordedDurationSec = 0;
+    recordedMetronomeMeta = '';
   }
   if (mediaRecorder && mediaRecorder.state !== 'inactive') {
     try { mediaRecorder.stop(); } catch (e) {}
+  } else {
+    cleanupRecAudioMix();
+    if (metronomeAutoStartedByRec && typeof stopMetronome === 'function') {
+      stopMetronome();
+      metronomeAutoStartedByRec = false;
+    }
   }
+}
+
+function discardStudentRecordedClip(stuId) {
+  recErrorMessage = '';
+  stopAudioRecording(true);
+  if (typeof refreshStudentAudioPanels === 'function') refreshStudentAudioPanels(stuId);
+  else renderCurrentTab();
 }
 
 function submitRecordedAudioClip(stuId) {
@@ -3895,6 +4713,7 @@ function submitRecordedAudioClip(stuId) {
     title: autoTitle || generateAutoAudioClipName(stu),
     date: selectedDate,
     dataUrl: recordedAudioDataUrl,
+    metronomeMeta: recordedMetronomeMeta || '',
     status: 'Submitted',
     approvedAt: null,
     feedback: ''
@@ -3903,51 +4722,72 @@ function submitRecordedAudioClip(stuId) {
   recordedAudioDataUrl = '';
   recordedChunks = [];
   recordedDurationSec = 0;
+  recordedMetronomeMeta = '';
   dispatchPushAlert('ADMIN', "TIKARIYA'S SCHOOL OF MUSIC", `${stu.name} (${stu.rollNo}) submitted a practice audio clip.`);
   saveState();
-  renderCurrentTab();
+  if (typeof refreshStudentAudioPanels === 'function') refreshStudentAudioPanels(stuId, true);
+  else renderCurrentTab();
   showToast('Practice recording submitted');
+}
+
+function buildAdminAudioClipsHtml() {
+  return `
+    <div class="bg-white p-4 rounded-xl border border-slate-200 flex items-center justify-between">
+      <div>
+        <h2 class="text-sm font-bold text-[#0F172A]">Student Weekly Practice Audio Clips (2 Clips/Week Required)</h2>
+        <p class="text-[11px] text-slate-500">Audio files automatically delete 3 days after approval while retaining verified progress credit.</p>
+      </div>
+    </div>
+
+    <div class="bg-white rounded-xl border border-slate-200 divide-y divide-slate-200">
+      ${appState.audioClips.length ? appState.audioClips.map(c => {
+        const isApproved = c.status === 'Verified';
+        let expiryNote = '';
+        if (isApproved && c.approvedAt) {
+          const msLeft = THREE_DAYS_MS - (Date.now() - Number(c.approvedAt));
+          const hrsLeft = Math.max(0, Math.ceil(msLeft / (1000 * 60 * 60)));
+          expiryNote = c.dataUrl ? ` &bull; Auto-deletes in ${hrsLeft}h` : ' &bull; Audio auto-deleted after 3d (Credit kept)';
+        }
+        const metroTag = c.metronomeMeta ? ` &bull; <span class="text-[#1D4ED8] font-semibold">Metronome: ${escapeHtml(c.metronomeMeta)}</span>` : '';
+        return `
+          <div class="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+            <div class="space-y-1">
+              <div class="font-bold text-[#0F172A]">${escapeHtml(c.title)}</div>
+              <div class="text-[11px] text-slate-500">Student: <b>${escapeHtml(c.studentName)}</b> (${escapeHtml(c.rollNo)}) &bull; ${escapeHtml(c.date)}${metroTag} &bull; Status: <b>${isApproved ? 'APPROVED' : escapeHtml(c.status)}</b>${expiryNote}</div>
+              ${c.dataUrl ? `<audio controls src="${c.dataUrl}" class="h-8 mt-1"></audio>` : '<span class="text-[10px] text-slate-400">Audio file purged (Credit verified)</span>'}
+            </div>
+            <div class="flex items-center gap-2">
+              <input value="${escapeHtml(c.feedback || '')}" placeholder="Feedback..." onchange="updateAudioFeedback('${c.id}', this.value)" class="px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs" />
+              <button onclick="verifyAudioClip('${c.id}')" ${isApproved ? 'disabled' : ''}
+                class="px-3 py-1.5 font-semibold rounded-lg transition ${isApproved ? 'bg-emerald-100 text-emerald-800 border border-emerald-300 cursor-default' : 'bg-emerald-700 hover:bg-emerald-800 text-white'}">
+                ${isApproved ? 'APPROVED' : 'APPROVE'}
+              </button>
+            </div>
+          </div>
+        `;
+      }).join('') : '<p class="p-6 text-xs text-slate-500 text-center">No audio clips recorded yet.</p>'}
+    </div>
+  `;
+}
+
+function refreshAdminAudioClipsList() {
+  const host = document.getElementById('adminAudioClipsHost');
+  if (host) host.innerHTML = buildAdminAudioClipsHtml();
 }
 
 function renderAdminAudioTab(el) {
   el.innerHTML = `
-    <div class="space-y-4">
-      <div class="bg-white p-4 rounded-xl border border-slate-200 flex items-center justify-between">
-        <div>
-          <h2 class="text-sm font-bold text-[#0F172A]">Student Weekly Practice Audio Clips (2 Clips/Week Required)</h2>
-          <p class="text-[11px] text-slate-500">Audio files automatically delete 3 days after approval while retaining verified progress credit.</p>
-        </div>
+    <div class="max-w-5xl mx-auto space-y-5">
+      <div id="adminAudioClipsHost" class="space-y-4">
+        ${buildAdminAudioClipsHtml()}
       </div>
-
-      <div class="bg-white rounded-xl border border-slate-200 divide-y divide-slate-200">
-        ${appState.audioClips.length ? appState.audioClips.map(c => {
-          const isApproved = c.status === 'Verified';
-          let expiryNote = '';
-          if (isApproved && c.approvedAt) {
-            const msLeft = THREE_DAYS_MS - (Date.now() - Number(c.approvedAt));
-            const hrsLeft = Math.max(0, Math.ceil(msLeft / (1000 * 60 * 60)));
-            expiryNote = c.dataUrl ? ` &bull; Auto-deletes in ${hrsLeft}h` : ' &bull; Audio auto-deleted after 3d (Credit kept)';
-          }
-          return `
-            <div class="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-              <div class="space-y-1">
-                <div class="font-bold text-[#0F172A]">${c.title}</div>
-                <div class="text-[11px] text-slate-500">Student: <b>${c.studentName}</b> (${c.rollNo}) &bull; ${c.date} &bull; Status: <b>${isApproved ? 'APPROVED' : c.status}</b>${expiryNote}</div>
-                ${c.dataUrl ? `<audio controls src="${c.dataUrl}" class="h-8 mt-1"></audio>` : '<span class="text-[10px] text-slate-400">Audio file purged (Credit verified)</span>'}
-              </div>
-              <div class="flex items-center gap-2">
-                <input value="${c.feedback || ''}" placeholder="Feedback..." onchange="updateAudioFeedback('${c.id}', this.value)" class="px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs" />
-                <button onclick="verifyAudioClip('${c.id}')" ${isApproved ? 'disabled' : ''}
-                  class="px-3 py-1.5 font-semibold rounded-lg transition ${isApproved ? 'bg-emerald-100 text-emerald-800 border border-emerald-300 cursor-default' : 'bg-emerald-700 hover:bg-emerald-800 text-white'}">
-                  ${isApproved ? 'APPROVED' : 'APPROVE'}
-                </button>
-              </div>
-            </div>
-          `;
-        }).join('') : '<p class="p-6 text-xs text-slate-500 text-center">No audio clips recorded yet.</p>'}
-      </div>
+      <div id="adminAudioMetronomeHost"></div>
     </div>
   `;
+  const metroHost = document.getElementById('adminAudioMetronomeHost');
+  if (metroHost && typeof renderMetronomeTab === 'function') {
+    renderMetronomeTab(metroHost, true);
+  }
 }
 
 function updateAudioFeedback(clipId, text) {
@@ -3962,7 +4802,8 @@ function verifyAudioClip(clipId) {
     c.approvedAt = Date.now();
     dispatchPushAlert(c.rollNo, "TIKARIYA'S SCHOOL OF MUSIC", `Dear ${c.studentName}, your practice audio "${c.title}" has been APPROVED.`);
     saveState();
-    renderCurrentTab();
+    if (document.getElementById('adminAudioClipsHost')) refreshAdminAudioClipsList();
+    else renderCurrentTab();
     showToast('APPROVED — audio will auto-delete after 3 days');
   }
 }
@@ -4794,16 +5635,22 @@ function renderStudentPortal(el, tab) {
           </div>
         </div>
 
-        <button type="button" onclick="openStudentProfileModal('${safeId}')" class="w-full min-h-[48px] py-3 px-5 bg-[#0F172A] hover:bg-slate-800 active:scale-[0.99] text-white text-sm font-bold rounded-xl shadow-sm flex items-center justify-center gap-2 transition">
-          <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
-          <span>Customize Profile</span>
-          ${needsPin ? '<span class="ml-1 text-[10px] font-bold text-amber-300">&bull; Update PIN</span>' : ''}
-        </button>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+          <button type="button" onclick="openStudentProfileModal('${safeId}')" class="w-full min-h-[48px] py-3 px-4 bg-[#0F172A] hover:bg-slate-800 active:scale-[0.99] text-white text-sm font-bold rounded-xl shadow-sm flex items-center justify-center gap-2 transition">
+            <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+            <span>Customize Profile</span>
+            ${needsPin ? '<span class="ml-1 text-[10px] font-bold text-amber-300">&bull; Update PIN</span>' : ''}
+          </button>
+          <button type="button" onclick="downloadIdCardPdf('${safeId}')" class="w-full min-h-[48px] py-3 px-4 bg-white hover:bg-slate-50 active:scale-[0.99] text-[#0F172A] border-2 border-[#0F172A] text-sm font-bold rounded-xl shadow-sm flex items-center justify-center gap-2 transition">
+            <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3"/></svg>
+            <span>Download ID Card PDF</span>
+          </button>
+        </div>
       </div>
     `;
     setTimeout(() => {
       const box = document.getElementById('stuPortalQr');
-      if (box) new QRCode(box, { text: `https://tikariyas.github.io/tsm-gem/?verify=${s.rollNo}`, width: 88, height: 88, correctLevel: QRCode.CorrectLevel.H });
+      if (box) new QRCode(box, { text: `${getAppBaseUrl()}?verify=${encodeURIComponent(s.rollNo || '')}`, width: 88, height: 88, correctLevel: QRCode.CorrectLevel.H });
     }, 50);
   } else if (tab === 'student_attendance') {
     const wk = getWeeklyStats(selectedDate, s);
@@ -4832,56 +5679,21 @@ function renderStudentPortal(el, tab) {
       </div>
     `;
   } else if (tab === 'student_audio') {
-    const myClips = appState.audioClips.filter(c => c.rollNo.toUpperCase() === s.rollNo.toUpperCase());
-    const autoClipName = generateAutoAudioClipName(s);
     el.innerHTML = `
-      <div class="max-w-xl mx-auto space-y-4">
-        <div class="bg-white p-4 rounded-xl border border-slate-200 space-y-3 text-xs">
-          <div class="flex items-center justify-between">
-            <h3 class="text-sm font-bold text-[#0F172A]">In-App Practice Audio Recorder (2 Clips/Week)</h3>
-            <span class="px-2 py-0.5 bg-slate-100 border border-slate-200 rounded font-mono text-[10px]">${elig.weeklyAudioCount}/2 This Week</span>
-          </div>
-          <p class="text-[11px] text-slate-500">Record at least two audio clips in a week for eligibility of certificate — students app - Audio</p>
-
-          <div>
-            <label class="block font-semibold text-slate-700 mb-1">Automated Clip Name</label>
-            <input id="autoAudioTitleInput" value="${autoClipName}" class="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono text-xs bg-slate-50" />
-          </div>
-
-          <div class="flex flex-wrap items-center gap-2 pt-1">
-            <button type="button" onclick="toggleInAppAudioRecord('${s.id}')"
-              class="px-4 py-2 font-semibold rounded-lg text-white transition ${isRecordingAudio ? 'bg-[#B91C1C] animate-pulse' : 'bg-[#0F172A] hover:bg-slate-800'}">
-              ${isRecordingAudio ? 'Stop Recording' : 'Start In-App Recording'}
-            </button>
-            ${isRecordingAudio ? `<span id="recTimerText" class="font-mono font-bold text-red-700">${recordedDurationSec}s / 45s</span>` : ''}
-          </div>
-
-          ${recordedAudioDataUrl ? `
-            <div class="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-2">
-              <div class="text-[11px] font-semibold text-slate-700">Preview Recording (${recordedDurationSec}s):</div>
-              <audio controls src="${recordedAudioDataUrl}" class="h-8 w-full"></audio>
-              <div class="flex gap-2">
-                <button type="button" onclick="submitRecordedAudioClip('${s.id}')" class="px-4 py-1.5 bg-emerald-700 text-white font-semibold rounded-lg">Submit Clip</button>
-                <button type="button" onclick="stopAudioRecording(true); renderCurrentTab();" class="px-3 py-1.5 border border-slate-300 rounded-lg font-semibold">Discard</button>
-              </div>
-            </div>
-          ` : ''}
+      <div class="max-w-5xl mx-auto space-y-5">
+        <div id="studentAudioRecorderHost">
+          ${buildStudentAudioRecorderHtml(s, elig)}
         </div>
-
-        <div class="bg-white p-4 rounded-xl border border-slate-200 divide-y divide-slate-200 text-xs">
-          ${myClips.map(c => `
-            <div class="py-3 space-y-1">
-              <div class="flex justify-between font-bold text-[#0F172A]">
-                <span class="font-mono text-[11px]">${c.title}</span>
-                <span class="${c.status==='Verified' ? 'text-emerald-700' : 'text-amber-700'}">${c.status==='Verified' ? 'APPROVED' : c.status}</span>
-              </div>
-              <div class="text-[11px] text-slate-500">${c.date} ${c.feedback ? `&bull; Feedback: ${c.feedback}` : ''}</div>
-              ${c.dataUrl ? `<audio controls src="${c.dataUrl}" class="h-8 mt-1 w-full"></audio>` : '<span class="text-[10px] text-slate-400">Audio auto-deleted after 3-day approval retention</span>'}
-            </div>
-          `).join('')}
+        <div id="studentAudioMetronomeHost"></div>
+        <div id="studentAudioClipsHost">
+          ${buildStudentAudioClipsHtml(s)}
         </div>
       </div>
     `;
+    const metroHost = document.getElementById('studentAudioMetronomeHost');
+    if (metroHost && typeof renderMetronomeTab === 'function') {
+      renderMetronomeTab(metroHost, false);
+    }
   } else if (tab === 'student_fees') {
     const upiId = appState.upiId || '9823011223@upi';
     const upiUri = `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent("TIKARIYAS SCHOOL OF MUSIC")}&am=${netFee}&cu=INR&tn=${encodeURIComponent(`Fee ${s.rollNo} ${s.name}`)}`;
@@ -4963,6 +5775,170 @@ function renderStudentPortal(el, tab) {
       </div>
     `;
   }
+}
+
+function buildStudentAudioRecorderHtml(s, elig, resetTitle = false) {
+  const existingTitle = resetTitle ? '' : document.getElementById('autoAudioTitleInput')?.value;
+  const clipTitleValue = existingTitle !== undefined && existingTitle !== '' ? existingTitle : generateAutoAudioClipName(s);
+  const recPct = Math.min(100, Math.round((recordedDurationSec / 45) * 100));
+  const activeMeterBpm = typeof metronomeState !== 'undefined'
+    ? `${metronomeState.beatsPerBar}/${metronomeState.beatUnit} · ${metronomeState.bpm} BPM`
+    : '4/4 · 100 BPM';
+
+  return `
+    <div class="rounded-2xl bg-[#050810] border border-[#1E3A8A]/80 shadow-xl overflow-hidden text-white">
+      <!-- TSM STUDIO RECORDER HEADER (MATCHING METRONOME CHASSIS) -->
+      <div class="px-4 sm:px-6 py-3.5 bg-gradient-to-r from-[#050810] via-[#0F172A] to-[#050810] border-b border-[#1E3A8A]/60 flex flex-wrap items-center justify-between gap-3">
+        <div class="flex items-center gap-3 min-w-0">
+          <svg class="w-10 h-10 shrink-0 rounded-xl shadow-md" viewBox="0 0 64 64" aria-label="TSM Studio Recorder">
+            <rect x="0" y="0" width="64" height="64" rx="14" fill="#0F172A"/>
+            <rect x="2.5" y="2.5" width="59" height="59" rx="12" fill="none" stroke="${isRecordingAudio ? '#EF4444' : '#1E3A8A'}" stroke-width="2.5"/>
+            <rect x="25" y="14" width="14" height="22" rx="7" fill="${isRecordingAudio ? '#EF4444' : '#22C55E'}"/>
+            <path d="M19 31a13 13 0 0 0 26 0" fill="none" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round"/>
+            <line x1="32" y1="44" x2="32" y2="51" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round"/>
+            <line x1="24" y1="51" x2="40" y2="51" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round"/>
+          </svg>
+          <div class="min-w-0">
+            <div class="text-xs sm:text-sm font-extrabold tracking-wide uppercase truncate text-white">
+              TS<span class="text-[#EF4444]">M</span> STUDIO PRACTICE RECORDER
+            </div>
+            <div class="text-[11px] text-slate-400 truncate">
+              2 Clips/Week Required · <span class="text-[#86EFAC] font-semibold tabular-nums">${elig.weeklyAudioCount}/2 This Week</span> · Max 45s
+            </div>
+          </div>
+        </div>
+        <div id="recHeaderStatusText" class="text-xs font-mono font-bold tabular-nums whitespace-nowrap ${isRecordingAudio ? 'text-[#EF4444]' : 'text-slate-300'}">
+          ${isRecordingAudio ? `REC · ${recordedDurationSec}s / 45s` : `Ready · ${activeMeterBpm}`}
+        </div>
+      </div>
+
+      <!-- RECORDER TRANSPORT DECK -->
+      <div class="p-4 sm:p-6 bg-[#0B1224] space-y-4">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-end">
+          <div class="lg:col-span-6 space-y-1.5">
+            <label for="autoAudioTitleInput" class="block text-xs font-bold text-slate-200">Automated Clip Name</label>
+            <input id="autoAudioTitleInput" value="${escapeHtml(clipTitleValue)}"
+              class="w-full min-h-[46px] px-3.5 py-2.5 rounded-xl bg-[#050810] border border-[#1E3A8A]/80 text-white font-mono text-xs focus:outline-none focus:border-[#22C55E]" />
+          </div>
+
+          <div class="lg:col-span-6 flex flex-wrap items-center gap-2.5">
+            <button type="button" onclick="toggleInAppAudioRecord('${s.id}')"
+              class="flex-1 min-h-[48px] px-5 py-2.5 rounded-xl font-extrabold text-sm text-white shadow-lg transition cursor-pointer whitespace-nowrap flex items-center justify-center gap-2.5 ${
+                isRecordingAudio
+                  ? 'bg-[#DC2626] hover:bg-[#B91C1C] border border-[#EF4444]'
+                  : 'bg-[#16A34A] hover:bg-[#15803D] border border-[#22C55E]'
+              }">
+              ${isRecordingAudio
+                ? `<svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg><span>Stop Recording</span>`
+                : `<svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="7"/></svg><span>Start Recording</span>`
+              }
+            </button>
+
+            <label class="min-h-[48px] px-4 py-2.5 rounded-xl bg-[#172554] hover:bg-[#1E3A8A] border border-[#2563EB]/70 text-blue-100 font-bold text-xs cursor-pointer whitespace-nowrap inline-flex items-center justify-center gap-2 transition">
+              <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              <span>Upload Audio</span>
+              <input type="file" accept="audio/*" onchange="uploadStudentPracticeAudioFile(event, '${s.id}')" class="sr-only" />
+            </label>
+          </div>
+        </div>
+
+        ${isRecordingAudio ? `
+          <div class="p-3.5 rounded-xl bg-[#04070F] border border-[#EF4444]/60 space-y-2.5">
+            <div class="flex items-center justify-between text-xs">
+              <span class="font-bold text-[#FCA5A5]">Recording Live Input</span>
+              <span id="recTimerText" class="font-mono font-extrabold text-[#EF4444] tabular-nums">${recordedDurationSec}s / 45s</span>
+            </div>
+            <div class="w-full h-2 rounded-full bg-[#0F172A] overflow-hidden border border-[#1E3A8A]/60">
+              <div id="recProgressFill" class="h-full bg-[#EF4444] transition-all duration-300" style="width:${recPct}%"></div>
+            </div>
+            <div class="flex items-center gap-2.5">
+              <span class="text-[11px] font-semibold text-slate-400 shrink-0">Mic Level</span>
+              <div class="flex-1 h-2 rounded-full bg-[#0F172A] overflow-hidden border border-[#1E3A8A]/60">
+                <div id="recLevelBarFill" class="h-full bg-[#22C55E] transition-all duration-75" style="width:6%"></div>
+              </div>
+            </div>
+          </div>
+        ` : ''}
+
+        ${recErrorMessage ? `
+          <div class="p-3 rounded-xl bg-[#450A0A]/70 border border-[#EF4444]/60 text-xs text-red-100 leading-relaxed">
+            <span class="font-bold text-[#FCA5A5]">Microphone notice:</span> ${escapeHtml(recErrorMessage)}
+          </div>
+        ` : ''}
+
+        <!-- METRONOME SYNC CONTROLS -->
+        <div class="p-3.5 rounded-xl bg-[#050810] border border-[#1E3A8A]/70 flex flex-wrap items-center justify-between gap-x-6 gap-y-2.5 text-xs">
+          <div class="flex flex-wrap items-center gap-x-6 gap-y-2">
+            <label class="inline-flex items-center gap-2.5 min-h-[36px] cursor-pointer select-none text-slate-200">
+              <input type="checkbox" ${recordAutoStartMetronome ? 'checked' : ''} onchange="setRecordMetronomeOption('autoStart', this.checked)" class="w-4 h-4 accent-[#22C55E] rounded cursor-pointer" />
+              <span class="font-semibold">Auto-start &amp; stop Metronome with Recording</span>
+            </label>
+            <label class="inline-flex items-center gap-2.5 min-h-[36px] cursor-pointer select-none text-slate-200">
+              <input type="checkbox" ${recordMixMetronome ? 'checked' : ''} onchange="setRecordMetronomeOption('mixClick', this.checked)" class="w-4 h-4 accent-[#22C55E] rounded cursor-pointer" />
+              <span class="font-semibold">Include Metronome Click in Clip</span>
+            </label>
+          </div>
+          <span class="text-[11px] text-slate-400">Set tempo &amp; meter in the studio metronome below</span>
+        </div>
+
+        ${recordedAudioDataUrl ? `
+          <div class="p-4 rounded-xl bg-[#050810] border border-[#22C55E]/70 space-y-3">
+            <div class="flex flex-wrap items-center justify-between gap-2 text-xs">
+              <span class="font-bold text-[#86EFAC]">Preview Ready${recordedDurationSec ? ` · ${recordedDurationSec}s` : ''}${recordedMetronomeMeta ? ` · Metronome ${escapeHtml(recordedMetronomeMeta)}` : ''}</span>
+              <span class="text-[11px] text-slate-400">Listen before submitting to teacher</span>
+            </div>
+            <audio controls src="${recordedAudioDataUrl}" class="h-10 w-full"></audio>
+            <div class="flex flex-wrap items-center gap-2.5">
+              <button type="button" onclick="submitRecordedAudioClip('${s.id}')"
+                class="min-h-[44px] px-5 py-2 rounded-xl bg-[#16A34A] hover:bg-[#15803D] border border-[#22C55E] text-white font-bold text-xs cursor-pointer transition whitespace-nowrap">
+                Submit Clip to Teacher
+              </button>
+              <button type="button" onclick="discardStudentRecordedClip('${s.id}')"
+                class="min-h-[44px] px-4 py-2 rounded-xl bg-[#7F1D1D]/50 hover:bg-[#7F1D1D] border border-[#EF4444]/60 text-red-100 font-bold text-xs cursor-pointer transition whitespace-nowrap">
+                Discard Take
+              </button>
+            </div>
+          </div>
+        ` : ''}
+      </div>
+    </div>
+  `;
+}
+
+function buildStudentAudioClipsHtml(s) {
+  const myClips = appState.audioClips.filter(c => c.rollNo.toUpperCase() === s.rollNo.toUpperCase());
+  return `
+    <div class="rounded-2xl bg-[#0B1224] border border-[#1E3A8A]/70 p-4 sm:p-5 text-white shadow-md">
+      <div class="flex items-center justify-between pb-3 border-b border-[#1E3A8A]/50">
+        <h3 class="text-sm font-extrabold text-white">My Submitted Practice Clips</h3>
+        <span class="text-xs font-mono text-slate-300 tabular-nums">${myClips.length} total</span>
+      </div>
+      <div class="divide-y divide-[#1E3A8A]/40 text-xs">
+        ${myClips.length ? myClips.map(c => `
+          <div class="py-3.5 space-y-1.5">
+            <div class="flex flex-wrap items-center justify-between gap-2 font-bold">
+              <span class="font-mono text-xs text-white">${escapeHtml(c.title)}</span>
+              <span class="${c.status==='Verified' ? 'text-[#22C55E]' : 'text-[#FCA5A5]'}">${c.status==='Verified' ? 'APPROVED' : escapeHtml(c.status)}</span>
+            </div>
+            <div class="text-[11px] text-slate-400">
+              ${escapeHtml(c.date)}${c.metronomeMeta ? ` · <span class="text-[#86EFAC] font-semibold">Metronome ${escapeHtml(c.metronomeMeta)}</span>` : ''}${c.feedback ? ` · Feedback: <span class="text-slate-200">${escapeHtml(c.feedback)}</span>` : ''}
+            </div>
+            ${c.dataUrl ? `<audio controls src="${c.dataUrl}" class="h-9 mt-1.5 w-full"></audio>` : '<span class="text-[11px] text-slate-500">Audio auto-deleted after 3-day approval retention (credit kept)</span>'}
+          </div>
+        `).join('') : '<p class="py-6 text-slate-400 text-center">No practice clips submitted yet. Record your first clip above with the TSM Studio Metronome.</p>'}
+      </div>
+    </div>
+  `;
+}
+
+function refreshStudentAudioPanels(stuId, resetTitle = false) {
+  const s = appState.students.find(x => x.id === stuId);
+  if (!s) return;
+  const elig = evaluateCertificateEligibility(s, selectedDate);
+  const recHost = document.getElementById('studentAudioRecorderHost');
+  if (recHost) recHost.innerHTML = buildStudentAudioRecorderHtml(s, elig, resetTitle);
+  const clipsHost = document.getElementById('studentAudioClipsHost');
+  if (clipsHost) clipsHost.innerHTML = buildStudentAudioClipsHtml(s);
 }
 
 async function uploadStudentPhoto(e, stuId, keepModalOpen = false, previewElId = 'profilePhotoPreview') {
@@ -5076,6 +6052,1573 @@ async function exportDailyAttendancePdf() {
   link.href = URL.createObjectURL(blob);
   link.download = `TSM_Attendance_${selectedDate}.pdf`;
   link.click();
+}
+
+// ==========================================
+// 17B. TSM STUDIO METRONOME (BOUNCING BALL + LOUD AUDIO + CUSTOM TONE & UPLOAD)
+// ==========================================
+const METRONOME_PRESET_METERS = [
+  [1, 4], [2, 4], [3, 4], [4, 4], [5, 4], [6, 4], [7, 4], [2, 2],
+  [3, 8], [5, 8], [6, 8], [7, 8], [9, 8], [11, 8], [12, 8], [15, 16]
+];
+
+const METRONOME_ADMIN_TONE_PRESETS = {
+  woodblock: { label: 'Woodblock', waveform: 'triangle', accentFreq: 1620, regularFreq: 1020, subFreq: 680, decayMs: 42, clickSnap: 0.75, loudnessBoost: 1.55 },
+  rimshot:   { label: 'Loud Rim',  waveform: 'square',   accentFreq: 1950, regularFreq: 1240, subFreq: 760, decayMs: 28, clickSnap: 0.95, loudnessBoost: 1.75 },
+  digital:   { label: 'Digital',   waveform: 'sine',     accentFreq: 2100, regularFreq: 1320, subFreq: 880, decayMs: 36, clickSnap: 0.25, loudnessBoost: 1.6 },
+  tabla:     { label: 'Tabla Na',  waveform: 'triangle', accentFreq: 1180, regularFreq: 640,  subFreq: 420, decayMs: 88, clickSnap: 0.65, loudnessBoost: 1.65 },
+  bell:      { label: 'Bell Ping', waveform: 'sine',     accentFreq: 2450, regularFreq: 1640, subFreq: 1080, decayMs: 135, clickSnap: 0.2, loudnessBoost: 1.5 }
+};
+
+function getMetronomeConfig() {
+  if (!appState.metronomeConfig || typeof appState.metronomeConfig !== 'object') {
+    appState.metronomeConfig = { ...DEFAULT_METRONOME_CONFIG };
+  }
+  return { ...DEFAULT_METRONOME_CONFIG, ...appState.metronomeConfig };
+}
+
+function buildDefaultBeatPattern(beats, beatUnit) {
+  const arr = [];
+  for (let i = 0; i < beats; i++) {
+    if (i === 0) arr.push(3); // Accent (Red)
+    else if (beatUnit === 8 && (beats === 6 || beats === 9 || beats === 12) && i % 3 === 0) arr.push(2); // Compound strong
+    else if (beatUnit === 8 && (beats === 6 || beats === 9 || beats === 12)) arr.push(1); // Compound weak
+    else arr.push(2); // Regular (Green)
+  }
+  return arr;
+}
+
+function getTempoMarking(bpm) {
+  if (bpm < 42) return 'Grave';
+  if (bpm < 60) return 'Largo';
+  if (bpm < 72) return 'Adagio';
+  if (bpm < 92) return 'Andante';
+  if (bpm < 112) return 'Moderato';
+  if (bpm < 132) return 'Allegretto';
+  if (bpm < 160) return 'Allegro';
+  if (bpm < 184) return 'Vivace';
+  if (bpm < 216) return 'Presto';
+  return 'Prestissimo';
+}
+
+let metronomeState = {
+  isPlaying: false,
+  bpm: 100,
+  beatsPerBar: 4,
+  beatUnit: 4,
+  subdivision: 1,
+  beatPattern: [3, 2, 2, 2],
+  volume: 1.35,
+  soundMode: '', // '' means adopt admin defaultSoundMode
+  soundModeInitialized: false,
+  tapTimes: [],
+  currentBeat: 0,
+  currentStepInBar: 0,
+  nextNoteTime: 0,
+  schedulerTimerId: null,
+  rafId: null,
+  // Student optional local custom sound override
+  localAccentDataUrl: '',
+  localAccentName: '',
+  localRegularDataUrl: '',
+  localRegularName: '',
+  // Visual bouncing ball tracking synced to AudioContext clock
+  lastBeatTime: 0,
+  nextBeatTime: 0,
+  activeBeatIndex: 0,
+  nextBeatIndex: 1,
+  activeBeatLevel: 3,
+  lastSubTime: 0,
+  ripples: [],
+  trail: []
+};
+
+let metronomeAudioCtx = null;
+let metronomeMasterGain = null;
+let metronomeCompressor = null;
+let metronomeMakeupGain = null;
+let metronomeNoiseBuffer = null;
+let metronomeDecodedCache = new Map(); // dataUrl -> AudioBuffer
+let metronomeScheduledVisuals = [];
+let metronomeKeyListenerBound = false;
+
+function ensureMetronomeAudio() {
+  const Ctx = window.AudioContext || window.webkitAudioContext;
+  if (!Ctx) return null;
+  if (!metronomeAudioCtx) {
+    metronomeAudioCtx = new Ctx();
+    metronomeMasterGain = metronomeAudioCtx.createGain();
+    metronomeCompressor = metronomeAudioCtx.createDynamicsCompressor();
+    metronomeCompressor.threshold.setValueAtTime(-10, metronomeAudioCtx.currentTime);
+    metronomeCompressor.knee.setValueAtTime(6, metronomeAudioCtx.currentTime);
+    metronomeCompressor.ratio.setValueAtTime(14, metronomeAudioCtx.currentTime);
+    metronomeCompressor.attack.setValueAtTime(0.001, metronomeAudioCtx.currentTime);
+    metronomeCompressor.release.setValueAtTime(0.055, metronomeAudioCtx.currentTime);
+
+    metronomeMakeupGain = metronomeAudioCtx.createGain();
+    metronomeMakeupGain.gain.setValueAtTime(1.55, metronomeAudioCtx.currentTime);
+
+    metronomeMasterGain.connect(metronomeCompressor);
+    metronomeCompressor.connect(metronomeMakeupGain);
+    metronomeMakeupGain.connect(metronomeAudioCtx.destination);
+
+    // Pre-generate crisp white noise buffer for transient click punch
+    const sr = metronomeAudioCtx.sampleRate;
+    const len = Math.floor(sr * 0.04);
+    metronomeNoiseBuffer = metronomeAudioCtx.createBuffer(1, len, sr);
+    const ch = metronomeNoiseBuffer.getChannelData(0);
+    for (let i = 0; i < len; i++) {
+      ch[i] = (Math.random() * 2 - 1) * Math.exp(-i / (sr * 0.0045));
+    }
+  }
+  if (metronomeAudioCtx.state === 'suspended') {
+    metronomeAudioCtx.resume().catch(() => {});
+  }
+  updateMetronomeMasterGain();
+  return metronomeAudioCtx;
+}
+
+function updateMetronomeMasterGain() {
+  if (!metronomeAudioCtx || !metronomeMasterGain) return;
+  const cfg = getMetronomeConfig();
+  const boost = Number(cfg.loudnessBoost || 1.5);
+  const vol = Math.max(0, Math.min(2.0, Number(metronomeState.volume || 0)));
+  metronomeMasterGain.gain.setTargetAtTime(vol * boost, metronomeAudioCtx.currentTime, 0.01);
+}
+
+function getActiveMetronomeSoundMode() {
+  const cfg = getMetronomeConfig();
+  if (!metronomeState.soundModeInitialized || !metronomeState.soundMode) {
+    metronomeState.soundMode = cfg.defaultSoundMode || 'default';
+    metronomeState.soundModeInitialized = true;
+  }
+  return metronomeState.soundMode;
+}
+
+function getEffectiveCustomSoundUrls() {
+  const cfg = getMetronomeConfig();
+  const isAdmin = currentUser && currentUser.role === 'admin';
+  const accentUrl = (!isAdmin && metronomeState.localAccentDataUrl) ? metronomeState.localAccentDataUrl : (cfg.customAccentDataUrl || '');
+  const accentName = (!isAdmin && metronomeState.localAccentDataUrl) ? metronomeState.localAccentName : (cfg.customAccentName || '');
+  const regularUrl = (!isAdmin && metronomeState.localRegularDataUrl) ? metronomeState.localRegularDataUrl : (cfg.customRegularDataUrl || '');
+  const regularName = (!isAdmin && metronomeState.localRegularDataUrl) ? metronomeState.localRegularName : (cfg.customRegularName || '');
+  return { accentUrl, accentName, regularUrl, regularName };
+}
+
+async function decodeDataUrlToAudioBuffer(dataUrl) {
+  if (!dataUrl || !dataUrl.startsWith('data:audio/')) return null;
+  if (metronomeDecodedCache.has(dataUrl)) return metronomeDecodedCache.get(dataUrl);
+  const ctx = ensureMetronomeAudio();
+  if (!ctx) return null;
+  try {
+    const bytes = dataUrlToUint8Array(dataUrl);
+    const ab = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+    const decoded = await ctx.decodeAudioData(ab);
+    metronomeDecodedCache.set(dataUrl, decoded);
+    return decoded;
+  } catch (err) {
+    console.warn('Custom metronome sound decode failed:', err);
+    return null;
+  }
+}
+
+function syncMetronomeBuffersFromState() {
+  const { accentUrl, regularUrl } = getEffectiveCustomSoundUrls();
+  if (metronomeAudioCtx) {
+    if (accentUrl && !metronomeDecodedCache.has(accentUrl)) decodeDataUrlToAudioBuffer(accentUrl);
+    if (regularUrl && !metronomeDecodedCache.has(regularUrl)) decodeDataUrlToAudioBuffer(regularUrl);
+  }
+}
+
+function encodeTrimmedMonoWavDataUrl(audioBuffer, maxDurationSec = 0.42, targetSr = 22050) {
+  const origSr = audioBuffer.sampleRate;
+  const numCh = audioBuffer.numberOfChannels;
+  const origLen = audioBuffer.length;
+  // Mix down to mono
+  const mono = new Float32Array(origLen);
+  for (let c = 0; c < numCh; c++) {
+    const data = audioBuffer.getChannelData(c);
+    for (let i = 0; i < origLen; i++) mono[i] += data[i] / numCh;
+  }
+  // Find first non-silent sample so click triggers with zero latency
+  let peak = 0;
+  for (let i = 0; i < origLen; i++) {
+    const a = Math.abs(mono[i]);
+    if (a > peak) peak = a;
+  }
+  const thresh = Math.max(0.015, peak * 0.04);
+  let startIdx = 0;
+  for (let i = 0; i < origLen; i++) {
+    if (Math.abs(mono[i]) >= thresh) {
+      startIdx = Math.max(0, i - Math.floor(origSr * 0.002));
+      break;
+    }
+  }
+  const maxOrigSamples = Math.min(origLen - startIdx, Math.floor(origSr * maxDurationSec));
+  const ratio = origSr / targetSr;
+  const outLen = Math.max(64, Math.floor(maxOrigSamples / ratio));
+  const resampled = new Float32Array(outLen);
+  let outPeak = 0;
+  for (let i = 0; i < outLen; i++) {
+    const srcPos = startIdx + i * ratio;
+    const i0 = Math.floor(srcPos);
+    const i1 = Math.min(origLen - 1, i0 + 1);
+    const frac = srcPos - i0;
+    const s = mono[i0] * (1 - frac) + mono[i1] * frac;
+    resampled[i] = s;
+    const a = Math.abs(s);
+    if (a > outPeak) outPeak = a;
+  }
+  // Normalize loudly to 0.96 peak + 12ms smooth fade-out
+  const norm = outPeak > 0.001 ? (0.96 / outPeak) : 1;
+  const fadeSamples = Math.min(Math.floor(targetSr * 0.014), Math.floor(outLen * 0.25));
+  for (let i = 0; i < outLen; i++) {
+    let v = resampled[i] * norm;
+    if (i > outLen - fadeSamples) {
+      v *= (outLen - i) / fadeSamples;
+    }
+    resampled[i] = Math.max(-1, Math.min(1, v));
+  }
+
+  // Write 16-bit PCM WAV header + body
+  const dataBytes = outLen * 2;
+  const buf = new ArrayBuffer(44 + dataBytes);
+  const view = new DataView(buf);
+  const writeStr = (off, str) => { for (let i = 0; i < str.length; i++) view.setUint8(off + i, str.charCodeAt(i)); };
+  writeStr(0, 'RIFF');
+  view.setUint32(4, 36 + dataBytes, true);
+  writeStr(8, 'WAVE');
+  writeStr(12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true); // PCM
+  view.setUint16(22, 1, true); // Mono
+  view.setUint32(24, targetSr, true);
+  view.setUint32(28, targetSr * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  writeStr(36, 'data');
+  view.setUint32(40, dataBytes, true);
+
+  let offset = 44;
+  for (let i = 0; i < outLen; i++) {
+    const s = resampled[i];
+    view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+    offset += 2;
+  }
+
+  const bytes = new Uint8Array(buf);
+  let bin = '';
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+  }
+  return 'data:audio/wav;base64,' + btoa(bin);
+}
+
+function playDefaultLoudClick(ctx, time, level, isSub) {
+  const gainScale = isSub ? 0.45 : (level === 3 ? 1.15 : level === 2 ? 0.92 : 0.62);
+  const startFreq = isSub ? 660 : (level === 3 ? 1880 : level === 2 ? 1180 : 820);
+  const endFreq   = isSub ? 440 : (level === 3 ? 1120 : level === 2 ? 720  : 520);
+  const dur       = isSub ? 0.028 : (level === 3 ? 0.055 : 0.044);
+
+  // 1. Pitched woodblock/rim body
+  const osc = ctx.createOscillator();
+  const g = ctx.createGain();
+  osc.type = level === 3 ? 'triangle' : 'sine';
+  osc.frequency.setValueAtTime(startFreq, time);
+  osc.frequency.exponentialRampToValueAtTime(endFreq, time + dur * 0.75);
+  g.gain.setValueAtTime(0.001, time);
+  g.gain.linearRampToValueAtTime(gainScale, time + 0.0015);
+  g.gain.exponentialRampToValueAtTime(0.0008, time + dur);
+  osc.connect(g);
+  g.connect(metronomeMasterGain);
+  osc.start(time);
+  osc.stop(time + dur + 0.005);
+
+  // 2. High harmonic edge on Accent Beat 1
+  if (!isSub && level === 3) {
+    const osc2 = ctx.createOscillator();
+    const g2 = ctx.createGain();
+    osc2.type = 'square';
+    osc2.frequency.setValueAtTime(startFreq * 1.5, time);
+    osc2.frequency.exponentialRampToValueAtTime(endFreq * 1.35, time + 0.025);
+    g2.gain.setValueAtTime(0.001, time);
+    g2.gain.linearRampToValueAtTime(0.32, time + 0.001);
+    g2.gain.exponentialRampToValueAtTime(0.0008, time + 0.028);
+    osc2.connect(g2);
+    g2.connect(metronomeMasterGain);
+    osc2.start(time);
+    osc2.stop(time + 0.032);
+  }
+
+  // 3. Crisp percussive snap transient so it cuts through loud instruments
+  if (metronomeNoiseBuffer) {
+    const noise = ctx.createBufferSource();
+    noise.buffer = metronomeNoiseBuffer;
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(level === 3 ? 3200 : 2200, time);
+    filter.Q.setValueAtTime(1.8, time);
+    const ng = ctx.createGain();
+    ng.gain.setValueAtTime(gainScale * 0.78, time);
+    ng.gain.exponentialRampToValueAtTime(0.001, time + 0.018);
+    noise.connect(filter);
+    filter.connect(ng);
+    ng.connect(metronomeMasterGain);
+    noise.start(time);
+    noise.stop(time + 0.022);
+  }
+}
+
+function playAdminCustomTone(ctx, time, level, isSub) {
+  const cfg = getMetronomeConfig();
+  const baseFreq = isSub
+    ? Number(cfg.subFreq || 680)
+    : (level === 3 ? Number(cfg.accentFreq || 1620) : level === 2 ? Number(cfg.regularFreq || 1020) : Math.max(220, Number(cfg.regularFreq || 1020) * 0.78));
+  const decaySec = Math.max(0.015, Math.min(0.22, Number(cfg.decayMs || 42) / 1000)) * (isSub ? 0.65 : 1);
+  const snap = Math.max(0, Math.min(1, Number(cfg.clickSnap ?? 0.75)));
+  const wave = ['triangle', 'sine', 'square', 'sawtooth'].includes(cfg.waveform) ? cfg.waveform : 'triangle';
+  const amp = isSub ? 0.45 : (level === 3 ? 1.15 : level === 2 ? 0.9 : 0.6);
+
+  const osc = ctx.createOscillator();
+  const g = ctx.createGain();
+  osc.type = wave;
+  osc.frequency.setValueAtTime(baseFreq, time);
+  osc.frequency.exponentialRampToValueAtTime(Math.max(120, baseFreq * 0.68), time + decaySec * 0.85);
+  g.gain.setValueAtTime(0.001, time);
+  g.gain.linearRampToValueAtTime(amp * (wave === 'square' || wave === 'sawtooth' ? 0.68 : 1.0), time + 0.0015);
+  g.gain.exponentialRampToValueAtTime(0.0008, time + decaySec);
+  osc.connect(g);
+  g.connect(metronomeMasterGain);
+  osc.start(time);
+  osc.stop(time + decaySec + 0.008);
+
+  if (snap > 0.02 && metronomeNoiseBuffer) {
+    const noise = ctx.createBufferSource();
+    noise.buffer = metronomeNoiseBuffer;
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(Math.min(6000, baseFreq * 1.9), time);
+    filter.Q.setValueAtTime(1.6, time);
+    const ng = ctx.createGain();
+    ng.gain.setValueAtTime(amp * snap * 0.85, time);
+    ng.gain.exponentialRampToValueAtTime(0.001, time + 0.018);
+    noise.connect(filter);
+    filter.connect(ng);
+    ng.connect(metronomeMasterGain);
+    noise.start(time);
+    noise.stop(time + 0.022);
+  }
+}
+
+function playCustomUploadedSound(ctx, time, level, isSub) {
+  const { accentUrl, regularUrl } = getEffectiveCustomSoundUrls();
+  const accentBuf = accentUrl ? metronomeDecodedCache.get(accentUrl) : null;
+  const regularBuf = regularUrl ? metronomeDecodedCache.get(regularUrl) : null;
+
+  let buf = null;
+  let rate = 1.0;
+  if (!isSub && level === 3) {
+    buf = accentBuf || regularBuf;
+    rate = accentBuf ? 1.0 : 1.24;
+  } else if (isSub) {
+    buf = regularBuf || accentBuf;
+    rate = regularBuf ? 0.85 : 0.72;
+  } else {
+    buf = regularBuf || accentBuf;
+    rate = regularBuf ? 1.0 : 0.82;
+  }
+
+  if (!buf) {
+    // Graceful instant fallback while buffer decodes or if no file uploaded yet
+    playDefaultLoudClick(ctx, time, level, isSub);
+    return;
+  }
+
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  src.playbackRate.setValueAtTime(rate, time);
+  const g = ctx.createGain();
+  const amp = isSub ? 0.48 : (level === 3 ? 1.2 : level === 2 ? 0.95 : 0.62);
+  g.gain.setValueAtTime(amp, time);
+  src.connect(g);
+  g.connect(metronomeMasterGain);
+  src.start(time);
+}
+
+function scheduleMetronomeSound(time, beatIdx, subIdx, beatLevel) {
+  const ctx = metronomeAudioCtx;
+  if (!ctx || !metronomeMasterGain) return;
+  const isSub = subIdx > 0;
+  if (!isSub && beatLevel === 0) return; // Muted beat
+  if (isSub && beatLevel === 0) return;  // Skip sub on muted beat
+
+  const mode = getActiveMetronomeSoundMode();
+  if (mode === 'custom_tone') {
+    playAdminCustomTone(ctx, time, beatLevel, isSub);
+  } else if (mode === 'custom_upload') {
+    playCustomUploadedSound(ctx, time, beatLevel, isSub);
+  } else {
+    playDefaultLoudClick(ctx, time, beatLevel, isSub);
+  }
+}
+
+function getBeatIntervalSec() {
+  // Quarter-note BPM scaled gently if denominator is 8/16? Musicians expect BPM = beats per minute of the selected beat unit!
+  return 60.0 / Math.max(30, Math.min(300, Number(metronomeState.bpm || 100)));
+}
+
+function metronomeSchedulerTick() {
+  if (!metronomeState.isPlaying || !metronomeAudioCtx) return;
+  const lookAheadSec = 0.11;
+  const sub = Math.max(1, Math.min(4, Number(metronomeState.subdivision || 1)));
+  const totalSteps = metronomeState.beatsPerBar * sub;
+
+  while (metronomeState.nextNoteTime < metronomeAudioCtx.currentTime + lookAheadSec) {
+    const step = metronomeState.currentStepInBar % totalSteps;
+    const beatIdx = Math.floor(step / sub);
+    const subIdx = step % sub;
+    const beatLevel = metronomeState.beatPattern[beatIdx] ?? (beatIdx === 0 ? 3 : 2);
+    const beatDur = getBeatIntervalSec();
+    const stepDur = beatDur / sub;
+
+    scheduleMetronomeSound(metronomeState.nextNoteTime, beatIdx, subIdx, beatLevel);
+
+    if (subIdx === 0) {
+      metronomeScheduledVisuals.push({
+        type: 'beat',
+        beatIdx,
+        nextBeatIdx: (beatIdx + 1) % metronomeState.beatsPerBar,
+        beatLevel,
+        time: metronomeState.nextNoteTime,
+        nextTime: metronomeState.nextNoteTime + beatDur
+      });
+    } else {
+      metronomeScheduledVisuals.push({
+        type: 'sub',
+        beatIdx,
+        subIdx,
+        time: metronomeState.nextNoteTime
+      });
+    }
+
+    metronomeState.nextNoteTime += stepDur;
+    metronomeState.currentStepInBar = (step + 1) % totalSteps;
+  }
+}
+
+async function startMetronome() {
+  const ctx = ensureMetronomeAudio();
+  if (!ctx) {
+    showToast('Web Audio is not supported in this browser.');
+    return;
+  }
+  // Pre-decode any uploaded custom sounds before starting so first beat uses them immediately
+  const { accentUrl, regularUrl } = getEffectiveCustomSoundUrls();
+  if (getActiveMetronomeSoundMode() === 'custom_upload') {
+    await Promise.all([
+      accentUrl ? decodeDataUrlToAudioBuffer(accentUrl) : Promise.resolve(),
+      regularUrl ? decodeDataUrlToAudioBuffer(regularUrl) : Promise.resolve()
+    ]);
+  }
+
+  if (ctx.state === 'suspended') {
+    try { await ctx.resume(); } catch (_) {}
+  }
+
+  metronomeState.isPlaying = true;
+  metronomeState.currentBeat = 0;
+  metronomeState.currentStepInBar = 0;
+  metronomeState.activeBeatIndex = 0;
+  metronomeState.nextBeatIndex = metronomeState.beatsPerBar > 1 ? 1 : 0;
+  metronomeState.ripples = [];
+  metronomeState.trail = [];
+  metronomeScheduledVisuals = [];
+  metronomeState.nextNoteTime = ctx.currentTime + 0.05;
+
+  clearInterval(metronomeState.schedulerTimerId);
+  metronomeState.schedulerTimerId = setInterval(metronomeSchedulerTick, 25);
+  metronomeSchedulerTick();
+
+  updateMetronomePlayButtonUI();
+  startMetronomeAnimationLoop();
+}
+
+function stopMetronome() {
+  metronomeState.isPlaying = false;
+  clearInterval(metronomeState.schedulerTimerId);
+  metronomeState.schedulerTimerId = null;
+  if (metronomeState.rafId) {
+    cancelAnimationFrame(metronomeState.rafId);
+    metronomeState.rafId = null;
+  }
+  metronomeScheduledVisuals = [];
+  metronomeState.ripples = [];
+  metronomeState.trail = [];
+  metronomeState.activeBeatIndex = 0;
+  metronomeState.nextBeatIndex = metronomeState.beatsPerBar > 1 ? 1 : 0;
+  updateMetronomePlayButtonUI();
+  drawMetronomeCanvasFrame();
+}
+
+function toggleMetronomePlay() {
+  if (metronomeState.isPlaying) stopMetronome();
+  else startMetronome();
+}
+
+function updateMetronomePlayButtonUI() {
+  const btn = document.getElementById('metroPlayToggleBtn');
+  if (btn) {
+    if (metronomeState.isPlaying) {
+      btn.className = 'min-h-[54px] px-6 py-3 rounded-xl font-extrabold text-sm sm:text-base tracking-wide flex items-center justify-center gap-2.5 transition active:scale-[0.98] bg-[#DC2626] hover:bg-[#B91C1C] text-white shadow-lg shadow-red-950/60';
+      btn.innerHTML = `<svg class="w-5 h-5 shrink-0" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></svg><span>Stop</span>`;
+    } else {
+      btn.className = 'min-h-[54px] px-6 py-3 rounded-xl font-extrabold text-sm sm:text-base tracking-wide flex items-center justify-center gap-2.5 transition active:scale-[0.98] bg-[#16A34A] hover:bg-[#15803D] text-white shadow-lg shadow-emerald-950/60';
+      btn.innerHTML = `<svg class="w-5 h-5 shrink-0" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg><span>Start</span>`;
+    }
+  }
+  const badge = document.getElementById('metroBeatCounterText');
+  if (badge && !metronomeState.isPlaying) {
+    badge.textContent = `Ready · ${metronomeState.beatsPerBar}/${metronomeState.beatUnit}`;
+  }
+}
+
+function startMetronomeAnimationLoop() {
+  if (metronomeState.rafId) cancelAnimationFrame(metronomeState.rafId);
+  const loop = () => {
+    if (!metronomeState.isPlaying) {
+      drawMetronomeCanvasFrame();
+      return;
+    }
+    drawMetronomeCanvasFrame();
+    metronomeState.rafId = requestAnimationFrame(loop);
+  };
+  metronomeState.rafId = requestAnimationFrame(loop);
+}
+
+function getPadCenterX(idx, count, W) {
+  const margin = Math.max(24, Math.min(54, W * 0.08));
+  if (count <= 1) return W / 2;
+  const usable = W - margin * 2;
+  return margin + (usable * idx) / (count - 1);
+}
+
+function getBeatColorSet(level) {
+  if (level === 3) return { main: '#EF4444', glow: 'rgba(239, 68, 68, 0.55)', dim: '#450A0A', border: '#DC2626', text: '#FCA5A5' }; // Crimson Red Accent
+  if (level === 2) return { main: '#22C55E', glow: 'rgba(34, 197, 94, 0.52)', dim: '#052E16', border: '#16A34A', text: '#86EFAC' }; // Emerald Green Regular
+  if (level === 1) return { main: '#3B82F6', glow: 'rgba(59, 130, 246, 0.48)', dim: '#172554', border: '#2563EB', text: '#93C5FD' }; // Dark Blue Soft
+  return { main: '#475569', glow: 'rgba(71, 85, 105, 0.2)', dim: '#0B1120', border: '#1E293B', text: '#64748B' }; // Muted Black/Slate
+}
+
+function drawMetronomeCanvasFrame() {
+  const canvas = document.getElementById('metronomeCanvas');
+  if (!canvas) return;
+  const rect = canvas.getBoundingClientRect();
+  if (!rect.width || !rect.height) return;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const targetW = Math.round(rect.width * dpr);
+  const targetH = Math.round(rect.height * dpr);
+  if (canvas.width !== targetW || canvas.height !== targetH) {
+    canvas.width = targetW;
+    canvas.height = targetH;
+  }
+
+  const ctx = canvas.getContext('2d');
+  ctx.save();
+  ctx.scale(dpr, dpr);
+  const W = rect.width;
+  const H = rect.height;
+
+  // Consume scheduled visuals up to current AudioContext time
+  const now = metronomeAudioCtx ? metronomeAudioCtx.currentTime : 0;
+  if (metronomeState.isPlaying && metronomeAudioCtx) {
+    while (metronomeScheduledVisuals.length && metronomeScheduledVisuals[0].time <= now + 0.008) {
+      const ev = metronomeScheduledVisuals.shift();
+      if (ev.type === 'beat') {
+        metronomeState.activeBeatIndex = ev.beatIdx;
+        metronomeState.nextBeatIndex = ev.nextBeatIdx;
+        metronomeState.activeBeatLevel = ev.beatLevel;
+        metronomeState.lastBeatTime = ev.time;
+        metronomeState.nextBeatTime = ev.nextTime;
+        const padX = getPadCenterX(ev.beatIdx, metronomeState.beatsPerBar, W);
+        if (ev.beatLevel > 0) {
+          metronomeState.ripples.push({
+            x: padX,
+            y: H - 36,
+            color: getBeatColorSet(ev.beatLevel).main,
+            born: now
+          });
+        }
+        const counterEl = document.getElementById('metroBeatCounterText');
+        if (counterEl) {
+          counterEl.textContent = `Beat ${ev.beatIdx + 1} of ${metronomeState.beatsPerBar} · ${metronomeState.beatsPerBar}/${metronomeState.beatUnit}`;
+        }
+        highlightActiveBeatPadDom(ev.beatIdx, ev.beatLevel);
+      } else if (ev.type === 'sub') {
+        metronomeState.lastSubTime = ev.time;
+      }
+    }
+  }
+
+  // 1. Deep Black + Dark Blue Stage Backdrop
+  const bgGrad = ctx.createLinearGradient(0, 0, 0, H);
+  bgGrad.addColorStop(0, '#04070F');
+  bgGrad.addColorStop(0.58, '#0A1328');
+  bgGrad.addColorStop(1, '#050810');
+  ctx.fillStyle = bgGrad;
+  ctx.fillRect(0, 0, W, H);
+
+  // Subtle dark blue architectural stage lines
+  ctx.strokeStyle = 'rgba(30, 58, 138, 0.22)';
+  ctx.lineWidth = 1;
+  for (let gy = 36; gy < H - 36; gy += 36) {
+    ctx.beginPath();
+    ctx.moveTo(0, gy);
+    ctx.lineTo(W, gy);
+    ctx.stroke();
+  }
+
+  // Horizon floor line
+  const floorY = H - 36;
+  const floorGrad = ctx.createLinearGradient(0, floorY, W, floorY);
+  floorGrad.addColorStop(0, 'rgba(30, 58, 138, 0.15)');
+  floorGrad.addColorStop(0.5, 'rgba(34, 197, 94, 0.45)');
+  floorGrad.addColorStop(1, 'rgba(239, 68, 68, 0.45)');
+  ctx.strokeStyle = floorGrad;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(12, floorY);
+  ctx.lineTo(W - 12, floorY);
+  ctx.stroke();
+
+  // 2. Draw Beat Landing Pads
+  const count = metronomeState.beatsPerBar;
+  const padW = Math.max(14, Math.min(46, (W - 48) / Math.max(count, 4) - 8));
+  const padH = 12;
+
+  for (let i = 0; i < count; i++) {
+    const px = getPadCenterX(i, count, W);
+    const lvl = metronomeState.beatPattern[i] ?? (i === 0 ? 3 : 2);
+    const col = getBeatColorSet(lvl);
+    const isHit = metronomeState.isPlaying && metronomeState.activeBeatIndex === i && (now - metronomeState.lastBeatTime) < 0.22;
+
+    if (isHit && lvl > 0) {
+      const glowGrad = ctx.createRadialGradient(px, floorY, 2, px, floorY, padW * 1.15);
+      glowGrad.addColorStop(0, col.glow);
+      glowGrad.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = glowGrad;
+      ctx.beginPath();
+      ctx.arc(px, floorY, padW * 1.15, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Pad capsule
+    ctx.fillStyle = isHit && lvl > 0 ? col.main : col.dim;
+    ctx.strokeStyle = isHit && lvl > 0 ? '#FFFFFF' : col.border;
+    ctx.lineWidth = isHit ? 1.8 : 1.2;
+    ctx.beginPath();
+    ctx.roundRect(px - padW / 2, floorY - padH / 2, padW, padH, 6);
+    ctx.fill();
+    ctx.stroke();
+
+    // Beat number beneath pad
+    ctx.fillStyle = isHit && lvl > 0 ? '#FFFFFF' : col.text;
+    ctx.font = `700 ${count > 12 ? 9 : 11}px Inter, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText(String(i + 1), px, floorY + 10);
+  }
+
+  // 3. Draw Impact Shockwave Ripples
+  metronomeState.ripples = metronomeState.ripples.filter(r => (now - r.born) < 0.42);
+  for (const r of metronomeState.ripples) {
+    const age = Math.max(0, (now - r.born) / 0.42);
+    const rad = 10 + age * 46;
+    ctx.save();
+    ctx.globalAlpha = (1 - age) * 0.72;
+    ctx.strokeStyle = r.color;
+    ctx.lineWidth = 2.5 * (1 - age) + 0.5;
+    ctx.beginPath();
+    ctx.ellipse(r.x, r.y, rad, rad * 0.36, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // 4. Compute Bouncing Ball Trajectory
+  const reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const ballBaseRadius = Math.max(11, Math.min(16, H * 0.082));
+  const impactY = floorY - padH / 2 - ballBaseRadius + 2;
+  const maxArcH = Math.max(58, H - 92);
+
+  let ballX = getPadCenterX(0, count, W);
+  let ballY = impactY - 6;
+  let scaleX = 1;
+  let scaleY = 1;
+  let ballLevel = metronomeState.beatPattern[0] ?? 3;
+
+  if (metronomeState.isPlaying && metronomeState.nextBeatTime > metronomeState.lastBeatTime) {
+    const u = Math.max(0, Math.min(1, (now - metronomeState.lastBeatTime) / (metronomeState.nextBeatTime - metronomeState.lastBeatTime)));
+    const x0 = getPadCenterX(metronomeState.activeBeatIndex, count, W);
+    const x1 = getPadCenterX(metronomeState.nextBeatIndex, count, W);
+    const isWrapToOne = metronomeState.nextBeatIndex === 0 && count > 1;
+    const arcHeight = isWrapToOne ? maxArcH : maxArcH * 0.84;
+
+    if (reducedMotion) {
+      ballX = x0;
+      ballY = impactY - 6;
+    } else {
+      ballX = x0 + (x1 - x0) * u;
+      // Parabolic gravity bounce: 0 at u=0 (launch), 1 at u=0.5 (apex), 0 at u=1 (landing)
+      const parabola = 4 * u * (1 - u);
+      ballY = impactY - parabola * arcHeight;
+
+      // Subtle physical squash & stretch at launch/impact
+      if (u < 0.08) {
+        const sq = (1 - u / 0.08) * 0.24;
+        scaleX = 1 + sq;
+        scaleY = 1 - sq;
+      } else if (u > 0.92) {
+        const sq = ((u - 0.92) / 0.08) * 0.2;
+        scaleX = 1 + sq;
+        scaleY = 1 - sq;
+      } else {
+        const stretch = Math.abs(u - 0.5) * 0.16;
+        scaleX = 1 - stretch * 0.45;
+        scaleY = 1 + stretch;
+      }
+    }
+
+    // Color transitions smoothly to the upcoming downbeat color near landing
+    const activeLvl = metronomeState.beatPattern[metronomeState.activeBeatIndex] ?? 2;
+    const nextLvl = metronomeState.beatPattern[metronomeState.nextBeatIndex] ?? 2;
+    ballLevel = u > 0.78 ? nextLvl : activeLvl;
+
+    // Record comet trail
+    if (!reducedMotion) {
+      metronomeState.trail.push({ x: ballX, y: ballY, col: getBeatColorSet(ballLevel).main });
+      if (metronomeState.trail.length > 14) metronomeState.trail.shift();
+    }
+  } else {
+    // Idle resting ball poised cleanly above Beat 1
+    ballX = getPadCenterX(0, count, W);
+    ballY = impactY - 10;
+    ballLevel = metronomeState.beatPattern[0] ?? 3;
+    metronomeState.trail = [];
+  }
+
+  const ballCol = getBeatColorSet(ballLevel === 0 ? 1 : ballLevel);
+
+  // 5. Draw Glowing Comet Trail
+  for (let i = 0; i < metronomeState.trail.length; i++) {
+    const pt = metronomeState.trail[i];
+    const frac = (i + 1) / metronomeState.trail.length;
+    ctx.save();
+    ctx.globalAlpha = frac * 0.34;
+    ctx.fillStyle = pt.col;
+    ctx.beginPath();
+    ctx.arc(pt.x, pt.y, ballBaseRadius * (0.25 + frac * 0.58), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // 6. Ground Shadow directly under ball
+  const heightNorm = Math.max(0, Math.min(1, (impactY - ballY) / maxArcH));
+  ctx.save();
+  ctx.globalAlpha = 0.45 * (1 - heightNorm * 0.72);
+  ctx.fillStyle = '#000000';
+  ctx.beginPath();
+  ctx.ellipse(ballX, floorY - 2, ballBaseRadius * (1.15 - heightNorm * 0.5), 4, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  // 7. Draw the Bouncing Ball with crisp 3D specular highlight + outer halo
+  ctx.save();
+  ctx.translate(ballX, ballY);
+  ctx.scale(scaleX, scaleY);
+
+  // Outer aura
+  const aura = ctx.createRadialGradient(0, 0, ballBaseRadius * 0.4, 0, 0, ballBaseRadius * 2.1);
+  aura.addColorStop(0, ballCol.glow);
+  aura.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = aura;
+  ctx.beginPath();
+  ctx.arc(0, 0, ballBaseRadius * 2.1, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Ball sphere body
+  const sphere = ctx.createRadialGradient(-ballBaseRadius * 0.35, -ballBaseRadius * 0.35, 2, 0, 0, ballBaseRadius);
+  sphere.addColorStop(0, '#FFFFFF');
+  sphere.addColorStop(0.28, ballCol.main);
+  sphere.addColorStop(1, ballCol.dim);
+  ctx.fillStyle = sphere;
+  ctx.beginPath();
+  ctx.arc(0, 0, ballBaseRadius, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.strokeStyle = 'rgba(255,255,255,0.75)';
+  ctx.lineWidth = 1.4;
+  ctx.stroke();
+
+  // Beat number etched inside ball
+  const shownBeat = metronomeState.isPlaying ? (metronomeState.activeBeatIndex + 1) : 1;
+  ctx.fillStyle = '#FFFFFF';
+  ctx.font = `800 ${Math.round(ballBaseRadius * 0.86)}px Inter, sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(String(shownBeat), 0, 1);
+
+  ctx.restore();
+  ctx.restore();
+}
+
+function highlightActiveBeatPadDom(beatIdx, beatLevel) {
+  const pads = document.querySelectorAll('[data-metro-pad]');
+  pads.forEach((btn, idx) => {
+    if (idx === beatIdx) {
+      btn.style.transform = 'scale(1.06)';
+      btn.style.boxShadow = beatLevel === 3
+        ? '0 0 0 2px #EF4444, 0 0 14px rgba(239,68,68,0.6)'
+        : beatLevel === 2
+          ? '0 0 0 2px #22C55E, 0 0 14px rgba(34,197,94,0.55)'
+          : '0 0 0 2px #3B82F6, 0 0 12px rgba(59,130,246,0.5)';
+    } else {
+      btn.style.transform = 'scale(1)';
+      btn.style.boxShadow = 'none';
+    }
+  });
+}
+
+function setMetronomeBpm(val) {
+  const clamped = Math.max(30, Math.min(300, Math.round(Number(val) || 100)));
+  metronomeState.bpm = clamped;
+  const numEl = document.getElementById('metroBpmDisplay');
+  if (numEl) numEl.textContent = String(clamped);
+  const inputEl = document.getElementById('metroBpmInput');
+  if (inputEl && document.activeElement !== inputEl) inputEl.value = String(clamped);
+  const sliderEl = document.getElementById('metroBpmSlider');
+  if (sliderEl) sliderEl.value = String(clamped);
+  const markEl = document.getElementById('metroTempoMarking');
+  if (markEl) markEl.textContent = getTempoMarking(clamped);
+  const hdrMeta = document.getElementById('metroHeaderMeta');
+  if (hdrMeta) hdrMeta.textContent = `${metronomeState.beatsPerBar}/${metronomeState.beatUnit} · ${clamped} BPM · ${getTempoMarking(clamped)}`;
+  const recHdrEl = document.getElementById('recHeaderStatusText');
+  if (recHdrEl && !isRecordingAudio) recHdrEl.textContent = `Ready · ${metronomeState.beatsPerBar}/${metronomeState.beatUnit} · ${clamped} BPM`;
+}
+
+function stepMetronomeBpm(delta) {
+  setMetronomeBpm(metronomeState.bpm + delta);
+}
+
+function handleMetronomeTapTempo() {
+  const now = performance.now();
+  const prev = metronomeState.tapTimes[metronomeState.tapTimes.length - 1] || 0;
+  if (now - prev > 2400) {
+    metronomeState.tapTimes = [];
+  }
+  metronomeState.tapTimes.push(now);
+  if (metronomeState.tapTimes.length > 6) metronomeState.tapTimes.shift();
+
+  // Give instant audible feedback on tap
+  const ctx = ensureMetronomeAudio();
+  if (ctx) scheduleMetronomeSound(ctx.currentTime + 0.005, 0, 0, 2);
+
+  if (metronomeState.tapTimes.length >= 2) {
+    let totalDiff = 0;
+    for (let i = 1; i < metronomeState.tapTimes.length; i++) {
+      totalDiff += metronomeState.tapTimes[i] - metronomeState.tapTimes[i - 1];
+    }
+    const avgMs = totalDiff / (metronomeState.tapTimes.length - 1);
+    if (avgMs > 0) {
+      setMetronomeBpm(Math.round(60000 / avgMs));
+    }
+  }
+}
+
+function setMetronomeVolume(val) {
+  const pct = Math.max(0, Math.min(180, Number(val) || 0));
+  metronomeState.volume = pct / 100;
+  updateMetronomeMasterGain();
+  const lbl = document.getElementById('metroVolLabel');
+  if (lbl) lbl.textContent = pct === 0 ? 'Muted' : `${Math.round(pct)}%`;
+}
+
+function setMetronomeMeter(beats, beatUnit) {
+  const b = Math.max(1, Math.min(16, parseInt(beats, 10) || 4));
+  const u = [1, 2, 4, 8, 16].includes(parseInt(beatUnit, 10)) ? parseInt(beatUnit, 10) : 4;
+  metronomeState.beatsPerBar = b;
+  metronomeState.beatUnit = u;
+  metronomeState.beatPattern = buildDefaultBeatPattern(b, u);
+  metronomeState.currentBeat = 0;
+  metronomeState.currentStepInBar = 0;
+  metronomeState.activeBeatIndex = 0;
+  metronomeState.nextBeatIndex = b > 1 ? 1 : 0;
+  refreshMetronomeInteractivePanels();
+  drawMetronomeCanvasFrame();
+}
+
+function setMetronomeSubdivision(sub) {
+  metronomeState.subdivision = Math.max(1, Math.min(4, parseInt(sub, 10) || 1));
+  metronomeState.currentStepInBar = 0;
+  refreshMetronomeInteractivePanels();
+}
+
+function cycleMetronomeBeatLevel(idx) {
+  const cur = metronomeState.beatPattern[idx] ?? 2;
+  // Cycle: Accent(3/Red) -> Regular(2/Green) -> Soft(1/Blue) -> Mute(0/Black) -> Accent(3/Red)
+  const next = cur === 3 ? 2 : cur === 2 ? 1 : cur === 1 ? 0 : 3;
+  metronomeState.beatPattern[idx] = next;
+  refreshMetronomeInteractivePanels();
+  drawMetronomeCanvasFrame();
+}
+
+async function setMetronomeSoundMode(mode) {
+  if (!['default', 'custom_tone', 'custom_upload'].includes(mode)) return;
+  metronomeState.soundMode = mode;
+  metronomeState.soundModeInitialized = true;
+  if (mode === 'custom_upload') {
+    const { accentUrl, regularUrl } = getEffectiveCustomSoundUrls();
+    if (!accentUrl && !regularUrl) {
+      showToast('Upload a custom click sound below to hear your custom sample (using default until uploaded).');
+    } else {
+      await Promise.all([
+        accentUrl ? decodeDataUrlToAudioBuffer(accentUrl) : Promise.resolve(),
+        regularUrl ? decodeDataUrlToAudioBuffer(regularUrl) : Promise.resolve()
+      ]);
+    }
+  }
+  refreshMetronomeInteractivePanels();
+  testMetronomeBeatSound(3);
+}
+
+async function testMetronomeBeatSound(level = 3) {
+  const ctx = ensureMetronomeAudio();
+  if (!ctx) return;
+  if (ctx.state === 'suspended') {
+    try { await ctx.resume(); } catch (_) {}
+  }
+  if (getActiveMetronomeSoundMode() === 'custom_upload') {
+    const { accentUrl, regularUrl } = getEffectiveCustomSoundUrls();
+    await Promise.all([
+      accentUrl ? decodeDataUrlToAudioBuffer(accentUrl) : Promise.resolve(),
+      regularUrl ? decodeDataUrlToAudioBuffer(regularUrl) : Promise.resolve()
+    ]);
+  }
+  scheduleMetronomeSound(ctx.currentTime + 0.01, 0, 0, level);
+}
+
+async function uploadMetronomeCustomSound(e, slot) {
+  const input = e.target;
+  const file = input && input.files && input.files[0];
+  if (!file) return;
+  const isAdmin = currentUser && currentUser.role === 'admin';
+  showToast('Optimizing custom click sound for zero-latency sync...');
+  try {
+    const ctx = ensureMetronomeAudio();
+    if (!ctx) throw new Error('Web Audio unavailable');
+    const arrayBuf = await file.arrayBuffer();
+    const decoded = await ctx.decodeAudioData(arrayBuf.slice(0));
+    const compactWavUrl = encodeTrimmedMonoWavDataUrl(decoded, 0.42, 22050);
+
+    // Pre-cache decoded compact buffer immediately
+    const finalBuf = await decodeDataUrlToAudioBuffer(compactWavUrl);
+    if (!finalBuf) throw new Error('Could not decode optimized sound');
+
+    if (isAdmin) {
+      if (!appState.metronomeConfig) appState.metronomeConfig = { ...DEFAULT_METRONOME_CONFIG };
+      if (slot === 'accent') {
+        appState.metronomeConfig.customAccentDataUrl = compactWavUrl;
+        appState.metronomeConfig.customAccentName = file.name;
+      } else {
+        appState.metronomeConfig.customRegularDataUrl = compactWavUrl;
+        appState.metronomeConfig.customRegularName = file.name;
+      }
+      saveState();
+      showToast(`Academy custom ${slot === 'accent' ? 'Accent' : 'Beat'} sound saved & synced (${Math.round((compactWavUrl.length * 0.75) / 1024)} KB)`);
+    } else {
+      if (slot === 'accent') {
+        metronomeState.localAccentDataUrl = compactWavUrl;
+        metronomeState.localAccentName = file.name + ' (My Device)';
+      } else {
+        metronomeState.localRegularDataUrl = compactWavUrl;
+        metronomeState.localRegularName = file.name + ' (My Device)';
+      }
+      showToast(`Custom ${slot === 'accent' ? 'Accent' : 'Beat'} sound loaded`);
+    }
+
+    metronomeState.soundMode = 'custom_upload';
+    metronomeState.soundModeInitialized = true;
+    refreshMetronomeInteractivePanels();
+    testMetronomeBeatSound(slot === 'accent' ? 3 : 2);
+  } catch (err) {
+    console.error('Metronome custom upload error:', err);
+    showToast('Could not read audio file. Please upload a valid MP3, WAV, OGG, or M4A clip.');
+  } finally {
+    if (input) input.value = '';
+  }
+}
+
+function clearMetronomeCustomSound(slot) {
+  const isAdmin = currentUser && currentUser.role === 'admin';
+  if (isAdmin) {
+    if (!appState.metronomeConfig) appState.metronomeConfig = { ...DEFAULT_METRONOME_CONFIG };
+    if (slot === 'accent') {
+      appState.metronomeConfig.customAccentDataUrl = '';
+      appState.metronomeConfig.customAccentName = '';
+    } else {
+      appState.metronomeConfig.customRegularDataUrl = '';
+      appState.metronomeConfig.customRegularName = '';
+    }
+    saveState();
+    showToast(`Cleared academy custom ${slot === 'accent' ? 'Accent' : 'Beat'} sound`);
+  } else {
+    if (slot === 'accent') {
+      metronomeState.localAccentDataUrl = '';
+      metronomeState.localAccentName = '';
+    } else {
+      metronomeState.localRegularDataUrl = '';
+      metronomeState.localRegularName = '';
+    }
+    showToast('Restored academy sound');
+  }
+  refreshMetronomeInteractivePanels();
+}
+
+function applyAdminTonePreset(presetKey) {
+  const p = METRONOME_ADMIN_TONE_PRESETS[presetKey];
+  if (!p) return;
+  if (!appState.metronomeConfig) appState.metronomeConfig = { ...DEFAULT_METRONOME_CONFIG };
+  appState.metronomeConfig = {
+    ...DEFAULT_METRONOME_CONFIG,
+    ...appState.metronomeConfig,
+    tonePreset: presetKey,
+    waveform: p.waveform,
+    accentFreq: p.accentFreq,
+    regularFreq: p.regularFreq,
+    subFreq: p.subFreq,
+    decayMs: p.decayMs,
+    clickSnap: p.clickSnap,
+    loudnessBoost: p.loudnessBoost
+  };
+  metronomeState.soundMode = 'custom_tone';
+  metronomeState.soundModeInitialized = true;
+  updateMetronomeMasterGain();
+  refreshMetronomeInteractivePanels();
+  testMetronomeBeatSound(3);
+}
+
+function updateAdminToneField(field, value) {
+  if (!appState.metronomeConfig) appState.metronomeConfig = { ...DEFAULT_METRONOME_CONFIG };
+  const numericFields = ['accentFreq', 'regularFreq', 'subFreq', 'decayMs', 'clickSnap', 'loudnessBoost'];
+  appState.metronomeConfig[field] = numericFields.includes(field) ? Number(value) : value;
+  if (field !== 'defaultSoundMode') {
+    appState.metronomeConfig.tonePreset = 'custom';
+    metronomeState.soundMode = 'custom_tone';
+    metronomeState.soundModeInitialized = true;
+  }
+  updateMetronomeMasterGain();
+  const readout = document.getElementById('metroAdminVal_' + field);
+  if (readout) {
+    if (field.endsWith('Freq')) readout.textContent = `${Math.round(Number(value))} Hz`;
+    else if (field === 'decayMs') readout.textContent = `${Math.round(Number(value))} ms`;
+    else if (field === 'clickSnap') readout.textContent = `${Math.round(Number(value) * 100)}%`;
+    else if (field === 'loudnessBoost') readout.textContent = `${Math.round(Number(value) * 100)}%`;
+  }
+}
+
+function saveAdminMetronomeConfig() {
+  if (!currentUser || currentUser.role !== 'admin') return;
+  if (!appState.metronomeConfig) appState.metronomeConfig = { ...DEFAULT_METRONOME_CONFIG };
+  saveState();
+  showToast('Customised metronome tone & defaults saved to Academy');
+}
+
+function resetAdminMetronomeTone() {
+  if (!currentUser || currentUser.role !== 'admin') return;
+  const keepUploads = {
+    customAccentDataUrl: appState.metronomeConfig?.customAccentDataUrl || '',
+    customAccentName: appState.metronomeConfig?.customAccentName || '',
+    customRegularDataUrl: appState.metronomeConfig?.customRegularDataUrl || '',
+    customRegularName: appState.metronomeConfig?.customRegularName || ''
+  };
+  appState.metronomeConfig = { ...DEFAULT_METRONOME_CONFIG, ...keepUploads };
+  metronomeState.soundMode = 'default';
+  metronomeState.soundModeInitialized = true;
+  updateMetronomeMasterGain();
+  saveState();
+  refreshMetronomeInteractivePanels();
+  showToast('Metronome tone reset to TSM Default');
+}
+
+function buildMetronomeBeatPadsHtml() {
+  const count = metronomeState.beatsPerBar;
+  const colsCls = count <= 4 ? 'grid-cols-4' : count <= 6 ? 'grid-cols-6' : count <= 8 ? 'grid-cols-4 sm:grid-cols-8' : 'grid-cols-4 sm:grid-cols-8';
+  let html = `<div class="grid ${colsCls} gap-2">`;
+  for (let i = 0; i < count; i++) {
+    const lvl = metronomeState.beatPattern[i] ?? (i === 0 ? 3 : 2);
+    const label = lvl === 3 ? 'Accent' : lvl === 2 ? 'Beat' : lvl === 1 ? 'Soft' : 'Mute';
+    const cls = lvl === 3
+      ? 'bg-[#7F1D1D] border-[#EF4444] text-white'
+      : lvl === 2
+        ? 'bg-[#064E3B] border-[#22C55E] text-emerald-100'
+        : lvl === 1
+          ? 'bg-[#172554] border-[#3B82F6] text-blue-200'
+          : 'bg-[#070B14] border-slate-800 text-slate-500';
+    html += `
+      <button type="button" data-metro-pad="${i}" onclick="cycleMetronomeBeatLevel(${i})"
+        class="min-h-[48px] px-2 py-1.5 rounded-xl border-2 flex flex-col items-center justify-center transition-transform cursor-pointer ${cls}">
+        <span class="text-sm font-extrabold tabular-nums leading-none">${i + 1}</span>
+        <span class="text-[10px] font-semibold opacity-90 mt-1 leading-none">${label}</span>
+      </button>
+    `;
+  }
+  html += `</div>`;
+  return html;
+}
+
+function buildMetronomeMetersPanelHtml() {
+  const b = metronomeState.beatsPerBar;
+  const u = metronomeState.beatUnit;
+  const sub = metronomeState.subdivision;
+
+  const presetBtns = METRONOME_PRESET_METERS.map(([pb, pu]) => {
+    const active = pb === b && pu === u;
+    return `
+      <button type="button" onclick="setMetronomeMeter(${pb}, ${pu})"
+        class="min-h-[40px] px-2 py-1.5 rounded-lg text-xs font-bold tabular-nums border transition whitespace-nowrap ${
+          active
+            ? 'bg-[#DC2626] border-[#EF4444] text-white shadow-sm'
+            : 'bg-[#0B1224] border-[#1E3A8A]/70 text-slate-200 hover:bg-[#172554]'
+        }">
+        ${pb}/${pu}
+      </button>
+    `;
+  }).join('');
+
+  let numOpts = '';
+  for (let i = 1; i <= 16; i++) {
+    numOpts += `<option value="${i}" ${i === b ? 'selected' : ''}>${i} Beat${i > 1 ? 's' : ''}</option>`;
+  }
+  const denOpts = [1, 2, 4, 8, 16].map(d => `<option value="${d}" ${d === u ? 'selected' : ''}>/${d}</option>`).join('');
+
+  const subDefs = [
+    { v: 1, lbl: '1× Quarter' },
+    { v: 2, lbl: '2× Eighth' },
+    { v: 3, lbl: '3× Triplet' },
+    { v: 4, lbl: '4× Sixteenth' }
+  ];
+
+  return `
+    <div class="space-y-4">
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h3 class="text-sm font-bold text-white">Time Signature &amp; Meter</h3>
+          <p class="text-[11px] text-slate-400">Any meter from 1/1 to 16/16 · Tap beats below to set Accent, Beat, Soft, or Mute</p>
+        </div>
+        <div class="text-lg font-extrabold font-mono tabular-nums text-[#22C55E]">${b}/${u}</div>
+      </div>
+
+      <!-- ALL PRESET METERS -->
+      <div class="grid grid-cols-4 sm:grid-cols-8 gap-1.5">
+        ${presetBtns}
+      </div>
+
+      <!-- CUSTOM NUMERATOR / DENOMINATOR + SUBDIVISION -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-[#1E3A8A]/50">
+        <div class="space-y-1.5">
+          <label class="block text-[11px] font-semibold text-slate-300">Custom Time Signature</label>
+          <div class="grid grid-cols-2 gap-2">
+            <select onchange="setMetronomeMeter(this.value, metronomeState.beatUnit)" class="min-h-[42px] px-3 py-2 rounded-lg bg-[#050810] border border-[#1E3A8A] text-white text-xs font-bold">
+              ${numOpts}
+            </select>
+            <select onchange="setMetronomeMeter(metronomeState.beatsPerBar, this.value)" class="min-h-[42px] px-3 py-2 rounded-lg bg-[#050810] border border-[#1E3A8A] text-white text-xs font-bold">
+              ${denOpts}
+            </select>
+          </div>
+        </div>
+
+        <div class="space-y-1.5">
+          <label class="block text-[11px] font-semibold text-slate-300">Subdivision</label>
+          <div class="grid grid-cols-4 gap-1.5">
+            ${subDefs.map(sd => `
+              <button type="button" onclick="setMetronomeSubdivision(${sd.v})"
+                class="min-h-[42px] px-1.5 py-1.5 rounded-lg text-[11px] font-bold border transition whitespace-nowrap ${
+                  sub === sd.v
+                    ? 'bg-[#16A34A] border-[#22C55E] text-white'
+                    : 'bg-[#050810] border-[#1E3A8A]/70 text-slate-300 hover:bg-[#172554]'
+                }">
+                ${sd.v}×
+              </button>
+            `).join('')}
+          </div>
+        </div>
+      </div>
+
+      <!-- INTERACTIVE BEAT ACCENT STRIP -->
+      <div class="space-y-2 pt-2 border-t border-[#1E3A8A]/50">
+        <div class="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-400">
+          <span class="font-semibold text-slate-200">Beat Accent Pattern</span>
+          <span><span class="text-[#EF4444] font-bold">Red</span> Accent · <span class="text-[#22C55E] font-bold">Green</span> Beat · <span class="text-[#60A5FA] font-bold">Blue</span> Soft · <span class="text-slate-500 font-bold">Dark</span> Mute</span>
+        </div>
+        ${buildMetronomeBeatPadsHtml()}
+      </div>
+    </div>
+  `;
+}
+
+function buildMetronomeSoundPanelHtml(isAdmin) {
+  const cfg = getMetronomeConfig();
+  const mode = getActiveMetronomeSoundMode();
+  const { accentUrl, accentName, regularUrl, regularName } = getEffectiveCustomSoundUrls();
+
+  const modes = [
+    { id: 'default', label: 'Default Sound', desc: 'Loud TSM Woodblock' },
+    { id: 'custom_tone', label: 'Admin Tone', desc: isAdmin ? 'Your Custom Synth' : 'Academy Custom Tone' },
+    { id: 'custom_upload', label: 'Custom Upload', desc: (accentUrl || regularUrl) ? 'Uploaded Sample Ready' : 'Upload Audio File' }
+  ];
+
+  return `
+    <div class="space-y-4">
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h3 class="text-sm font-bold text-white">Sound Engine &amp; Custom Sound Upload</h3>
+          <p class="text-[11px] text-slate-400">High-output studio limiter bus · Switch between Default, Admin Tone, or Uploaded Audio</p>
+        </div>
+        <div class="flex items-center gap-2">
+          <button type="button" onclick="testMetronomeBeatSound(3)" class="min-h-[38px] px-3 py-1.5 rounded-lg bg-[#7F1D1D] hover:bg-[#991B1B] border border-[#EF4444]/70 text-white text-xs font-bold transition whitespace-nowrap">Test Accent</button>
+          <button type="button" onclick="testMetronomeBeatSound(2)" class="min-h-[38px] px-3 py-1.5 rounded-lg bg-[#064E3B] hover:bg-[#065F46] border border-[#22C55E]/70 text-white text-xs font-bold transition whitespace-nowrap">Test Beat</button>
+        </div>
+      </div>
+
+      <!-- SOUND SOURCE SELECTOR -->
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        ${modes.map(m => `
+          <button type="button" onclick="setMetronomeSoundMode('${m.id}')"
+            class="min-h-[54px] px-3.5 py-2.5 rounded-xl border text-left transition ${
+              mode === m.id
+                ? 'bg-[#172554] border-[#22C55E] text-white shadow-sm'
+                : 'bg-[#070C18] border-[#1E3A8A]/60 text-slate-300 hover:bg-[#0F172A]'
+            }">
+            <div class="text-xs font-bold flex items-center justify-between gap-1">
+              <span>${m.label}</span>
+              ${mode === m.id ? '<span class="text-[10px] font-extrabold text-[#22C55E]">ACTIVE</span>' : ''}
+            </div>
+            <div class="text-[11px] text-slate-400 mt-0.5 truncate">${m.desc}</div>
+          </button>
+        `).join('')}
+      </div>
+
+      <!-- CUSTOM SOUND UPLOAD (AVAILABLE TO BOTH ADMIN & STUDENTS) -->
+      <div class="pt-3 border-t border-[#1E3A8A]/50 space-y-2.5">
+        <div class="flex flex-wrap items-center justify-between gap-1">
+          <span class="text-xs font-bold text-slate-100">${isAdmin ? 'Academy Custom Sound Upload (Syncs to All Students)' : 'Custom Sound Upload (MP3 / WAV / M4A / OGG)'}</span>
+          <span class="text-[11px] text-slate-400">Auto-trims silence &amp; boosts loudness</span>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+          <div class="p-3 rounded-xl bg-[#050810] border border-[#1E3A8A]/70 space-y-2">
+            <div class="flex items-center justify-between gap-2">
+              <span class="text-xs font-bold text-[#FCA5A5]">Accent Beat (Beat 1)</span>
+              <span class="text-[10px] text-slate-400 truncate max-w-[140px]">${escapeHtml(accentName || 'Not uploaded')}</span>
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+              <label class="flex-1 min-h-[40px] px-3 py-2 rounded-lg bg-[#DC2626] hover:bg-[#B91C1C] text-white text-xs font-bold inline-flex items-center justify-center cursor-pointer transition whitespace-nowrap">
+                Upload Accent Sound
+                <input type="file" accept="audio/*" onchange="uploadMetronomeCustomSound(event, 'accent')" class="sr-only" />
+              </label>
+              ${accentUrl ? `<button type="button" onclick="clearMetronomeCustomSound('accent')" class="min-h-[40px] px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 hover:bg-slate-800 text-slate-300 text-xs font-semibold">Clear</button>` : ''}
+            </div>
+          </div>
+
+          <div class="p-3 rounded-xl bg-[#050810] border border-[#1E3A8A]/70 space-y-2">
+            <div class="flex items-center justify-between gap-2">
+              <span class="text-xs font-bold text-[#86EFAC]">Regular Beat (2, 3, 4...)</span>
+              <span class="text-[10px] text-slate-400 truncate max-w-[140px]">${escapeHtml(regularName || (accentUrl ? 'Auto-pitched from Accent' : 'Not uploaded'))}</span>
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+              <label class="flex-1 min-h-[40px] px-3 py-2 rounded-lg bg-[#16A34A] hover:bg-[#15803D] text-white text-xs font-bold inline-flex items-center justify-center cursor-pointer transition whitespace-nowrap">
+                Upload Beat Sound
+                <input type="file" accept="audio/*" onchange="uploadMetronomeCustomSound(event, 'regular')" class="sr-only" />
+              </label>
+              ${regularUrl ? `<button type="button" onclick="clearMetronomeCustomSound('regular')" class="min-h-[40px] px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 hover:bg-slate-800 text-slate-300 text-xs font-semibold">Clear</button>` : ''}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      ${isAdmin ? `
+      <!-- ADMIN CUSTOMISED TONE DESIGNER -->
+      <div class="pt-4 border-t border-[#1E3A8A]/60 space-y-3.5">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h4 class="text-xs sm:text-sm font-bold text-white">Admin Customised Tone Studio</h4>
+            <p class="text-[11px] text-slate-400">Sculpt the academy metronome tone and publish defaults to every student device</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <button type="button" onclick="resetAdminMetronomeTone()" class="min-h-[38px] px-3 py-1.5 rounded-lg bg-[#050810] border border-slate-700 hover:bg-slate-900 text-slate-300 text-xs font-semibold">Reset</button>
+            <button type="button" onclick="saveAdminMetronomeConfig()" class="min-h-[38px] px-3.5 py-1.5 rounded-lg bg-[#16A34A] hover:bg-[#15803D] text-white text-xs font-bold transition whitespace-nowrap">Save Tone to Academy</button>
+          </div>
+        </div>
+
+        <!-- QUICK TONE PRESETS -->
+        <div class="flex flex-wrap gap-1.5">
+          ${Object.entries(METRONOME_ADMIN_TONE_PRESETS).map(([key, p]) => `
+            <button type="button" onclick="applyAdminTonePreset('${key}')"
+              class="min-h-[36px] px-3 py-1.5 rounded-lg text-xs font-bold border transition whitespace-nowrap ${
+                cfg.tonePreset === key
+                  ? 'bg-[#22C55E] border-[#4ADE80] text-[#050810]'
+                  : 'bg-[#050810] border-[#1E3A8A] text-slate-200 hover:bg-[#172554]'
+              }">
+              ${p.label}
+            </button>
+          `).join('')}
+        </div>
+
+        <!-- WAVEFORM + STUDENT DEFAULT MODE -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div class="space-y-1">
+            <label class="block text-[11px] font-semibold text-slate-300">Tone Waveform</label>
+            <select onchange="updateAdminToneField('waveform', this.value)" class="w-full min-h-[42px] px-3 py-2 rounded-lg bg-[#050810] border border-[#1E3A8A] text-white text-xs font-bold">
+              <option value="triangle" ${cfg.waveform === 'triangle' ? 'selected' : ''}>Triangle (Woody / Crisp)</option>
+              <option value="sine" ${cfg.waveform === 'sine' ? 'selected' : ''}>Sine (Pure / Resonant)</option>
+              <option value="square" ${cfg.waveform === 'square' ? 'selected' : ''}>Square (Loud Electronic Rim)</option>
+              <option value="sawtooth" ${cfg.waveform === 'sawtooth' ? 'selected' : ''}>Sawtooth (Bright Cutting Edge)</option>
+            </select>
+          </div>
+          <div class="space-y-1">
+            <label class="block text-[11px] font-semibold text-slate-300">Default Sound for Students</label>
+            <select onchange="updateAdminToneField('defaultSoundMode', this.value)" class="w-full min-h-[42px] px-3 py-2 rounded-lg bg-[#050810] border border-[#1E3A8A] text-white text-xs font-bold">
+              <option value="default" ${cfg.defaultSoundMode === 'default' ? 'selected' : ''}>Default Loud Sound</option>
+              <option value="custom_tone" ${cfg.defaultSoundMode === 'custom_tone' ? 'selected' : ''}>Admin Customised Tone</option>
+              <option value="custom_upload" ${cfg.defaultSoundMode === 'custom_upload' ? 'selected' : ''}>Admin Custom Uploaded Sound</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- FREQUENCY, DECAY, SNAP & LOUDNESS SLIDERS -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 text-xs">
+          <div class="space-y-1.5">
+            <div class="flex justify-between text-[11px]">
+              <span class="font-semibold text-[#FCA5A5]">Accent Pitch</span>
+              <span id="metroAdminVal_accentFreq" class="font-mono font-bold text-white tabular-nums">${Math.round(cfg.accentFreq)} Hz</span>
+            </div>
+            <input type="range" min="300" max="3200" step="10" value="${Math.round(cfg.accentFreq)}" oninput="updateAdminToneField('accentFreq', this.value)" class="w-full tsm-metro-range tsm-metro-range-red" />
+          </div>
+
+          <div class="space-y-1.5">
+            <div class="flex justify-between text-[11px]">
+              <span class="font-semibold text-[#86EFAC]">Regular Beat Pitch</span>
+              <span id="metroAdminVal_regularFreq" class="font-mono font-bold text-white tabular-nums">${Math.round(cfg.regularFreq)} Hz</span>
+            </div>
+            <input type="range" min="200" max="2400" step="10" value="${Math.round(cfg.regularFreq)}" oninput="updateAdminToneField('regularFreq', this.value)" class="w-full tsm-metro-range" />
+          </div>
+
+          <div class="space-y-1.5">
+            <div class="flex justify-between text-[11px]">
+              <span class="font-semibold text-[#93C5FD]">Subdivision Pitch</span>
+              <span id="metroAdminVal_subFreq" class="font-mono font-bold text-white tabular-nums">${Math.round(cfg.subFreq)} Hz</span>
+            </div>
+            <input type="range" min="180" max="1800" step="10" value="${Math.round(cfg.subFreq)}" oninput="updateAdminToneField('subFreq', this.value)" class="w-full tsm-metro-range" />
+          </div>
+
+          <div class="space-y-1.5">
+            <div class="flex justify-between text-[11px]">
+              <span class="font-semibold text-slate-300">Click Decay</span>
+              <span id="metroAdminVal_decayMs" class="font-mono font-bold text-white tabular-nums">${Math.round(cfg.decayMs)} ms</span>
+            </div>
+            <input type="range" min="15" max="160" step="1" value="${Math.round(cfg.decayMs)}" oninput="updateAdminToneField('decayMs', this.value)" class="w-full tsm-metro-range" />
+          </div>
+
+          <div class="space-y-1.5">
+            <div class="flex justify-between text-[11px]">
+              <span class="font-semibold text-slate-300">Percussive Snap</span>
+              <span id="metroAdminVal_clickSnap" class="font-mono font-bold text-white tabular-nums">${Math.round(cfg.clickSnap * 100)}%</span>
+            </div>
+            <input type="range" min="0" max="1" step="0.05" value="${cfg.clickSnap}" oninput="updateAdminToneField('clickSnap', this.value)" class="w-full tsm-metro-range" />
+          </div>
+
+          <div class="space-y-1.5">
+            <div class="flex justify-between text-[11px]">
+              <span class="font-semibold text-[#86EFAC]">Loudness Boost</span>
+              <span id="metroAdminVal_loudnessBoost" class="font-mono font-bold text-white tabular-nums">${Math.round(cfg.loudnessBoost * 100)}%</span>
+            </div>
+            <input type="range" min="1.0" max="2.2" step="0.05" value="${cfg.loudnessBoost}" oninput="updateAdminToneField('loudnessBoost', this.value)" class="w-full tsm-metro-range" />
+          </div>
+        </div>
+      </div>
+      ` : ''}
+    </div>
+  `;
+}
+
+function refreshMetronomeInteractivePanels() {
+  const isAdmin = currentUser && currentUser.role === 'admin';
+  const metersHost = document.getElementById('metroMetersPanelHost');
+  if (metersHost) metersHost.innerHTML = buildMetronomeMetersPanelHtml();
+  const soundHost = document.getElementById('metroSoundPanelHost');
+  if (soundHost) soundHost.innerHTML = buildMetronomeSoundPanelHtml(isAdmin);
+  const hdrMeta = document.getElementById('metroHeaderMeta');
+  if (hdrMeta) hdrMeta.textContent = `${metronomeState.beatsPerBar}/${metronomeState.beatUnit} · ${metronomeState.bpm} BPM · ${getTempoMarking(metronomeState.bpm)}`;
+  const recHdrEl = document.getElementById('recHeaderStatusText');
+  if (recHdrEl && !isRecordingAudio) recHdrEl.textContent = `Ready · ${metronomeState.beatsPerBar}/${metronomeState.beatUnit} · ${metronomeState.bpm} BPM`;
+}
+
+function bindMetronomeKeyboardOnce() {
+  if (metronomeKeyListenerBound) return;
+  metronomeKeyListenerBound = true;
+  window.addEventListener('keydown', (e) => {
+    if (activeTab !== 'audio' && activeTab !== 'student_audio') return;
+    const tag = (e.target && e.target.tagName) ? e.target.tagName.toUpperCase() : '';
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+    if (e.code === 'Space') {
+      e.preventDefault();
+      toggleMetronomePlay();
+    }
+  });
+  window.addEventListener('resize', () => {
+    if (activeTab === 'audio' || activeTab === 'student_audio') {
+      drawMetronomeCanvasFrame();
+    }
+  });
+}
+
+function renderMetronomeTab(el, isAdmin) {
+  bindMetronomeKeyboardOnce();
+  getActiveMetronomeSoundMode();
+  const volPct = Math.round(metronomeState.volume * 100);
+
+  el.innerHTML = `
+    <div class="max-w-5xl mx-auto space-y-4">
+      <!-- MAIN DARK BLUE & BLACK STUDIO CHASSIS -->
+      <div class="rounded-2xl bg-[#050810] border border-[#1E3A8A]/80 shadow-xl overflow-hidden text-white">
+        <!-- TSM BRAND HEADER BAR -->
+        <div class="px-4 sm:px-6 py-3.5 bg-gradient-to-r from-[#050810] via-[#0F172A] to-[#050810] border-b border-[#1E3A8A]/60 flex flex-wrap items-center justify-between gap-3">
+          <div class="flex items-center gap-3 min-w-0">
+            <!-- TSM LOGO EMBLEM -->
+            <svg class="w-10 h-10 shrink-0 rounded-xl shadow-md" viewBox="0 0 64 64" aria-label="TSM Logo">
+              <rect x="0" y="0" width="64" height="64" rx="14" fill="#0F172A"/>
+              <rect x="2.5" y="2.5" width="59" height="59" rx="12" fill="none" stroke="#1E3A8A" stroke-width="2.5"/>
+              <text x="11" y="40" font-family="Inter, Arial, sans-serif" font-weight="900" font-size="22" fill="#FFFFFF">TS</text>
+              <text x="38" y="40" font-family="Inter, Arial, sans-serif" font-weight="900" font-size="22" fill="#EF4444">M</text>
+            </svg>
+            <div class="min-w-0">
+              <div class="text-xs sm:text-sm font-extrabold tracking-wide uppercase truncate text-white">
+                TIKARIYA'S SCHOOL OF <span class="text-[#EF4444]">M</span>USIC
+              </div>
+              <div class="text-[11px] text-slate-400 truncate">
+                Studio Metronome · <span id="metroHeaderMeta" class="text-[#86EFAC] font-semibold tabular-nums">${metronomeState.beatsPerBar}/${metronomeState.beatUnit} · ${metronomeState.bpm} BPM · ${getTempoMarking(metronomeState.bpm)}</span>
+              </div>
+            </div>
+          </div>
+          <div id="metroBeatCounterText" class="text-xs font-mono font-bold text-slate-300 tabular-nums whitespace-nowrap">
+            ${metronomeState.isPlaying ? `Beat ${metronomeState.activeBeatIndex + 1} of ${metronomeState.beatsPerBar} · ${metronomeState.beatsPerBar}/${metronomeState.beatUnit}` : `Ready · ${metronomeState.beatsPerBar}/${metronomeState.beatUnit}`}
+          </div>
+        </div>
+
+        <!-- BOUNCING BALL STAGE -->
+        <div class="p-3 sm:p-5 bg-[#04070F] border-b border-[#1E3A8A]/50">
+          <div class="relative w-full h-[190px] sm:h-[230px] rounded-xl overflow-hidden border border-[#1E3A8A]/70 bg-[#04070F]">
+            <canvas id="metronomeCanvas" class="w-full h-full block"></canvas>
+          </div>
+        </div>
+
+        <!-- PRIMARY TEMPO & TRANSPORT DECK -->
+        <div class="p-4 sm:p-6 bg-[#0B1224] space-y-5">
+          <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 items-center">
+            <!-- BIG BPM READOUT & STEPPER -->
+            <div class="lg:col-span-7 space-y-3.5">
+              <div class="flex flex-wrap items-end justify-between gap-3">
+                <div class="flex items-baseline gap-2.5">
+                  <span id="metroBpmDisplay" class="text-5xl sm:text-6xl font-extrabold font-mono tabular-nums tracking-tight text-white leading-none">${metronomeState.bpm}</span>
+                  <div>
+                    <div class="text-xs font-bold text-[#22C55E] uppercase tracking-wider">BPM</div>
+                    <div id="metroTempoMarking" class="text-xs font-semibold text-slate-300">${getTempoMarking(metronomeState.bpm)}</div>
+                  </div>
+                </div>
+                <div class="flex items-center gap-2">
+                  <label for="metroBpmInput" class="text-[11px] font-semibold text-slate-400">Exact (30–300)</label>
+                  <input id="metroBpmInput" type="number" min="30" max="300" value="${metronomeState.bpm}"
+                    onchange="setMetronomeBpm(this.value)"
+                    class="w-20 min-h-[40px] px-2.5 py-1.5 rounded-lg bg-[#050810] border border-[#1E3A8A] text-white text-sm font-mono font-bold text-center tabular-nums focus:outline-none focus:border-[#22C55E]" />
+                </div>
+              </div>
+
+              <!-- TEMPO SLIDER 30 TO 300 -->
+              <div class="space-y-1">
+                <input id="metroBpmSlider" type="range" min="30" max="300" step="1" value="${metronomeState.bpm}"
+                  oninput="setMetronomeBpm(this.value)"
+                  class="w-full tsm-metro-range" />
+                <div class="flex justify-between text-[10px] font-mono text-slate-400 tabular-nums">
+                  <span>30</span>
+                  <span>80</span>
+                  <span>120</span>
+                  <span>180</span>
+                  <span>240</span>
+                  <span>300</span>
+                </div>
+              </div>
+
+              <!-- QUICK TEMPO STEPPERS -->
+              <div class="grid grid-cols-6 gap-1.5">
+                ${[-10, -5, -1, 1, 5, 10].map(d => `
+                  <button type="button" onclick="stepMetronomeBpm(${d})"
+                    class="min-h-[44px] rounded-xl border text-xs font-extrabold font-mono tabular-nums transition active:scale-95 ${
+                      d < 0
+                        ? 'bg-[#050810] border-[#1E3A8A] text-[#FCA5A5] hover:bg-[#450A0A]/70 hover:border-[#EF4444]'
+                        : 'bg-[#050810] border-[#1E3A8A] text-[#86EFAC] hover:bg-[#052E16]/70 hover:border-[#22C55E]'
+                    }">
+                    ${d > 0 ? '+' + d : d}
+                  </button>
+                `).join('')}
+              </div>
+            </div>
+
+            <!-- START/STOP, TAP TEMPO & LOUD VOLUME -->
+            <div class="lg:col-span-5 space-y-3.5">
+              <div class="grid grid-cols-2 gap-2.5">
+                <button id="metroPlayToggleBtn" type="button" onclick="toggleMetronomePlay()"
+                  class="min-h-[54px] px-6 py-3 rounded-xl font-extrabold text-sm sm:text-base tracking-wide flex items-center justify-center gap-2.5 transition active:scale-[0.98] ${
+                    metronomeState.isPlaying
+                      ? 'bg-[#DC2626] hover:bg-[#B91C1C] text-white shadow-lg shadow-red-950/60'
+                      : 'bg-[#16A34A] hover:bg-[#15803D] text-white shadow-lg shadow-emerald-950/60'
+                  }">
+                  ${metronomeState.isPlaying
+                    ? `<svg class="w-5 h-5 shrink-0" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></svg><span>Stop</span>`
+                    : `<svg class="w-5 h-5 shrink-0" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg><span>Start</span>`}
+                </button>
+                <button type="button" onclick="handleMetronomeTapTempo()"
+                  class="min-h-[54px] px-4 py-3 rounded-xl bg-[#172554] hover:bg-[#1E3A8A] active:scale-[0.97] border border-[#3B82F6]/60 text-white text-sm font-extrabold transition">
+                  Tap Tempo
+                </button>
+              </div>
+
+              <!-- LOUDNESS / VOLUME CONTROL -->
+              <div class="p-3 rounded-xl bg-[#050810] border border-[#1E3A8A]/70 space-y-1.5">
+                <div class="flex items-center justify-between text-xs">
+                  <span class="font-bold text-slate-200">Loudness Output</span>
+                  <span id="metroVolLabel" class="font-mono font-bold text-[#22C55E] tabular-nums">${volPct === 0 ? 'Muted' : volPct + '%'}</span>
+                </div>
+                <input type="range" min="0" max="180" step="5" value="${volPct}" oninput="setMetronomeVolume(this.value)" class="w-full tsm-metro-range" />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TIME SIGNATURE & BEAT PATTERN PANEL -->
+      <div id="metroMetersPanelHost" class="rounded-2xl bg-[#0B1224] border border-[#1E3A8A]/70 p-4 sm:p-5 text-white shadow-md">
+        ${buildMetronomeMetersPanelHtml()}
+      </div>
+
+      <!-- SOUND ENGINE, CUSTOM UPLOAD & ADMIN TONE DESIGNER PANEL -->
+      <div id="metroSoundPanelHost" class="rounded-2xl bg-[#0B1224] border border-[#1E3A8A]/70 p-4 sm:p-5 text-white shadow-md">
+        ${buildMetronomeSoundPanelHtml(isAdmin)}
+      </div>
+    </div>
+  `;
+
+  requestAnimationFrame(() => {
+    drawMetronomeCanvasFrame();
+    if (metronomeState.isPlaying) startMetronomeAnimationLoop();
+  });
 }
 
 // ==========================================
