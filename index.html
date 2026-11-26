@@ -1127,6 +1127,7 @@ const DEFAULT_STATE = {
   customBrochureName: '',
   idCardBgDataUrl: '',
   certBgDataUrl: '',
+  certDesignConfig: null,
   metronomeConfig: { ...DEFAULT_METRONOME_CONFIG },
   holidays: {},
   certs: [],
@@ -1154,6 +1155,9 @@ let attendanceSubView = 'register';
 let filterBatch = 'ALL';
 let adminChatRoll = appState.students[0]?.rollNo || 'TSM-0001';
 let selectedReceiptIds = [];
+let feesFilterMode = 'ALL';
+let feesSearchQuery = '';
+let feesBatchFilter = 'ALL';
 let db = null;
 let masterStateUnsubscribe = null;
 let hasSyncedMasterStateFromCloud = false;
@@ -1226,6 +1230,8 @@ function normalizeStudent(s) {
   if (s.gender === undefined) s.gender = '';
   if (s.schoolOrOccupation === undefined) s.schoolOrOccupation = '';
   if (s.musicGoal === undefined) s.musicGoal = '';
+  if (!s.feeLedger || typeof s.feeLedger !== 'object') s.feeLedger = {};
+  if (s.lastFeeReminderAt === undefined) s.lastFeeReminderAt = '';
   if (!s.grade) {
     const gradeIdx = Math.min(GRADES.length - 1, Math.floor((s.genuineDays || 0) / 48));
     s.grade = GRADES[gradeIdx];
@@ -2430,10 +2436,22 @@ function switchTab(id) {
   renderCurrentTab();
 }
 
+let lastRenderedTab = null;
+
 function renderCurrentTab() {
   if (!currentUser) return;
   const main = document.getElementById('mainContent');
   if (!main) return;
+  const sameTab = (lastRenderedTab === activeTab);
+  const winX = sameTab ? (window.scrollX || window.pageXOffset || 0) : 0;
+  const winY = sameTab ? (window.scrollY || window.pageYOffset || document.documentElement.scrollTop || 0) : 0;
+  const feesWrapBefore = sameTab ? document.getElementById('feesTableScrollWrap') : null;
+  const feesScrollLeft = feesWrapBefore ? feesWrapBefore.scrollLeft : 0;
+
+  if (sameTab && main.offsetHeight > 0) {
+    main.style.minHeight = main.offsetHeight + 'px';
+  }
+
   if (currentUser.role === 'admin') {
     if (activeTab === 'dashboard') renderAdminDashboard(main);
     else if (activeTab === 'attendance') renderAttendanceTab(main);
@@ -2447,6 +2465,28 @@ function renderCurrentTab() {
     else if (activeTab === 'settings') renderSettingsTab(main);
   } else {
     renderStudentPortal(main, activeTab);
+  }
+
+  lastRenderedTab = activeTab;
+
+  if (sameTab) {
+    const restoreScroll = () => {
+      if (typeof window.scrollTo === 'function') window.scrollTo(winX, winY);
+      const feesWrapAfter = document.getElementById('feesTableScrollWrap');
+      if (feesWrapAfter && feesScrollLeft) feesWrapAfter.scrollLeft = feesScrollLeft;
+    };
+    restoreScroll();
+    if (typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(() => {
+        restoreScroll();
+        main.style.minHeight = '';
+      });
+    } else {
+      main.style.minHeight = '';
+    }
+  } else {
+    main.style.minHeight = '';
+    if (typeof window.scrollTo === 'function') window.scrollTo(0, 0);
   }
 }
 
@@ -3152,6 +3192,7 @@ function renderStudentsTab(el) {
             ${appState.certBgDataUrl ? 'Cert Template Loaded' : 'Upload Cert Template'}
             <input type="file" accept="image/*" onchange="uploadTemplateImage(event, 'certBgDataUrl')" class="hidden" />
           </label>
+          <a href="certificate-studio.html" class="px-3 py-1.5 bg-indigo-700 hover:bg-indigo-800 text-white text-xs font-semibold rounded-lg transition whitespace-nowrap">Certificate Designer</a>
           <button onclick="openAddStudentModal()" class="px-3 py-1.5 bg-[#0F172A] text-white text-xs font-semibold rounded-lg hover:bg-slate-800">+ Register Student</button>
         </div>
       </div>
@@ -3998,9 +4039,11 @@ function openCertificateModal(stuId) {
         </div>
       </div>
     </div>
-    <div class="mt-4 flex justify-center gap-2">
-      <button onclick="downloadLetterCertificatePdf('${s.id}')" class="px-4 py-2 bg-[#0F172A] text-white text-xs font-semibold rounded-lg">Download Letter PDF</button>
+    <div class="mt-4 flex flex-wrap justify-center gap-2">
+      <button onclick="downloadLetterCertificatePdf('${s.id}')" class="px-4 py-2 bg-[#0F172A] hover:bg-slate-800 text-white text-xs font-semibold rounded-lg">Download Certificate PDF</button>
+      <a href="certificate-studio.html?student=${encodeURIComponent(s.id)}" class="px-4 py-2 bg-indigo-700 hover:bg-indigo-800 text-white text-xs font-semibold rounded-lg">Customize Design (Studio)</a>
     </div>
+    ${appState.certDesignConfig ? `<p class="mt-2 text-center text-[11px] text-emerald-700 font-semibold">Custom Certificate Studio design is active and will be applied to PDF downloads.</p>` : ''}
   `);
   setTimeout(() => {
     const box = document.getElementById('certQrBox');
@@ -4008,11 +4051,150 @@ function openCertificateModal(stuId) {
   }, 50);
 }
 
+async function renderCustomCertDesignToPdf(pdfDoc, s, cfg) {
+  const formats = {
+    letter_landscape: { w: 792, h: 612 },
+    letter_portrait: { w: 612, h: 792 },
+    a4_landscape: { w: 841.89, h: 595.28 },
+    a4_portrait: { w: 595.28, h: 841.89 }
+  };
+  const fmt = formats[cfg.pageFormat] || formats.letter_landscape;
+  const scale = 2.6;
+  const off = document.createElement('canvas');
+  off.width = Math.round(fmt.w * scale);
+  off.height = Math.round(fmt.h * scale);
+  const ctx = off.getContext('2d');
+  ctx.setTransform(scale, 0, 0, scale, 0, 0);
+
+  const genuine = Number(s.genuineDays || 0);
+  const certLevel = Math.min(8, Math.max(1, Math.floor(genuine / 48) || 1));
+  const certSerial = `TSM-CERT-${String(s.rollNo || '0001').split('-').pop()}-G${certLevel}`;
+  const tokens = {
+    studentName: s.name || 'Student',
+    rollNo: s.rollNo || '',
+    course: s.course || '',
+    grade: s.grade || '',
+    genuineDays: String(genuine || 48),
+    certLevel: String(certLevel),
+    certSerial,
+    issueDate: selectedDate || formatLocalDate(new Date()),
+    batch: s.batch || '',
+    academyName: "TIKARIYA'S SCHOOL OF MUSIC",
+    foundation: 'B. S. TIKARIYA CULTURAL FOUNDATION',
+    cin: 'U88900MH2025NPL454435'
+  };
+  const loadImg = (url) => new Promise(res => {
+    if (!url) return res(null);
+    const im = new Image();
+    im.onload = () => res(im);
+    im.onerror = () => res(null);
+    im.src = url;
+  });
+  const [bgImg, logoImg, sigImg] = await Promise.all([
+    loadImg(cfg.bgImageDataUrl || appState.certBgDataUrl || ''),
+    loadImg(cfg.logoDataUrl || ''),
+    loadImg(cfg.signatureDataUrl || '')
+  ]);
+
+  ctx.fillStyle = cfg.bgColor || '#FFFFFF';
+  ctx.fillRect(0, 0, fmt.w, fmt.h);
+  if (bgImg) {
+    ctx.save();
+    ctx.globalAlpha = cfg.bgImageOpacity ?? 1;
+    ctx.drawImage(bgImg, 0, 0, fmt.w, fmt.h);
+    ctx.restore();
+  }
+
+  const inset = Number(cfg.borderInset || 26);
+  const bw = fmt.w - inset * 2;
+  const bh = fmt.h - inset * 2;
+  if (cfg.borderStyle === 'double_filigree' || cfg.borderStyle === 'double_classic') {
+    ctx.strokeStyle = cfg.borderColor || '#0F172A';
+    ctx.lineWidth = 2.6;
+    ctx.strokeRect(inset, inset, bw, bh);
+    ctx.strokeStyle = cfg.accentColor || '#B4882E';
+    ctx.lineWidth = 1.2;
+    ctx.strokeRect(inset + 7, inset + 7, bw - 14, bh - 14);
+  } else if (cfg.borderStyle === 'single_clean') {
+    ctx.strokeStyle = cfg.borderColor || '#0F172A';
+    ctx.lineWidth = 1.6;
+    ctx.strokeRect(inset, inset, bw, bh);
+  }
+
+  if (logoImg && cfg.logo?.visible) {
+    const w = ((cfg.logo.widthPct || 11) / 100) * fmt.w;
+    const h = w * (logoImg.height / logoImg.width);
+    ctx.drawImage(logoImg, (cfg.logo.x / 100) * fmt.w - w / 2, (cfg.logo.y / 100) * fmt.h - h / 2, w, h);
+  }
+  if (sigImg && cfg.signature?.visible) {
+    const w = ((cfg.signature.widthPct || 18) / 100) * fmt.w;
+    const h = w * (sigImg.height / sigImg.width);
+    ctx.drawImage(sigImg, (cfg.signature.x / 100) * fmt.w - w / 2, (cfg.signature.y / 100) * fmt.h - h / 2, w, h);
+  }
+  if (cfg.qr?.visible) {
+    const tmp = document.createElement('div');
+    tmp.style.position = 'fixed';
+    tmp.style.left = '-9999px';
+    document.body.appendChild(tmp);
+    try {
+      new QRCode(tmp, { text: `${getAppBaseUrl()}?cert=${encodeURIComponent(certSerial)}`, width: 220, height: 220, correctLevel: QRCode.CorrectLevel.M });
+      const qrEl = tmp.querySelector('canvas');
+      if (qrEl) {
+        const size = Number(cfg.qr.size || 66);
+        const cx = (cfg.qr.x / 100) * fmt.w;
+        const cy = (cfg.qr.y / 100) * fmt.h;
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(cx - size / 2 - 4, cy - size / 2 - 4, size + 8, size + 8);
+        ctx.drawImage(qrEl, cx - size / 2, cy - size / 2, size, size);
+      }
+    } finally { document.body.removeChild(tmp); }
+  }
+
+  (cfg.elements || []).forEach(el => {
+    if (!el.visible) return;
+    let txt = String(el.text || '').replace(/\{\{(\w+)\}\}/g, (_, k) => tokens[k] !== undefined ? tokens[k] : `{{${k}}}`);
+    if (el.uppercase) txt = txt.toUpperCase();
+    ctx.save();
+    ctx.font = `${el.italic ? 'italic ' : ''}${el.bold ? '700 ' : '400 '}${el.fontSize || 14}px "${el.fontFamily || 'Georgia'}", Georgia, serif`;
+    ctx.fillStyle = el.color || '#0F172A';
+    ctx.textAlign = el.align || 'center';
+    ctx.textBaseline = 'middle';
+    const maxW = ((el.maxWidthPct || 80) / 100) * fmt.w;
+    const words = txt.split(/\s+/);
+    const lines = [];
+    let cur = '';
+    words.forEach(w => {
+      const test = cur ? cur + ' ' + w : w;
+      if (ctx.measureText(test).width > maxW && cur) { lines.push(cur); cur = w; }
+      else cur = test;
+    });
+    if (cur) lines.push(cur);
+    const lh = (el.fontSize || 14) * 1.32;
+    const cx = (el.x / 100) * fmt.w;
+    const cy = (el.y / 100) * fmt.h;
+    const startY = cy - (lines.length * lh) / 2 + lh / 2;
+    lines.forEach((ln, idx) => ctx.fillText(ln, cx, startY + idx * lh));
+    ctx.restore();
+  });
+
+  const page = pdfDoc.addPage([fmt.w, fmt.h]);
+  const pngImg = await pdfDoc.embedPng(off.toDataURL('image/png'));
+  page.drawImage(pngImg, { x: 0, y: 0, width: fmt.w, height: fmt.h });
+}
+
 async function downloadLetterCertificatePdf(stuId) {
   const s = appState.students.find(x => x.id === stuId);
   if (!s) return;
   const { PDFDocument, StandardFonts, rgb } = PDFLib;
   const pdfDoc = await PDFDocument.create();
+
+  if (appState.certDesignConfig && Array.isArray(appState.certDesignConfig.elements)) {
+    await renderCustomCertDesignToPdf(pdfDoc, s, appState.certDesignConfig);
+    const bytes = await pdfDoc.save();
+    triggerBlobDownload(new Blob([bytes], { type: 'application/pdf' }), `TSM_Certificate_${s.rollNo}.pdf`);
+    return;
+  }
+
   const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
   const fontReg = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
@@ -4031,10 +4213,10 @@ async function downloadLetterCertificatePdf(stuId) {
   drawStyledAcademyTitlePdf(p, 152, 670, 19, fontBold);
   p.drawText('CERTIFICATE OF MUSICAL ACHIEVEMENT', { x: 185, y: 632, size: 11, font: fontBold, color: rgb(0.06, 0.09, 0.16) });
   p.drawText('This is to certify that', { x: 256, y: 585, size: 11, font: fontReg, color: rgb(0.28, 0.33, 0.41) });
-  p.drawText(s.name, { x: 306 - fontBold.widthOfTextAtSize(s.name, 22) / 2, y: 550, size: 22, font: fontBold, color: rgb(0.06, 0.09, 0.16) });
+  p.drawText(sanitizePdfText(s.name), { x: 306 - fontBold.widthOfTextAtSize(sanitizePdfText(s.name), 22) / 2, y: 550, size: 22, font: fontBold, color: rgb(0.06, 0.09, 0.16) });
   p.drawText(`Roll Number: ${s.rollNo}`, { x: 245, y: 525, size: 10, font: fontReg, color: rgb(0.28, 0.33, 0.41) });
   p.drawText('has completed 48 genuine days of practical training and assessments for', { x: 140, y: 485, size: 10.5, font: fontReg, color: rgb(0.2, 0.25, 0.32) });
-  const courseLine = `${s.grade} — ${s.course}`;
+  const courseLine = sanitizePdfText(`${s.grade} - ${s.course}`);
   p.drawText(courseLine, { x: 306 - fontBold.widthOfTextAtSize(courseLine, 15) / 2, y: 455, size: 15, font: fontBold, color: rgb(0.26, 0.22, 0.79) });
 
   const certLevel = Math.min(8, Math.max(1, Math.floor(s.genuineDays / 48) || 1));
@@ -4043,16 +4225,172 @@ async function downloadLetterCertificatePdf(stuId) {
   p.drawText("Director, TIKARIYA'S SCHOOL OF MUSIC", { x: 360, y: 120, size: 9.5, font: fontBold, color: rgb(0.06, 0.09, 0.16) });
 
   const bytes = await pdfDoc.save();
-  const blob = new Blob([bytes], { type: 'application/pdf' });
-  const link = document.createElement('a');
-  link.href = URL.createObjectURL(blob);
-  link.download = `TSM_Certificate_Letter_${s.rollNo}.pdf`;
-  link.click();
+  triggerBlobDownload(new Blob([bytes], { type: 'application/pdf' }), `TSM_Certificate_Letter_${s.rollNo}.pdf`);
 }
 
 // ==========================================
-// 12. FEES & STUDENT-ADDRESSED COMPACT RECEIPTS (298 x 420 pt / A6 VOUCHER)
+// 12. MONTHLY FEES LEDGER, PENDING MONTHS, INTIMATION & RECEIPTS
 // ==========================================
+const MONTH_NAMES_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+function formatYearMonthLabel(ym) {
+  const parts = String(ym || '').split('-');
+  if (parts.length !== 2) return ym || '-';
+  const yr = parseInt(parts[0], 10);
+  const mo = parseInt(parts[1], 10);
+  if (!yr || mo < 1 || mo > 12) return ym;
+  return `${MONTH_NAMES_SHORT[mo - 1]} ${yr}`;
+}
+
+function getCurrentYearMonth() {
+  return formatLocalDate(new Date()).slice(0, 7);
+}
+
+function shiftYearMonth(ym, deltaMonths) {
+  const [y, m] = String(ym || getCurrentYearMonth()).split('-').map(Number);
+  const d = new Date(y, (m - 1) + deltaMonths, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function getMonthlyFeeNet(student) {
+  const effConc = getEffectiveConcession(student);
+  return Math.max(0, Number(student.monthlyFee || 0) - effConc);
+}
+
+function generateReceiptNo(ym) {
+  const cleanYm = String(ym || getCurrentYearMonth()).replace('-', '').slice(2);
+  return `TSM-RCP-${cleanYm}-${String(Date.now()).slice(-4)}`;
+}
+
+function ensureStudentFeeLedger(student) {
+  if (!student) return {};
+  if (!student.feeLedger || typeof student.feeLedger !== 'object') student.feeLedger = {};
+  const curYm = getCurrentYearMonth();
+  const monthlyRate = getMonthlyFeeNet(student);
+
+  let startYm = curYm;
+  if (student.admissionDate && /^\d{4}-\d{2}/.test(student.admissionDate)) {
+    startYm = student.admissionDate.slice(0, 7);
+  }
+  // Cap auto-generated history to at most 24 months back so old dates stay neat
+  const earliestAllowed = shiftYearMonth(curYm, -24);
+  if (startYm < earliestAllowed) startYm = earliestAllowed;
+  if (startYm > curYm) startYm = curYm;
+
+  const hasAnyLedgerEntries = Object.keys(student.feeLedger).length > 0;
+  let cursor = startYm;
+  let guard = 0;
+  while (cursor <= curYm && guard < 36) {
+    if (!student.feeLedger[cursor]) {
+      // Backwards compatibility: if student had no ledger yet and was marked Paid, treat months up through current month as Paid
+      const inheritPaid = !hasAnyLedgerEntries && student.feeStatus === 'Paid';
+      student.feeLedger[cursor] = {
+        status: inheritPaid ? 'Paid' : 'Pending',
+        amount: monthlyRate,
+        paidAmount: inheritPaid ? monthlyRate : 0,
+        mode: inheritPaid ? (student.lastPaymentMode || 'UPI') : '',
+        paidDate: inheritPaid ? (student.lastPaymentDate || selectedDate) : '',
+        receiptNo: inheritPaid ? generateReceiptNo(cursor) : '',
+        note: ''
+      };
+    }
+    cursor = shiftYearMonth(cursor, 1);
+    guard++;
+  }
+  return student.feeLedger;
+}
+
+function getStudentFeeSummary(student) {
+  const ledger = ensureStudentFeeLedger(student);
+  const curYm = getCurrentYearMonth();
+  const keys = Object.keys(ledger).sort();
+  const months = keys.map(ym => {
+    const rec = ledger[ym];
+    const amt = Math.max(0, Number(rec.amount ?? getMonthlyFeeNet(student)));
+    const paid = rec.status === 'Paid' ? amt : rec.status === 'Waived' ? amt : Math.max(0, Number(rec.paidAmount || 0));
+    const balance = (rec.status === 'Paid' || rec.status === 'Waived') ? 0 : Math.max(0, amt - paid);
+    return {
+      ym,
+      label: formatYearMonthLabel(ym),
+      status: rec.status || 'Pending',
+      amount: amt,
+      paidAmount: paid,
+      balance,
+      mode: rec.mode || '',
+      paidDate: rec.paidDate || '',
+      receiptNo: rec.receiptNo || '',
+      note: rec.note || '',
+      isFuture: ym > curYm
+    };
+  });
+
+  const pendingMonths = months.filter(m => !m.isFuture && (m.status === 'Pending' || m.status === 'Partial') && m.balance > 0);
+  const paidMonths = months.filter(m => m.status === 'Paid' || m.status === 'Partial');
+  const oneTimeAddons = Number(student.idCardFee || 0) + Number(student.certFee || 0);
+  const monthlyPendingSum = pendingMonths.reduce((acc, m) => acc + m.balance, 0);
+  const totalPendingAmount = monthlyPendingSum + (pendingMonths.length > 0 ? oneTimeAddons : 0);
+  const currentEntry = months.find(m => m.ym === curYm) || months[months.length - 1];
+
+  // Keep legacy student.feeStatus in sync with ledger
+  student.feeStatus = pendingMonths.length === 0 ? 'Paid' : 'Unpaid';
+  if (paidMonths.length) {
+    const latestPaid = paidMonths[paidMonths.length - 1];
+    if (latestPaid.mode) student.lastPaymentMode = latestPaid.mode;
+    if (latestPaid.paidDate) student.lastPaymentDate = latestPaid.paidDate;
+  }
+
+  return {
+    months,
+    pendingMonths,
+    paidMonths,
+    monthlyPendingSum,
+    oneTimeAddons,
+    totalPendingAmount,
+    currentYm: curYm,
+    currentEntry
+  };
+}
+
+function buildFeeIntimationText(student, includeSiblings = false) {
+  const targets = includeSiblings ? getFamilySiblings(student) : [student];
+  const upiId = appState.upiId || '9823011223@upi';
+  const lines = [];
+  let grandDue = 0;
+
+  targets.forEach(st => {
+    const sum = getStudentFeeSummary(st);
+    if (sum.pendingMonths.length > 0) {
+      grandDue += sum.totalPendingAmount;
+      const moList = sum.pendingMonths.map(m => m.label).join(', ');
+      lines.push(`${st.name} (${st.rollNo} - ${st.course}): ${sum.pendingMonths.length} month(s) pending [${moList}] = INR ${sum.totalPendingAmount}`);
+    }
+  });
+
+  if (grandDue === 0) {
+    const sum = getStudentFeeSummary(student);
+    const latest = sum.paidMonths[sum.paidMonths.length - 1];
+    const paidLabel = latest ? `${latest.label} (Receipt ${latest.receiptNo || 'Issued'})` : formatYearMonthLabel(getCurrentYearMonth());
+    return `Dear ${student.name} (${student.rollNo}), B. S. TIKARIYA CULTURAL FOUNDATION - TIKARIYA'S SCHOOL OF MUSIC confirms all fees are PAID up to ${paidLabel}. Thank you.`;
+  }
+
+  return `Dear Parent/Student, gentle fee intimation from B. S. TIKARIYA CULTURAL FOUNDATION - TIKARIYA'S SCHOOL OF MUSIC.\n\nPending Fee Summary:\n${lines.join('\n')}\n\nTotal Payable: INR ${grandDue}\nUPI ID: ${upiId}\nKindly clear the pending fee via UPI or Cash. Thank you.`;
+}
+
+function setFeesFilter(mode) {
+  feesFilterMode = mode;
+  renderCurrentTab();
+}
+
+function setFeesSearch(val) {
+  feesSearchQuery = String(val || '');
+  renderCurrentTab();
+}
+
+function setFeesBatchFilter(val) {
+  feesBatchFilter = val || 'ALL';
+  renderCurrentTab();
+}
+
 function toggleReceiptSelection(stuId) {
   if (selectedReceiptIds.includes(stuId)) {
     selectedReceiptIds = selectedReceiptIds.filter(id => id !== stuId);
@@ -4069,79 +4407,486 @@ function downloadFamilyCombinedReceipt(stuId) {
   downloadCombinedStandardReceiptPdf(siblings.map(x => x.id));
 }
 
-function renderFeesTab(el) {
-  const sortedStudents = sortStudentsByBatch(appState.students);
-  el.innerHTML = `
-    <div class="space-y-4">
-      <div class="bg-white p-4 rounded-xl border border-slate-200 flex flex-wrap items-center justify-between gap-2">
+function markMonthLedgerStatus(stuId, ym, status, mode = 'UPI', partialAmt = null) {
+  const s = appState.students.find(x => x.id === stuId);
+  if (!s) return;
+  const ledger = ensureStudentFeeLedger(s);
+  const baseAmt = ledger[ym]?.amount ?? getMonthlyFeeNet(s);
+  const existing = ledger[ym] || { amount: baseAmt };
+
+  if (status === 'Paid') {
+    ledger[ym] = {
+      ...existing,
+      status: 'Paid',
+      amount: baseAmt,
+      paidAmount: baseAmt,
+      mode: mode || 'UPI',
+      paidDate: selectedDate,
+      receiptNo: existing.receiptNo || generateReceiptNo(ym)
+    };
+  } else if (status === 'Partial') {
+    const pVal = Math.max(0, Math.min(baseAmt, Number(partialAmt ?? existing.paidAmount ?? 0)));
+    ledger[ym] = {
+      ...existing,
+      status: pVal >= baseAmt ? 'Paid' : (pVal > 0 ? 'Partial' : 'Pending'),
+      amount: baseAmt,
+      paidAmount: pVal,
+      mode: mode || existing.mode || 'UPI',
+      paidDate: pVal > 0 ? selectedDate : '',
+      receiptNo: pVal > 0 ? (existing.receiptNo || generateReceiptNo(ym)) : ''
+    };
+  } else if (status === 'Waived') {
+    ledger[ym] = {
+      ...existing,
+      status: 'Waived',
+      amount: baseAmt,
+      paidAmount: 0,
+      mode: 'Waived',
+      paidDate: selectedDate,
+      receiptNo: ''
+    };
+  } else {
+    ledger[ym] = {
+      ...existing,
+      status: 'Pending',
+      amount: baseAmt,
+      paidAmount: 0,
+      mode: '',
+      paidDate: '',
+      receiptNo: ''
+    };
+  }
+
+  getStudentFeeSummary(s);
+  saveState();
+  openStudentFeeLedgerModal(stuId);
+  renderCurrentTab();
+}
+
+function markAllPendingMonthsPaid(stuId, mode = 'UPI') {
+  const s = appState.students.find(x => x.id === stuId);
+  if (!s) return;
+  const sum = getStudentFeeSummary(s);
+  if (!sum.pendingMonths.length) {
+    showToast('No pending months for this student.');
+    return;
+  }
+  const sharedRcp = generateReceiptNo(sum.currentYm);
+  sum.pendingMonths.forEach(m => {
+    s.feeLedger[m.ym] = {
+      ...(s.feeLedger[m.ym] || {}),
+      status: 'Paid',
+      amount: m.amount,
+      paidAmount: m.amount,
+      mode,
+      paidDate: selectedDate,
+      receiptNo: sharedRcp
+    };
+  });
+  getStudentFeeSummary(s);
+  saveState();
+  openStudentFeeLedgerModal(stuId);
+  renderCurrentTab();
+  showToast(`Cleared ${sum.pendingMonths.length} pending month(s) via ${mode} (${sharedRcp})`);
+}
+
+function addAdvanceFeeMonth(stuId) {
+  const s = appState.students.find(x => x.id === stuId);
+  if (!s) return;
+  const ledger = ensureStudentFeeLedger(s);
+  const keys = Object.keys(ledger).sort();
+  const latestYm = keys[keys.length - 1] || getCurrentYearMonth();
+  const nextYm = shiftYearMonth(latestYm, 1);
+  ledger[nextYm] = {
+    status: 'Pending',
+    amount: getMonthlyFeeNet(s),
+    paidAmount: 0,
+    mode: '',
+    paidDate: '',
+    receiptNo: '',
+    note: 'Advance month'
+  };
+  saveState();
+  openStudentFeeLedgerModal(stuId);
+  showToast(`Added ${formatYearMonthLabel(nextYm)} to fee ledger`);
+}
+
+function addPreviousFeeMonth(stuId) {
+  const s = appState.students.find(x => x.id === stuId);
+  if (!s) return;
+  const ledger = ensureStudentFeeLedger(s);
+  const keys = Object.keys(ledger).sort();
+  const earliestYm = keys[0] || getCurrentYearMonth();
+  const prevYm = shiftYearMonth(earliestYm, -1);
+  ledger[prevYm] = {
+    status: 'Pending',
+    amount: getMonthlyFeeNet(s),
+    paidAmount: 0,
+    mode: '',
+    paidDate: '',
+    receiptNo: '',
+    note: 'Past month added'
+  };
+  getStudentFeeSummary(s);
+  saveState();
+  openStudentFeeLedgerModal(stuId);
+  renderCurrentTab();
+  showToast(`Added past month ${formatYearMonthLabel(prevYm)} as Unpaid`);
+}
+
+function applyCustomFeeMonthStatus(stuId, status, mode = '') {
+  const input = document.getElementById('customLedgerMonthInput');
+  const ym = (input && input.value || '').trim();
+  if (!/^\d{4}-\d{2}$/.test(ym)) {
+    showToast('Please pick a valid month (YYYY-MM) first.');
+    return;
+  }
+  markMonthLedgerStatus(stuId, ym, status, mode);
+  showToast(`${formatYearMonthLabel(ym)} marked ${status === 'Pending' ? 'Unpaid (Pending)' : status + (mode ? ' (' + mode + ')' : '')}`);
+}
+
+function sendInAppFeeIntimation(stuId, silent = false) {
+  const s = appState.students.find(x => x.id === stuId);
+  if (!s) return false;
+  const sum = getStudentFeeSummary(s);
+  const msg = buildFeeIntimationText(s, false);
+  s.lastFeeReminderAt = selectedDate;
+  if (!Array.isArray(appState.messages)) appState.messages = [];
+  appState.messages.push({
+    id: 'msg_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+    rollNo: s.rollNo,
+    sender: 'Teacher',
+    text: msg.replace(/\n+/g, ' '),
+    time: selectedDate
+  });
+  dispatchPushAlert(s.rollNo, "Fee Intimation — TIKARIYA'S SCHOOL OF MUSIC", msg.replace(/\n+/g, ' '));
+  saveState();
+  if (!silent) {
+    renderCurrentTab();
+    showToast(sum.pendingMonths.length ? `Fee intimation sent to ${s.name} (${sum.pendingMonths.length} pending mo)` : `Paid confirmation sent to ${s.name}`);
+  }
+  return true;
+}
+
+function sendBulkPendingFeeIntimations() {
+  const pendingList = appState.students.filter(s => getStudentFeeSummary(s).pendingMonths.length > 0);
+  if (!pendingList.length) {
+    showToast('All students are paid up — no pending intimations to send.');
+    return;
+  }
+  pendingList.forEach(s => sendInAppFeeIntimation(s.id, true));
+  saveState();
+  renderCurrentTab();
+  showToast(`Sent In-App & Push fee intimations to ${pendingList.length} student(s) with pending months`);
+}
+
+let activeFeeLedgerStudentId = null;
+
+function openStudentFeeLedgerModal(stuId) {
+  const s = appState.students.find(x => x.id === stuId);
+  if (!s) return;
+
+  const backdrop = document.getElementById('modalBackdrop');
+  const modalBox = document.getElementById('modalBox');
+  const isSameModalOpen = activeFeeLedgerStudentId === stuId && backdrop && !backdrop.classList.contains('hidden');
+  const prevModalScrollTop = (isSameModalOpen && modalBox) ? modalBox.scrollTop : 0;
+  const prevTableWrap = isSameModalOpen ? document.getElementById('feeLedgerTableScroll') : null;
+  const prevTableScrollTop = prevTableWrap ? prevTableWrap.scrollTop : 0;
+  const prevTableScrollLeft = prevTableWrap ? prevTableWrap.scrollLeft : 0;
+  const prevMonthInput = isSameModalOpen ? document.getElementById('customLedgerMonthInput') : null;
+  const preservedMonthVal = (prevMonthInput && prevMonthInput.value) ? prevMonthInput.value : '';
+
+  activeFeeLedgerStudentId = stuId;
+
+  const sum = getStudentFeeSummary(s);
+  const pendingLabels = sum.pendingMonths.map(m => m.label).join(', ');
+  const previewMsg = buildFeeIntimationText(s, false);
+  const defaultPastYm = preservedMonthVal || shiftYearMonth(getCurrentYearMonth(), -1);
+
+  showModal(`
+    <div class="space-y-4 text-xs">
+      <div class="flex flex-wrap items-start justify-between gap-2 border-b border-slate-200 pb-3">
         <div>
-          <h2 class="text-sm font-bold text-[#0F172A]">Fees, Combined Family Receipts &amp; Multi-Instrument Billing</h2>
-          <p class="text-[11px] text-slate-500">Sorted by Batch Timings</p>
+          <h3 class="text-sm font-bold text-[#0F172A]">Monthly Fee Ledger &mdash; ${escapeHtml(s.name)} <span class="font-mono text-xs text-slate-500">(${escapeHtml(s.rollNo)})</span></h3>
+          <p class="text-[11px] text-slate-500 mt-0.5">${escapeHtml(s.course)} &bull; Batch ${escapeHtml(s.batch)} &bull; Monthly Net: <b class="text-slate-800 tabular-nums">₹${getMonthlyFeeNet(s)}</b> &bull; Admitted: ${escapeHtml(s.admissionDate)}</p>
         </div>
-        <div class="flex flex-wrap gap-2">
-          ${selectedReceiptIds.length > 0 ? `
-            <button onclick="downloadCombinedStandardReceiptPdf(selectedReceiptIds)" class="px-3 py-1.5 bg-indigo-700 text-white text-xs font-semibold rounded-lg hover:bg-indigo-800">
-              Combined Receipt PDF (${selectedReceiptIds.length} Selected)
-            </button>
-          ` : ''}
+        <button type="button" onclick="closeModal()" class="h-7 px-3 inline-flex items-center justify-center text-xs font-semibold text-slate-600 hover:text-slate-900 border border-slate-200 rounded-lg hover:bg-slate-50">Close</button>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+        <div class="p-3 rounded-lg border ${sum.pendingMonths.length ? 'bg-red-50 border-red-200' : 'bg-emerald-50 border-emerald-200'}">
+          <div class="text-[10px] font-bold uppercase ${sum.pendingMonths.length ? 'text-red-700' : 'text-emerald-700'}">Pending Months</div>
+          <div class="text-base font-extrabold tabular-nums mt-0.5 ${sum.pendingMonths.length ? 'text-red-800' : 'text-emerald-800'}">${sum.pendingMonths.length ? `${sum.pendingMonths.length} Month(s)` : 'All Clear'}</div>
+          <div class="text-[10px] text-slate-600 truncate mt-0.5">${pendingLabels || 'No dues pending'}</div>
+        </div>
+        <div class="p-3 rounded-lg border border-slate-200 bg-slate-50">
+          <div class="text-[10px] font-bold uppercase text-slate-500">Total Arrears / Due</div>
+          <div class="text-base font-extrabold text-[#0F172A] tabular-nums mt-0.5">₹${sum.totalPendingAmount}</div>
+          <div class="text-[10px] text-slate-500 mt-0.5">${sum.oneTimeAddons ? `Includes ₹${sum.oneTimeAddons} ID/Cert` : 'Monthly tuition balance'}</div>
+        </div>
+        <div class="p-3 rounded-lg border border-slate-200 bg-slate-50">
+          <div class="text-[10px] font-bold uppercase text-slate-500">Last Intimation</div>
+          <div class="text-sm font-bold text-[#0F172A] tabular-nums mt-1">${s.lastFeeReminderAt ? escapeHtml(s.lastFeeReminderAt) : 'Not sent yet'}</div>
+          <div class="text-[10px] text-slate-500 mt-0.5">${sum.paidMonths.length} month(s) recorded paid</div>
         </div>
       </div>
 
-      <div class="bg-white rounded-xl border border-slate-200 overflow-x-auto">
+      <!-- UNIFORM QUICK ACTION ROW -->
+      <div class="grid ${sum.pendingMonths.length ? 'grid-cols-2 sm:grid-cols-5' : 'grid-cols-3'} gap-1.5">
+        ${sum.pendingMonths.length ? `
+          <button type="button" onclick="markAllPendingMonthsPaid('${s.id}', 'UPI')" class="h-8 px-2 w-full inline-flex items-center justify-center bg-emerald-700 hover:bg-emerald-800 text-white text-[11px] font-semibold rounded-lg whitespace-nowrap">Clear All (UPI)</button>
+          <button type="button" onclick="markAllPendingMonthsPaid('${s.id}', 'Cash')" class="h-8 px-2 w-full inline-flex items-center justify-center bg-[#0F172A] hover:bg-slate-800 text-white text-[11px] font-semibold rounded-lg whitespace-nowrap">Clear All (Cash)</button>
+        ` : ''}
+        <button type="button" onclick="addPreviousFeeMonth('${s.id}')" class="h-8 px-2 w-full inline-flex items-center justify-center bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 text-[11px] font-semibold rounded-lg whitespace-nowrap">+ Prev Month</button>
+        <button type="button" onclick="addAdvanceFeeMonth('${s.id}')" class="h-8 px-2 w-full inline-flex items-center justify-center bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 text-[11px] font-semibold rounded-lg whitespace-nowrap">+ Next Month</button>
+        <button type="button" onclick="downloadCombinedStandardReceiptPdf(['${s.id}'])" class="h-8 px-2 w-full inline-flex items-center justify-center bg-indigo-700 hover:bg-indigo-800 text-white text-[11px] font-semibold rounded-lg whitespace-nowrap ${sum.pendingMonths.length ? 'col-span-2 sm:col-span-1' : ''}">Full Receipt</button>
+      </div>
+
+      <!-- PICK ANY SPECIFIC PAST OR FUTURE MONTH (UNIFORM ROW) -->
+      <div class="p-2.5 bg-slate-50 border border-slate-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        <div class="flex items-center gap-2 shrink-0">
+          <span class="text-[11px] font-bold text-slate-700 whitespace-nowrap">Set Any Month:</span>
+          <input type="month" id="customLedgerMonthInput" value="${defaultPastYm}" class="h-8 px-2 text-[11px] border border-slate-300 rounded-lg bg-white font-semibold text-slate-800">
+        </div>
+        <div class="grid grid-cols-3 gap-1.5 sm:w-[300px]">
+          <button type="button" onclick="applyCustomFeeMonthStatus('${s.id}','Pending','')" class="h-8 px-2 w-full inline-flex items-center justify-center bg-red-600 hover:bg-red-700 text-white text-[11px] font-semibold rounded-lg whitespace-nowrap">Mark Unpaid</button>
+          <button type="button" onclick="applyCustomFeeMonthStatus('${s.id}','Paid','UPI')" class="h-8 px-2 w-full inline-flex items-center justify-center bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-semibold rounded-lg whitespace-nowrap">Paid (UPI)</button>
+          <button type="button" onclick="applyCustomFeeMonthStatus('${s.id}','Paid','Cash')" class="h-8 px-2 w-full inline-flex items-center justify-center bg-[#0F172A] hover:bg-slate-800 text-white text-[11px] font-semibold rounded-lg whitespace-nowrap">Paid (Cash)</button>
+        </div>
+      </div>
+
+      <div id="feeLedgerTableScroll" class="border border-slate-200 rounded-xl overflow-x-auto max-h-64 overflow-y-auto">
+        <table class="w-full text-left border-collapse text-[11px]">
+          <thead class="sticky top-0 bg-slate-50 border-b border-slate-200 text-[10px] uppercase text-slate-600 z-10">
+            <tr>
+              <th class="py-2 px-2.5">Month</th>
+              <th class="py-2 px-2.5">Status</th>
+              <th class="py-2 px-2.5 text-right">Fee / Paid</th>
+              <th class="py-2 px-2.5">Mode &amp; Date</th>
+              <th class="py-2 px-2.5 text-right w-[228px]">Actions</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100">
+            ${[...sum.months].reverse().map(m => `
+              <tr class="hover:bg-slate-50">
+                <td class="py-2 px-2.5 font-bold text-[#0F172A] whitespace-nowrap">${escapeHtml(m.label)}${m.isFuture ? ' <span class="text-[9px] text-indigo-600">(Adv)</span>' : ''}</td>
+                <td class="py-2 px-2.5 font-bold whitespace-nowrap ${m.status==='Paid' ? 'text-emerald-700' : m.status==='Waived' ? 'text-slate-500' : m.status==='Partial' ? 'text-amber-700' : 'text-red-700'}">${escapeHtml(m.status === 'Pending' ? 'Unpaid' : m.status)}</td>
+                <td class="py-2 px-2.5 text-right tabular-nums whitespace-nowrap">₹${m.paidAmount} / ₹${m.amount}</td>
+                <td class="py-2 px-2.5 text-slate-600 whitespace-nowrap">${m.mode ? `${escapeHtml(m.mode)} · ${escapeHtml(m.paidDate || '-')}` : '—'}</td>
+                <td class="py-1.5 px-2.5 text-right whitespace-nowrap">
+                  ${m.status !== 'Paid' ? `
+                    <div class="inline-grid grid-cols-3 gap-1 w-[216px]">
+                      <button type="button" onclick="markMonthLedgerStatus('${s.id}','${m.ym}','Paid','UPI')" class="h-7 w-full inline-flex items-center justify-center bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-semibold rounded">UPI</button>
+                      <button type="button" onclick="markMonthLedgerStatus('${s.id}','${m.ym}','Paid','Cash')" class="h-7 w-full inline-flex items-center justify-center bg-[#0F172A] hover:bg-slate-800 text-white text-[11px] font-semibold rounded">Cash</button>
+                      ${m.status === 'Waived'
+                        ? `<button type="button" onclick="markMonthLedgerStatus('${s.id}','${m.ym}','Pending','')" class="h-7 w-full inline-flex items-center justify-center bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 text-[11px] font-semibold rounded">Unpaid</button>`
+                        : `<button type="button" onclick="markMonthLedgerStatus('${s.id}','${m.ym}','Waived','Waived')" class="h-7 w-full inline-flex items-center justify-center border border-slate-300 text-slate-600 hover:bg-slate-100 text-[11px] font-semibold rounded">Waive</button>`
+                      }
+                    </div>
+                  ` : `
+                    <div class="inline-grid grid-cols-2 gap-1 w-[216px]">
+                      <button type="button" onclick="downloadCombinedStandardReceiptPdf(['${s.id}'], '${m.ym}')" class="h-7 w-full inline-flex items-center justify-center bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 text-[11px] font-semibold rounded">Receipt</button>
+                      <button type="button" onclick="markMonthLedgerStatus('${s.id}','${m.ym}','Pending','')" class="h-7 w-full inline-flex items-center justify-center bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 text-[11px] font-semibold rounded">Mark Unpaid</button>
+                    </div>
+                  `}
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+
+      <!-- INTIMATION PREVIEW & SEND (UNIFORM ROW) -->
+      <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+        <div class="font-bold text-[#0F172A]">Intimate Student / Parent (Exact Pending Months Included)</div>
+        <pre class="whitespace-pre-wrap font-sans text-[11px] text-slate-700 bg-white p-2.5 rounded-lg border border-slate-200">${escapeHtml(previewMsg)}</pre>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <button type="button" onclick="sendWhatsAppFeeAlert('${s.id}')" class="h-8 px-3 w-full inline-flex items-center justify-center bg-emerald-700 hover:bg-emerald-800 text-white text-[11px] font-semibold rounded-lg">Send WhatsApp Intimation</button>
+          <button type="button" onclick="sendInAppFeeIntimation('${s.id}'); openStudentFeeLedgerModal('${s.id}');" class="h-8 px-3 w-full inline-flex items-center justify-center bg-indigo-700 hover:bg-indigo-800 text-white text-[11px] font-semibold rounded-lg">Send In-App &amp; Push Notice</button>
+        </div>
+      </div>
+    </div>
+  `);
+
+  if (isSameModalOpen) {
+    const restoreModalScroll = () => {
+      if (modalBox) modalBox.scrollTop = prevModalScrollTop;
+      const tbl = document.getElementById('feeLedgerTableScroll');
+      if (tbl) {
+        tbl.scrollTop = prevTableScrollTop;
+        tbl.scrollLeft = prevTableScrollLeft;
+      }
+    };
+    restoreModalScroll();
+    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(restoreModalScroll);
+  }
+}
+
+function renderFeesTab(el) {
+  const curYm = getCurrentYearMonth();
+  const sortedStudents = sortStudentsByBatch(appState.students);
+  const summaries = new Map();
+  let totalPendingStudents = 0;
+  let totalPendingRupees = 0;
+  let collectedThisMonth = 0;
+
+  sortedStudents.forEach(s => {
+    const sum = getStudentFeeSummary(s);
+    summaries.set(s.id, sum);
+    if (sum.pendingMonths.length > 0) {
+      totalPendingStudents++;
+      totalPendingRupees += sum.totalPendingAmount;
+    }
+    const curRec = s.feeLedger?.[curYm];
+    if (curRec && (curRec.status === 'Paid' || curRec.status === 'Partial')) {
+      collectedThisMonth += Number(curRec.paidAmount || 0);
+    }
+  });
+
+  const q = feesSearchQuery.trim().toLowerCase();
+  const filtered = sortedStudents.filter(s => {
+    const sum = summaries.get(s.id);
+    if (feesFilterMode === 'PENDING' && sum.pendingMonths.length === 0) return false;
+    if (feesFilterMode === 'PAID' && sum.pendingMonths.length > 0) return false;
+    if (feesBatchFilter !== 'ALL' && s.batch !== feesBatchFilter) return false;
+    if (q) {
+      const hay = `${s.name} ${s.rollNo} ${s.phone || ''} ${s.parentPhone || ''} ${s.course || ''}`.toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+
+  el.innerHTML = `
+    <div class="space-y-4">
+      <!-- KPI SUMMARY STRIP -->
+      <div class="bg-white p-4 rounded-xl border border-slate-200 space-y-3">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h2 class="text-sm font-bold text-[#0F172A]">Fees Ledger, Pending Months &amp; Receipts</h2>
+            <p class="text-[11px] text-slate-500">Billing cycle: ${formatYearMonthLabel(curYm)} &bull; Click any student's Ledger to manage month-by-month payments &amp; receipts.</p>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            ${totalPendingStudents > 0 ? `
+              <button type="button" onclick="sendBulkPendingFeeIntimations()" class="px-3 py-1.5 bg-amber-700 hover:bg-amber-800 text-white text-xs font-semibold rounded-lg transition">
+                Notify All Pending (${totalPendingStudents})
+              </button>
+            ` : ''}
+            ${selectedReceiptIds.length > 0 ? `
+              <button type="button" onclick="downloadCombinedStandardReceiptPdf(selectedReceiptIds)" class="px-3 py-1.5 bg-indigo-700 text-white text-xs font-semibold rounded-lg hover:bg-indigo-800">
+                Combined Receipt PDF (${selectedReceiptIds.length})
+              </button>
+            ` : ''}
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2 border-t border-slate-100 text-xs">
+          <div>
+            <div class="text-[11px] text-slate-500">Total Students</div>
+            <div class="text-lg font-extrabold text-[#0F172A] tabular-nums">${sortedStudents.length}</div>
+          </div>
+          <div>
+            <div class="text-[11px] text-slate-500">Paid Up / All Clear</div>
+            <div class="text-lg font-extrabold text-emerald-700 tabular-nums">${sortedStudents.length - totalPendingStudents}</div>
+          </div>
+          <div>
+            <div class="text-[11px] text-slate-500">Students with Pending</div>
+            <div class="text-lg font-extrabold text-[#B91C1C] tabular-nums">${totalPendingStudents} <span class="text-xs font-bold text-slate-500">(₹${totalPendingRupees})</span></div>
+          </div>
+          <div>
+            <div class="text-[11px] text-slate-500">Collected (${formatYearMonthLabel(curYm)})</div>
+            <div class="text-lg font-extrabold text-indigo-700 tabular-nums">₹${collectedThisMonth}</div>
+          </div>
+        </div>
+
+        <!-- FILTER & SEARCH BAR -->
+        <div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100 text-xs">
+          <div class="inline-flex items-center gap-1 p-1 bg-slate-100 rounded-lg">
+            <button type="button" onclick="setFeesFilter('ALL')" class="px-2.5 py-1 rounded-md font-semibold transition ${feesFilterMode==='ALL' ? 'bg-white text-[#0F172A] shadow-sm' : 'text-slate-600 hover:text-slate-900'}">All (${sortedStudents.length})</button>
+            <button type="button" onclick="setFeesFilter('PENDING')" class="px-2.5 py-1 rounded-md font-semibold transition ${feesFilterMode==='PENDING' ? 'bg-white text-[#B91C1C] shadow-sm' : 'text-slate-600 hover:text-slate-900'}">Pending (${totalPendingStudents})</button>
+            <button type="button" onclick="setFeesFilter('PAID')" class="px-2.5 py-1 rounded-md font-semibold transition ${feesFilterMode==='PAID' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'}">Paid Up (${sortedStudents.length - totalPendingStudents})</button>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <input value="${escapeHtml(feesSearchQuery)}" oninput="setFeesSearch(this.value)" placeholder="Search name, roll, mobile..." class="px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs w-44 sm:w-52" />
+            <select onchange="setFeesBatchFilter(this.value)" class="px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs font-semibold bg-white">
+              <option value="ALL" ${feesBatchFilter==='ALL'?'selected':''}>All Batches</option>
+              ${(appState.batches || []).map(b => `<option value="${escapeHtml(b)}" ${feesBatchFilter===b?'selected':''}>${escapeHtml(b)}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- LEDGER TABLE -->
+      <div id="feesTableScrollWrap" class="bg-white rounded-xl border border-slate-200 overflow-x-auto">
         <table class="w-full text-left border-collapse text-xs">
           <thead>
             <tr class="bg-slate-50 border-b border-slate-200 text-[11px] font-semibold text-slate-600 uppercase">
               <th class="py-2.5 px-3 w-8">Sel</th>
-              <th class="py-2.5 px-3">Batch</th>
-              <th class="py-2.5 px-3">Student</th>
-              <th class="py-2.5 px-3">Instruments / Courses</th>
-              <th class="py-2.5 px-3">Fee - Conc. + ID/Cert</th>
-              <th class="py-2.5 px-3">Net Payable</th>
-              <th class="py-2.5 px-3">Status</th>
-              <th class="py-2.5 px-3 text-right">Receipts &amp; WhatsApp</th>
+              <th class="py-2.5 px-3">Student &amp; Batch</th>
+              <th class="py-2.5 px-3">Monthly Rate</th>
+              <th class="py-2.5 px-3">Pending Months &amp; Total Due</th>
+              <th class="py-2.5 px-3">${formatYearMonthLabel(curYm)} Status</th>
+              <th class="py-2.5 px-3 text-right">Ledger, Receipts &amp; Intimation</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-200">
-            ${sortedStudents.map(s => {
+            ${(() => {
+              const hasAnyFamily = filtered.some(st => getFamilySiblings(st).length > 1);
+              return filtered.length ? filtered.map(s => {
               const effConc = getEffectiveConcession(s);
-              const net = getStudentNetPayable(s);
+              const monthlyNet = getMonthlyFeeNet(s);
+              const sum = summaries.get(s.id);
+              const curRec = s.feeLedger?.[curYm] || { status: 'Pending', mode: '' };
               const siblings = getFamilySiblings(s);
               const isChecked = selectedReceiptIds.includes(s.id);
+              const pendingText = sum.pendingMonths.length
+                ? sum.pendingMonths.slice(-4).map(m => m.label).join(', ') + (sum.pendingMonths.length > 4 ? ` +${sum.pendingMonths.length - 4} more` : '')
+                : 'All Clear';
               return `
-                <tr class="hover:bg-slate-50">
+                <tr class="hover:bg-slate-50" data-fee-row="${escapeHtml(s.id)}">
                   <td class="py-2.5 px-3">
                     <input type="checkbox" ${isChecked ? 'checked' : ''} onchange="toggleReceiptSelection('${s.id}')" />
                   </td>
                   <td class="py-2.5 px-3">
-                    <span class="px-2 py-0.5 text-[10px] font-bold bg-slate-100 text-slate-800 border border-slate-200 rounded whitespace-nowrap">${s.batch}</span>
+                    <div class="font-bold text-[#0F172A] cursor-pointer hover:text-indigo-700 hover:underline" onclick="openStudentFeeLedgerModal('${s.id}')">
+                      ${escapeHtml(s.name)} <span class="font-mono font-normal text-[10px] text-slate-500">(${escapeHtml(s.rollNo)})</span>
+                    </div>
+                    <div class="text-[10px] text-slate-500">${escapeHtml(s.batch)} &bull; ${escapeHtml(s.course)} &bull; ${escapeHtml(s.phone || '-')}${s.lastFeeReminderAt ? ` &bull; <span class="text-indigo-700">Reminded ${escapeHtml(s.lastFeeReminderAt)}</span>` : ''}</div>
+                  </td>
+                  <td class="py-2.5 px-3 tabular-nums text-slate-700 whitespace-nowrap">
+                    <div class="font-bold text-[#0F172A]">₹${monthlyNet}/mo</div>
+                    <div class="text-[10px] text-slate-500">₹${s.monthlyFee}${effConc ? ` - ₹${effConc}` : ''}${sum.oneTimeAddons ? ` + ₹${sum.oneTimeAddons}` : ''}</div>
                   </td>
                   <td class="py-2.5 px-3">
-                    <div class="font-bold text-[#0F172A] cursor-pointer hover:text-indigo-700 hover:underline" onclick="openStudentMonthlyCalendarModal('${s.id}')">${s.name} <span class="font-mono font-normal text-[10px] text-slate-500">(${s.rollNo})</span></div>
-                    <div class="text-[10px] text-slate-500">Mobile: ${s.phone} ${s.guardian ? `&bull; Family: ${s.guardian}` : ''}</div>
+                    ${sum.pendingMonths.length > 0 ? `
+                      <div class="font-bold text-[#B91C1C] tabular-nums">${sum.pendingMonths.length} mo pending &middot; ₹${sum.totalPendingAmount} due</div>
+                      <div class="text-[10px] text-slate-600">${escapeHtml(pendingText)}</div>
+                    ` : `
+                      <div class="font-bold text-emerald-700">All Clear (₹0 due)</div>
+                      <div class="text-[10px] text-slate-500">${sum.paidMonths.length} month(s) paid</div>
+                    `}
                   </td>
                   <td class="py-2.5 px-3">
-                    <div class="font-semibold text-indigo-700">${s.course}</div>
-                    <div class="text-[10px] text-slate-500">Admitted: ${s.admissionDate}</div>
-                  </td>
-                  <td class="py-2.5 px-3 tabular-nums text-slate-600">
-                    ₹${s.monthlyFee} - ₹${effConc} + ₹${s.idCardFee + s.certFee}
-                  </td>
-                  <td class="py-2.5 px-3 font-bold text-[#0F172A] tabular-nums">₹${net}</td>
-                  <td class="py-2.5 px-3">
-                    <select onchange="updateFeeStatus('${s.id}', this.value)" class="px-2 py-1 text-[11px] font-semibold border border-slate-300 rounded">
-                      <option value="Paid|UPI" ${s.feeStatus==='Paid'&&s.lastPaymentMode==='UPI'?'selected':''}>Paid (UPI)</option>
-                      <option value="Paid|Cash" ${s.feeStatus==='Paid'&&s.lastPaymentMode==='Cash'?'selected':''}>Paid (Cash)</option>
-                      <option value="Unpaid|Pending" ${s.feeStatus==='Unpaid'?'selected':''}>Unpaid</option>
+                    <select onchange="updateFeeStatus('${s.id}', this.value)" class="h-7 w-[108px] px-2 text-[11px] font-semibold border border-slate-300 rounded bg-white">
+                      <option value="Paid|UPI" ${curRec.status==='Paid'&&curRec.mode==='UPI'?'selected':''}>Paid (UPI)</option>
+                      <option value="Paid|Cash" ${curRec.status==='Paid'&&curRec.mode==='Cash'?'selected':''}>Paid (Cash)</option>
+                      <option value="Unpaid|Pending" ${curRec.status!=='Paid'?'selected':''}>Pending</option>
                     </select>
                   </td>
-                  <td class="py-2.5 px-3 text-right space-x-1 whitespace-nowrap">
-                    <button onclick="downloadCombinedStandardReceiptPdf(['${s.id}'])" class="px-2.5 py-1 bg-[#0F172A] text-white text-[11px] font-semibold rounded hover:bg-slate-800">Receipt PDF</button>
-                    ${siblings.length > 1 ? `<button onclick="downloadFamilyCombinedReceipt('${s.id}')" class="px-2.5 py-1 bg-indigo-50 text-indigo-700 border border-indigo-200 text-[11px] font-semibold rounded hover:bg-indigo-100">Family (${siblings.length})</button>` : ''}
-                    <button onclick="sendWhatsAppFeeAlert('${s.id}')" class="px-2 py-1 bg-emerald-50 text-emerald-800 border border-emerald-200 text-[11px] font-semibold rounded hover:bg-emerald-100">WA</button>
+                  <td class="py-2.5 px-3 text-right whitespace-nowrap">
+                    <div class="inline-flex items-center justify-end gap-1.5">
+                      <button type="button" onclick="openStudentFeeLedgerModal('${s.id}')" class="h-7 w-[58px] inline-flex items-center justify-center bg-indigo-50 text-indigo-800 border border-indigo-200 text-[11px] font-semibold rounded hover:bg-indigo-100">Ledger</button>
+                      <button type="button" onclick="downloadCombinedStandardReceiptPdf(['${s.id}'])" class="h-7 w-[60px] inline-flex items-center justify-center bg-[#0F172A] text-white text-[11px] font-semibold rounded hover:bg-slate-800">Receipt</button>
+                      <button type="button" onclick="sendWhatsAppFeeAlert('${s.id}')" class="h-7 w-[40px] inline-flex items-center justify-center bg-emerald-50 text-emerald-800 border border-emerald-200 text-[11px] font-semibold rounded hover:bg-emerald-100">WA</button>
+                      <button type="button" onclick="sendInAppFeeIntimation('${s.id}')" class="h-7 w-[54px] inline-flex items-center justify-center bg-amber-50 text-amber-800 border border-amber-200 text-[11px] font-semibold rounded hover:bg-amber-100">Notify</button>
+                      ${hasAnyFamily ? (siblings.length > 1
+                        ? `<button type="button" onclick="downloadFamilyCombinedReceipt('${s.id}')" class="h-7 w-[72px] inline-flex items-center justify-center bg-slate-100 text-slate-800 border border-slate-300 text-[11px] font-semibold rounded hover:bg-slate-200">Family (${siblings.length})</button>`
+                        : `<span class="inline-block h-7 w-[72px]" aria-hidden="true"></span>`) : ''}
+                    </div>
                   </td>
                 </tr>
               `;
-            }).join('')}
+            }).join('') : `<tr><td colspan="6" class="py-8 text-center text-slate-400">No students match the current fee filter.</td></tr>`;
+            })()}
           </tbody>
         </table>
       </div>
@@ -4246,15 +4991,41 @@ async function downloadActiveBrochure() {
 
 function updateFeeStatus(stuId, val) {
   const s = appState.students.find(x => x.id === stuId);
+  if (!s) return;
   const [status, mode] = val.split('|');
-  s.feeStatus = status;
-  s.lastPaymentMode = mode;
-  if (status === 'Paid') s.lastPaymentDate = selectedDate;
+  const curYm = getCurrentYearMonth();
+  const ledger = ensureStudentFeeLedger(s);
+  const monthlyRate = getMonthlyFeeNet(s);
+
+  if (status === 'Paid') {
+    ledger[curYm] = {
+      ...(ledger[curYm] || {}),
+      status: 'Paid',
+      amount: monthlyRate,
+      paidAmount: monthlyRate,
+      mode: mode || 'UPI',
+      paidDate: selectedDate,
+      receiptNo: ledger[curYm]?.receiptNo || generateReceiptNo(curYm)
+    };
+    s.lastPaymentMode = mode || 'UPI';
+    s.lastPaymentDate = selectedDate;
+  } else {
+    ledger[curYm] = {
+      ...(ledger[curYm] || {}),
+      status: 'Pending',
+      amount: monthlyRate,
+      paidAmount: 0,
+      mode: '',
+      paidDate: '',
+      receiptNo: ''
+    };
+  }
+  getStudentFeeSummary(s);
   saveState();
   renderCurrentTab();
 }
 
-async function downloadCombinedStandardReceiptPdf(studentIds) {
+async function downloadCombinedStandardReceiptPdf(studentIds, specificYm = null) {
   const targets = appState.students.filter(x => studentIds.includes(x.id));
   if (!targets.length) return;
 
@@ -4263,9 +5034,9 @@ async function downloadCombinedStandardReceiptPdf(studentIds) {
   const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
   const fontReg = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
-  // Landscape A6/A5 Voucher: 595 pt wide x 420 pt tall (Landscape)
+  // Landscape A6/A5 Voucher: 595 pt wide x dynamic height
   const pageWidth = 595.28;
-  const pageHeight = Math.max(420, 250 + targets.length * 44);
+  const pageHeight = Math.max(420, 260 + targets.length * 56);
   const p = pdfDoc.addPage([pageWidth, pageHeight]);
 
   p.drawRectangle({ x: 18, y: 18, width: pageWidth - 36, height: pageHeight - 36, borderColor: rgb(0.75, 0.78, 0.84), borderWidth: 1.2 });
@@ -4275,87 +5046,108 @@ async function downloadCombinedStandardReceiptPdf(studentIds) {
   p.drawText('B. S. TIKARIYA CULTURAL FOUNDATION  |  CIN: U88900MH2025NPL454435', { x: 32, y: topY, size: 8, font: fontBold, color: rgb(0.28, 0.33, 0.41) });
 
   const isMulti = targets.length > 1;
-  const receiptNo = `TSM-RCP-${Date.now().toString().slice(-6)}`;
-  p.drawText(isMulti ? 'CONSOLIDATED FEE RECEIPT' : 'OFFICIAL FEE RECEIPT', {
-    x: pageWidth - 175, y: topY, size: 9, font: fontBold, color: rgb(0.26, 0.22, 0.79)
+  const primary = targets[0];
+  const primarySum = getStudentFeeSummary(primary);
+  const specificRec = specificYm ? primary.feeLedger?.[specificYm] : null;
+  const receiptNo = (specificRec && specificRec.receiptNo) || primarySum.paidMonths[primarySum.paidMonths.length - 1]?.receiptNo || generateReceiptNo(specificYm || getCurrentYearMonth());
+
+  p.drawText(isMulti ? 'CONSOLIDATED FEE RECEIPT' : (specificYm ? `FEE RECEIPT (${formatYearMonthLabel(specificYm).toUpperCase()})` : 'OFFICIAL FEE RECEIPT'), {
+    x: pageWidth - 200, y: topY, size: 8.5, font: fontBold, color: rgb(0.26, 0.22, 0.79)
   });
 
   topY -= 20;
   drawStyledAcademyTitlePdf(p, 32, topY, 15, fontBold);
-  p.drawText(`Receipt No: ${receiptNo}   |   Date: ${selectedDate}`, {
-    x: pageWidth - 220, y: topY + 2, size: 8.5, font: fontBold, color: rgb(0.06, 0.09, 0.16)
+  p.drawText(sanitizePdfText(`Receipt No: ${receiptNo}   |   Date: ${selectedDate}`), {
+    x: pageWidth - 238, y: topY + 2, size: 8.2, font: fontBold, color: rgb(0.06, 0.09, 0.16)
   });
 
   topY -= 16;
-  const primary = targets[0];
-  const studentNamesHeader = targets.map(t => `${t.name} (${t.rollNo})`).join(', ');
+  const studentNamesHeader = sanitizePdfText(targets.map(t => `${t.name} (${t.rollNo})`).join(', '));
   p.drawText(`To Student: ${studentNamesHeader.slice(0, 82)}`, {
     x: 32, y: topY, size: 9, font: fontBold, color: rgb(0.06, 0.09, 0.16)
   });
 
   topY -= 12;
-  // Table Header Row in Landscape
   p.drawRectangle({ x: 32, y: topY - 14, width: pageWidth - 64, height: 18, color: rgb(0.95, 0.96, 0.98) });
   p.drawText('Student & Roll No', { x: 38, y: topY - 9, size: 8, font: fontBold, color: rgb(0.2, 0.25, 0.32) });
-  p.drawText('Course(s) & Batch', { x: 185, y: topY - 9, size: 8, font: fontBold, color: rgb(0.2, 0.25, 0.32) });
-  p.drawText('Fee / Conc / Add-ons', { x: 345, y: topY - 9, size: 8, font: fontBold, color: rgb(0.2, 0.25, 0.32) });
-  p.drawText('Net Paid', { x: pageWidth - 85, y: topY - 9, size: 8, font: fontBold, color: rgb(0.2, 0.25, 0.32) });
+  p.drawText('Course & Paid Period', { x: 180, y: topY - 9, size: 8, font: fontBold, color: rgb(0.2, 0.25, 0.32) });
+  p.drawText('Balance / Pending Months', { x: 355, y: topY - 9, size: 8, font: fontBold, color: rgb(0.2, 0.25, 0.32) });
+  p.drawText('Amount', { x: pageWidth - 82, y: topY - 9, size: 8, font: fontBold, color: rgb(0.2, 0.25, 0.32) });
 
   topY -= 28;
   let grandTotal = 0;
+  let totalRemainingBalance = 0;
 
   targets.forEach((stu, index) => {
-    const effConc = getEffectiveConcession(stu);
-    const subTotal = getStudentNetPayable(stu);
-    grandTotal += subTotal;
+    const sum = getStudentFeeSummary(stu);
+    const moRec = specificYm ? sum.months.find(m => m.ym === specificYm) : null;
+    const paidAmount = moRec ? moRec.paidAmount : (sum.paidMonths.length ? sum.paidMonths[sum.paidMonths.length - 1].paidAmount : getStudentNetPayable(stu));
+    grandTotal += paidAmount;
+    totalRemainingBalance += sum.totalPendingAmount;
 
-    p.drawText(`${index + 1}. ${stu.name} (${stu.rollNo})`, {
+    const paidPeriodStr = moRec
+      ? `${moRec.label} (${moRec.mode || stu.lastPaymentMode || 'UPI'})`
+      : (sum.paidMonths.length ? `Paid: ${sum.paidMonths.slice(-3).map(m => m.label).join(', ')}` : `Cycle: ${formatYearMonthLabel(sum.currentYm)}`);
+
+    const pendingStr = sum.pendingMonths.length
+      ? `Due INR ${sum.totalPendingAmount} (${sum.pendingMonths.slice(-2).map(m => m.label).join(', ')})`
+      : 'NIL - ALL CLEAR';
+
+    p.drawText(sanitizePdfText(`${index + 1}. ${stu.name} (${stu.rollNo})`), {
       x: 38, y: topY, size: 8.5, font: fontBold, color: rgb(0.06, 0.09, 0.16)
     });
     const courseList = Array.isArray(stu.courses) && stu.courses.length ? stu.courses : [stu.course];
-    p.drawText(`${courseList.join(' + ')} (${stu.batch})`, {
-      x: 185, y: topY, size: 8, font: fontReg, color: rgb(0.26, 0.22, 0.79)
+    p.drawText(sanitizePdfText(`${courseList.join(' + ')} | ${paidPeriodStr}`).slice(0, 34), {
+      x: 180, y: topY, size: 7.6, font: fontReg, color: rgb(0.26, 0.22, 0.79)
     });
-    p.drawText(`INR ${stu.monthlyFee} - ${effConc} + ${stu.idCardFee + stu.certFee} [${stu.feeStatus}]`, {
-      x: 345, y: topY, size: 7.5, font: fontReg, color: rgb(0.28, 0.33, 0.41)
+    p.drawText(sanitizePdfText(pendingStr).slice(0, 28), {
+      x: 355, y: topY, size: 7.5, font: fontBold, color: sum.pendingMonths.length ? rgb(0.72, 0.11, 0.11) : rgb(0.08, 0.5, 0.24)
     });
-    p.drawText(`INR ${subTotal}`, {
-      x: pageWidth - 85, y: topY, size: 8.5, font: fontBold, color: rgb(0.06, 0.09, 0.16)
+    p.drawText(`INR ${paidAmount}`, {
+      x: pageWidth - 82, y: topY, size: 8.5, font: fontBold, color: rgb(0.06, 0.09, 0.16)
     });
 
     topY -= 12;
-    p.drawText(`   Progress: ${stu.genuineDays} Genuine Days (${stu.genuineDays % 48}/48) | Bonus Bank: ${stu.bonusCredits}`, {
+    p.drawText(sanitizePdfText(`   Batch: ${stu.batch} | Genuine Days: ${stu.genuineDays} (${stu.genuineDays % 48}/48) | Bonus Bank: ${stu.bonusCredits}`), {
       x: 38, y: topY, size: 7, font: fontReg, color: rgb(0.4, 0.45, 0.55)
     });
-    topY -= 18;
+    topY -= 20;
   });
 
   p.drawLine({ start: { x: 32, y: topY + 6 }, end: { x: pageWidth - 32, y: topY + 6 }, thickness: 0.9, color: rgb(0.06, 0.09, 0.16) });
   topY -= 12;
-  p.drawText(`TOTAL AMOUNT (${primary.lastPaymentMode}):`, { x: 38, y: topY, size: 9.5, font: fontBold, color: rgb(0.06, 0.09, 0.16) });
-  p.drawText(`INR ${grandTotal}`, { x: pageWidth - 95, y: topY, size: 10.5, font: fontBold, color: rgb(0.72, 0.11, 0.11) });
+  const payModeLabel = (specificRec && specificRec.mode) || primary.lastPaymentMode || 'UPI';
+  p.drawText(sanitizePdfText(`TOTAL PAID (${payModeLabel}):`), { x: 38, y: topY, size: 9.5, font: fontBold, color: rgb(0.06, 0.09, 0.16) });
+  p.drawText(`INR ${grandTotal}`, { x: pageWidth - 95, y: topY, size: 10.5, font: fontBold, color: rgb(0.08, 0.5, 0.24) });
 
-  p.drawText("Authorized Signatory — TIKARIYA'S SCHOOL OF MUSIC", { x: pageWidth - 235, y: 30, size: 7.5, font: fontBold, color: rgb(0.28, 0.33, 0.41) });
+  topY -= 14;
+  p.drawText(totalRemainingBalance > 0 ? `REMAINING PENDING BALANCE: INR ${totalRemainingBalance}` : 'REMAINING PENDING BALANCE: INR 0 (ALL MONTHS CLEAR)', {
+    x: 38, y: topY, size: 8, font: fontBold, color: totalRemainingBalance > 0 ? rgb(0.72, 0.11, 0.11) : rgb(0.28, 0.33, 0.41)
+  });
+
+  p.drawText("Authorized Signatory - TIKARIYA'S SCHOOL OF MUSIC", { x: pageWidth - 235, y: 30, size: 7.5, font: fontBold, color: rgb(0.28, 0.33, 0.41) });
 
   const bytes = await pdfDoc.save({ useObjectStreams: true });
-  const blob = new Blob([bytes], { type: 'application/pdf' });
-  const link = document.createElement('a');
-  link.href = URL.createObjectURL(blob);
-  link.download = isMulti ? `TSM_Consolidated_Receipt_Landscape_${primary.rollNo}.pdf` : `TSM_Receipt_Landscape_${primary.rollNo}.pdf`;
-  link.click();
+  const fileSuffix = specificYm ? `${primary.rollNo}_${specificYm}` : primary.rollNo;
+  triggerBlobDownload(new Blob([bytes], { type: 'application/pdf' }), isMulti ? `TSM_Consolidated_Receipt_${fileSuffix}.pdf` : `TSM_Receipt_${fileSuffix}.pdf`);
 }
 
 function sendWhatsAppFeeAlert(stuId) {
   const s = appState.students.find(x => x.id === stuId);
-  const siblings = getFamilySiblings(s);
-  const totalFamily = siblings.reduce((acc, item) => acc + getStudentNetPayable(item), 0);
-  const targetPhone = s.phone || s.parentPhone;
-  const namesStr = siblings.map(x => `${x.name} (${x.rollNo} - ${x.course})`).join(', ');
-  const msg = s.feeStatus === 'Paid'
-    ? `Dear ${namesStr}, B. S. TIKARIYA CULTURAL FOUNDATION - TIKARIYA'S SCHOOL OF MUSIC confirms receipt of INR ${totalFamily} via ${s.lastPaymentMode}. Thank you.`
-    : `Dear ${namesStr}, gentle fee reminder from B. S. TIKARIYA CULTURAL FOUNDATION - TIKARIYA'S SCHOOL OF MUSIC. Amount INR ${totalFamily} is due. Kindly pay via UPI or Cash.`;
-  dispatchPushAlert(s.rollNo, "TIKARIYA'S SCHOOL OF MUSIC", msg);
-  window.open(`https://wa.me/91${targetPhone}?text=${encodeURIComponent(msg)}`, '_blank');
+  if (!s) return;
+  const targetPhone = String(s.phone || s.parentPhone || '').replace(/\D+/g, '').slice(-10);
+  const msg = buildFeeIntimationText(s, true);
+  s.lastFeeReminderAt = selectedDate;
+  dispatchPushAlert(s.rollNo, "Fee Intimation — TIKARIYA'S SCHOOL OF MUSIC", msg.replace(/\n+/g, ' '));
+  saveState();
+  const waUrl = targetPhone ? `https://wa.me/91${targetPhone}?text=${encodeURIComponent(msg)}` : `https://wa.me/?text=${encodeURIComponent(msg)}`;
+  const a = document.createElement('a');
+  a.href = waUrl;
+  a.target = '_blank';
+  a.rel = 'noopener noreferrer';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => a.remove(), 200);
 }
 
 // ==========================================
@@ -5600,11 +6392,13 @@ function renderStudentPortal(el, tab) {
   const elig = evaluateCertificateEligibility(s, selectedDate);
   const safeId = escapeHtml(s.id);
 
-  const feeBanner = s.feeStatus === 'Unpaid' ? `
+  const feeSummary = getStudentFeeSummary(s);
+  const pendingMoLabels = feeSummary.pendingMonths.map(m => m.label).join(', ');
+  const feeBanner = feeSummary.pendingMonths.length > 0 ? `
     <div class="max-w-xl mx-auto mb-4 bg-amber-50 border border-amber-200 rounded-xl p-3.5 text-xs flex items-center justify-between gap-2">
       <div>
-        <div class="font-bold text-amber-900">Dear ${escapeHtml(s.name)}, Fee Reminder (Month #${months})</div>
-        <div class="text-amber-800">Amount INR ${netFee} due for cycle starting ${escapeHtml(nextDue)} (UPI / Cash).</div>
+        <div class="font-bold text-amber-900">Dear ${escapeHtml(s.name)}, ${feeSummary.pendingMonths.length} Pending Month(s)</div>
+        <div class="text-amber-800">Due: <b>INR ${feeSummary.totalPendingAmount}</b> (${escapeHtml(pendingMoLabels)}) via UPI or Cash.</div>
       </div>
       <button onclick="switchTab('student_fees')" class="px-3 py-1.5 bg-amber-800 text-white font-semibold rounded-lg shrink-0">Pay Now</button>
     </div>
@@ -5698,31 +6492,79 @@ function renderStudentPortal(el, tab) {
     }
   } else if (tab === 'student_fees') {
     const upiId = appState.upiId || '9823011223@upi';
-    const upiUri = `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent("TIKARIYAS SCHOOL OF MUSIC")}&am=${netFee}&cu=INR&tn=${encodeURIComponent(`Fee ${s.rollNo} ${s.name}`)}`;
+    const payableNow = feeSummary.totalPendingAmount > 0 ? feeSummary.totalPendingAmount : netFee;
+    const upiNote = feeSummary.pendingMonths.length
+      ? `Fee ${s.rollNo} ${feeSummary.pendingMonths.map(m => m.label).join(',')}`
+      : `Fee ${s.rollNo} ${s.name}`;
+    const upiUri = `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent("TIKARIYAS SCHOOL OF MUSIC")}&am=${payableNow}&cu=INR&tn=${encodeURIComponent(upiNote)}`;
     el.innerHTML = `
-      <div class="max-w-xl mx-auto bg-white p-5 rounded-xl border border-slate-200 space-y-4 text-xs">
-        <h3 class="text-sm font-bold text-[#0F172A]">Fees, UPI Wallet Payment &amp; Receipts</h3>
-        <div class="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
+      <div class="max-w-2xl mx-auto space-y-4 text-xs">
+        <div class="bg-white p-5 rounded-xl border border-slate-200 space-y-4">
           <div class="flex flex-wrap items-center justify-between gap-2">
             <div>
-              <div class="text-sm font-bold text-[#0F172A]">${s.course} &mdash; <span class="text-indigo-700">₹${netFee}</span></div>
-              <div class="text-slate-500 mt-0.5">Batch: <b>${s.batch}</b> &bull; Admitted: ${s.admissionDate} (Month #${months}) &bull; Status: <b>${s.feeStatus}</b></div>
+              <h3 class="text-sm font-bold text-[#0F172A]">Fees, Pending Months &amp; Receipts</h3>
+              <p class="text-[11px] text-slate-500 mt-0.5">${escapeHtml(s.course)} &bull; Batch ${escapeHtml(s.batch)} &bull; Monthly Rate: <b>₹${getMonthlyFeeNet(s)}/mo</b></p>
             </div>
-            <div class="flex flex-wrap gap-1.5">
-              <a href="${upiUri}" class="px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-lg shadow-sm transition">
-                Pay ₹${netFee} via UPI Wallet
-              </a>
-              <button onclick="downloadCombinedStandardReceiptPdf(['${s.id}'])" class="px-3 py-2 bg-[#0F172A] text-white font-semibold rounded-lg">My Receipt PDF</button>
-              ${siblings.length > 1 ? `<button onclick="downloadFamilyCombinedReceipt('${s.id}')" class="px-3 py-2 bg-indigo-700 text-white font-semibold rounded-lg">Consolidated (${siblings.length})</button>` : ''}
+            <div class="text-right tabular-nums">
+              <div class="text-xs font-bold ${feeSummary.pendingMonths.length ? 'text-[#B91C1C]' : 'text-emerald-700'}">
+                ${feeSummary.pendingMonths.length ? `${feeSummary.pendingMonths.length} Month(s) Pending — ₹${feeSummary.totalPendingAmount}` : 'All Months Paid'}
+              </div>
+              ${feeSummary.pendingMonths.length ? `<div class="text-[10px] text-slate-500">${escapeHtml(pendingMoLabels)}</div>` : ''}
             </div>
           </div>
-          <div class="pt-3 border-t border-slate-200 flex items-center justify-between gap-3">
-            <div class="text-[11px] text-slate-600 space-y-0.5">
-              <div class="font-bold text-[#0F172A]">Pay via Any UPI App (GPay / PhonePe / Paytm)</div>
-              <div>Tap the green button above on mobile or scan QR with amount <b>₹${netFee}</b> pre-filled.</div>
-              <div>UPI ID: <span class="font-mono font-semibold text-slate-800">${upiId}</span></div>
+
+          <div class="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div class="text-[11px] text-slate-600 space-y-0.5">
+                <div class="font-bold text-[#0F172A]">Pay via Any UPI App (GPay / PhonePe / Paytm)</div>
+                <div>Amount pre-filled: <b class="text-[#0F172A] tabular-nums">₹${payableNow}</b> &bull; UPI ID: <span class="font-mono font-semibold text-slate-800">${escapeHtml(upiId)}</span></div>
+              </div>
+              <div class="flex flex-wrap gap-1.5">
+                <a href="${upiUri}" class="px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-lg shadow-sm transition">
+                  Pay ₹${payableNow} via UPI
+                </a>
+                <button type="button" onclick="downloadCombinedStandardReceiptPdf(['${s.id}'])" class="px-3 py-2 bg-[#0F172A] text-white font-semibold rounded-lg">Receipt PDF</button>
+                ${siblings.length > 1 ? `<button type="button" onclick="downloadFamilyCombinedReceipt('${s.id}')" class="px-3 py-2 bg-indigo-700 text-white font-semibold rounded-lg">Family (${siblings.length})</button>` : ''}
+              </div>
             </div>
-            <div id="stuUpiQrBox" class="p-1.5 bg-white border border-slate-300 rounded shrink-0"></div>
+            <div class="pt-3 border-t border-slate-200 flex items-center justify-between gap-3">
+              <div class="text-[11px] text-slate-600">Scan this QR code with any UPI app to pay <b>₹${payableNow}</b> directly to the academy.</div>
+              <div id="stuUpiQrBox" class="p-1.5 bg-white border border-slate-300 rounded shrink-0"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- MONTH-BY-MONTH RECORD -->
+        <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+          <div class="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
+            <h4 class="text-xs font-bold text-[#0F172A]">Month-by-Month Fee Record</h4>
+            <span class="text-[11px] text-slate-500 tabular-nums">${feeSummary.paidMonths.length} Paid &middot; ${feeSummary.pendingMonths.length} Pending</span>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse text-[11px]">
+              <thead class="bg-slate-50 border-b border-slate-200 text-[10px] uppercase text-slate-600">
+                <tr>
+                  <th class="py-2 px-3">Month</th>
+                  <th class="py-2 px-3">Status</th>
+                  <th class="py-2 px-3 text-right">Amount</th>
+                  <th class="py-2 px-3">Paid Date &amp; Mode</th>
+                  <th class="py-2 px-3 text-right">Receipt</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100">
+                ${[...feeSummary.months].reverse().map(m => `
+                  <tr>
+                    <td class="py-2 px-3 font-bold text-[#0F172A]">${escapeHtml(m.label)}</td>
+                    <td class="py-2 px-3 font-bold ${m.status==='Paid' ? 'text-emerald-700' : m.status==='Waived' ? 'text-slate-500' : 'text-[#B91C1C]'}">${escapeHtml(m.status)}</td>
+                    <td class="py-2 px-3 text-right tabular-nums">₹${m.status==='Paid' ? m.paidAmount : m.balance}</td>
+                    <td class="py-2 px-3 text-slate-500">${m.paidDate ? `${escapeHtml(m.paidDate)} (${escapeHtml(m.mode || 'UPI')})` : '—'}</td>
+                    <td class="py-2 px-3 text-right">
+                      ${m.status === 'Paid' ? `<button type="button" onclick="downloadCombinedStandardReceiptPdf(['${s.id}'], '${m.ym}')" class="px-2 py-1 bg-[#0F172A] text-white text-[10px] font-semibold rounded">PDF</button>` : '<span class="text-slate-400">—</span>'}
+                    </td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
           </div>
         </div>
       </div>
@@ -7640,6 +8482,7 @@ function showModal(html) {
 function closeModal() {
   stopQrCamera();
   stopPhotoCamera();
+  activeFeeLedgerStudentId = null;
   document.getElementById('modalBackdrop').classList.add('hidden');
 }
 

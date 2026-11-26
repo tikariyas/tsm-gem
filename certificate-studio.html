@@ -1,0 +1,1665 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0F172A" />
+  <title>Certificate Designer Studio — TIKARIYA'S SCHOOL OF MUSIC</title>
+  <link id="faviconLink" rel="icon" type="image/png" href="./favicon.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png" />
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;800&family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,400;1,600&family=DM+Sans:ital,wght@0,400;0,500;0,700;1,400&family=Great+Vibes&family=JetBrains+Mono:wght@400;600;700&family=Playfair+Display:ital,wght@0,400;0,600;0,700;0,800;1,400;1,600&family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&display=swap" rel="stylesheet" />
+  <style>
+    body { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; background: #F1F5F9; color: #0F172A; }
+    .tabular-nums { font-variant-numeric: tabular-nums; }
+    .canvas-stage {
+      background-image:
+        radial-gradient(circle at 1px 1px, rgba(15, 23, 42, 0.1) 1px, transparent 0);
+      background-size: 20px 20px;
+    }
+    input[type="range"] { accent-color: #0F172A; }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+  <!-- TOP WORKSPACE BAR -->
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-30">
+    <div class="max-w-[1600px] mx-auto px-4 py-2.5 flex flex-wrap items-center justify-between gap-3">
+      <div class="flex items-center gap-3 min-w-0">
+        <a href="index.html" class="px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-lg transition whitespace-nowrap shrink-0">&larr; Portal</a>
+        <div class="h-5 w-px bg-slate-200 hidden sm:block"></div>
+        <div class="min-w-0">
+          <div class="font-extrabold text-sm text-[#0F172A] tracking-tight truncate">
+            TS<span class="text-[#B91C1C]">M</span> Certificate Designer Studio
+          </div>
+          <div id="syncStatusText" class="text-[11px] text-slate-500 truncate">Ready &bull; Synced with Academy Portal</div>
+        </div>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-2">
+        <label class="flex items-center gap-1.5 text-xs font-semibold text-slate-600">
+          <span class="hidden md:inline">Preview:</span>
+          <select id="studentPreviewSelect" onchange="onPreviewStudentChanged(this.value)" class="px-2.5 py-1.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-semibold text-[#0F172A] max-w-[200px]"></select>
+        </label>
+        <button type="button" onclick="saveDesignToAcademy()" class="px-3.5 py-1.5 bg-[#16A34A] hover:bg-[#15803D] text-white text-xs font-bold rounded-lg transition whitespace-nowrap">Save to Academy</button>
+        <button type="button" onclick="exportCurrentPdf()" class="px-3.5 py-1.5 bg-[#0F172A] hover:bg-slate-800 text-white text-xs font-bold rounded-lg transition whitespace-nowrap">Download PDF</button>
+        <button type="button" onclick="exportCurrentPng()" class="px-3 py-1.5 bg-white hover:bg-slate-50 text-[#0F172A] border border-slate-300 text-xs font-semibold rounded-lg transition whitespace-nowrap">PNG</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- MAIN 3-ZONE DESIGNER WORKSPACE -->
+  <main class="flex-1 max-w-[1600px] w-full mx-auto grid grid-cols-1 lg:grid-cols-12 min-h-[calc(100vh-58px)]">
+
+    <!-- LEFT SIDEBAR: LAYERS & SECTION TABS -->
+    <aside class="lg:col-span-3 bg-white border-r border-slate-200 flex flex-col">
+      <!-- Mode Switcher -->
+      <div class="p-2 border-b border-slate-200 grid grid-cols-3 gap-1 bg-slate-50">
+        <button type="button" id="tabBtn_text" onclick="setSidebarTab('text')" class="py-2 px-2 text-xs font-bold rounded-lg transition bg-[#0F172A] text-white">Text &amp; Layers</button>
+        <button type="button" id="tabBtn_art" onclick="setSidebarTab('art')" class="py-2 px-2 text-xs font-bold rounded-lg transition text-slate-600 hover:bg-slate-200">Art &amp; Page</button>
+        <button type="button" id="tabBtn_export" onclick="setSidebarTab('export')" class="py-2 px-2 text-xs font-bold rounded-lg transition text-slate-600 hover:bg-slate-200">QR &amp; Batch</button>
+      </div>
+
+      <!-- TAB 1: TEXT & LAYERS -->
+      <div id="sidebarPanel_text" class="p-3.5 space-y-3 overflow-y-auto flex-1">
+        <div class="flex items-center justify-between">
+          <h2 class="text-xs font-bold uppercase tracking-wide text-slate-600">Certificate Elements</h2>
+          <button type="button" onclick="addCustomTextLayer()" class="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-[11px] font-bold rounded-lg">+ Add Text</button>
+        </div>
+        <p class="text-[11px] text-slate-500">Click any item below or drag it directly on the certificate canvas to reposition.</p>
+        <div id="layersListContainer" class="space-y-1.5"></div>
+      </div>
+
+      <!-- TAB 2: ART, FRAME & PAGE -->
+      <div id="sidebarPanel_art" class="p-3.5 space-y-4 overflow-y-auto flex-1 hidden text-xs">
+        <div class="space-y-2">
+          <label class="block font-bold text-slate-700">Design Presets (Art &amp; Typography)</label>
+          <div class="grid grid-cols-2 gap-1.5">
+            <button type="button" onclick="applyArtPreset('royal_gold')" class="p-2 text-left rounded-lg border border-slate-200 hover:border-amber-500 bg-[#FFFDF7]">
+              <div class="font-bold text-[11px] text-slate-900">Royal Gold</div>
+              <div class="text-[10px] text-slate-500">Ivory &bull; Filigree</div>
+            </button>
+            <button type="button" onclick="applyArtPreset('tsm_navy')" class="p-2 text-left rounded-lg border border-slate-200 hover:border-indigo-600 bg-white">
+              <div class="font-bold text-[11px] text-[#0F172A]">TSM Classic</div>
+              <div class="text-[10px] text-slate-500">Navy &bull; Crimson</div>
+            </button>
+            <button type="button" onclick="applyArtPreset('midnight_gala')" class="p-2 text-left rounded-lg border border-slate-700 hover:border-amber-400 bg-[#0B1224] text-white">
+              <div class="font-bold text-[11px]">Midnight Gala</div>
+              <div class="text-[10px] text-slate-300">Dark Blue &bull; Gold</div>
+            </button>
+            <button type="button" onclick="applyArtPreset('minimal_ivory')" class="p-2 text-left rounded-lg border border-slate-200 hover:border-slate-500 bg-slate-50">
+              <div class="font-bold text-[11px] text-slate-900">Minimal Academic</div>
+              <div class="text-[10px] text-slate-500">Clean Hairline</div>
+            </button>
+            <button type="button" onclick="applyArtPreset('musical_crest')" class="p-2 text-left rounded-lg border border-slate-200 hover:border-emerald-600 bg-emerald-50/40">
+              <div class="font-bold text-[11px] text-slate-900">Musical Crest</div>
+              <div class="text-[10px] text-slate-500">Staff &bull; Seal</div>
+            </button>
+            <button type="button" onclick="applyArtPreset('clean_blank')" class="p-2 text-left rounded-lg border border-dashed border-slate-300 hover:border-slate-500 bg-white">
+              <div class="font-bold text-[11px] text-slate-900">Blank Art Base</div>
+              <div class="text-[10px] text-slate-500">For Uploaded BG</div>
+            </button>
+          </div>
+        </div>
+
+        <div class="pt-3 border-t border-slate-200 space-y-2.5">
+          <div class="font-bold text-slate-700">Page Size &amp; Orientation</div>
+          <select id="pageFormatSelect" onchange="updatePageSetting('pageFormat', this.value)" class="w-full px-2.5 py-2 border border-slate-300 rounded-lg font-semibold bg-white">
+            <option value="letter_landscape">US Letter — Landscape (11 × 8.5 in)</option>
+            <option value="letter_portrait">US Letter — Portrait (8.5 × 11 in)</option>
+            <option value="a4_landscape">A4 — Landscape (297 × 210 mm)</option>
+            <option value="a4_portrait">A4 — Portrait (210 × 297 mm)</option>
+          </select>
+        </div>
+
+        <div class="pt-3 border-t border-slate-200 space-y-2.5">
+          <div class="font-bold text-slate-700">Frame, Border &amp; Colors</div>
+          <div class="grid grid-cols-3 gap-2">
+            <label class="space-y-1">
+              <span class="block text-[10px] font-semibold text-slate-500">Paper</span>
+              <input type="color" id="bgColorInput" oninput="updatePageSetting('bgColor', this.value)" class="w-full h-8 rounded border border-slate-300 cursor-pointer" />
+            </label>
+            <label class="space-y-1">
+              <span class="block text-[10px] font-semibold text-slate-500">Frame</span>
+              <input type="color" id="borderColorInput" oninput="updatePageSetting('borderColor', this.value)" class="w-full h-8 rounded border border-slate-300 cursor-pointer" />
+            </label>
+            <label class="space-y-1">
+              <span class="block text-[10px] font-semibold text-slate-500">Accent</span>
+              <input type="color" id="accentColorInput" oninput="updatePageSetting('accentColor', this.value)" class="w-full h-8 rounded border border-slate-300 cursor-pointer" />
+            </label>
+          </div>
+          <div>
+            <label class="block text-[11px] font-semibold text-slate-600 mb-1">Border Art Style</label>
+            <select id="borderStyleSelect" onchange="updatePageSetting('borderStyle', this.value)" class="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg bg-white">
+              <option value="double_filigree">Double Frame + Corner Ornaments</option>
+              <option value="double_classic">Double Architectural Rule</option>
+              <option value="single_clean">Single Crisp Border</option>
+              <option value="corner_brackets">Corner Brackets Only</option>
+              <option value="none">No Vector Border</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-[11px] font-semibold text-slate-600 mb-1">Decorative Divider Art</label>
+            <select id="dividerStyleSelect" onchange="updatePageSetting('dividerStyle', this.value)" class="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg bg-white">
+              <option value="diamond_rule">Classic Diamond Flourish</option>
+              <option value="musical_staff">Musical Staff &amp; Clef Line</option>
+              <option value="simple_rule">Clean Accent Rule</option>
+              <option value="none">None</option>
+            </select>
+          </div>
+          <label class="flex items-center justify-between text-[11px] font-semibold text-slate-700">
+            <span>Border Margin (<span id="borderInsetVal" class="tabular-nums">28</span> pt)</span>
+            <input type="range" id="borderInsetInput" min="12" max="60" oninput="updatePageSetting('borderInset', Number(this.value))" class="w-28" />
+          </label>
+          <label class="flex items-center gap-2 text-[11px] font-semibold text-slate-700 cursor-pointer">
+            <input type="checkbox" id="showSealCheckbox" onchange="updatePageSetting('showSeal', this.checked)" class="w-4 h-4 accent-[#0F172A]" />
+            <span>Show Vector Conservatory Seal Medallion</span>
+          </label>
+          <label class="flex items-center gap-2 text-[11px] font-semibold text-slate-700 cursor-pointer">
+            <input type="checkbox" id="showSigLineCheckbox" onchange="updatePageSetting('showSignatureLine', this.checked)" class="w-4 h-4 accent-[#0F172A]" />
+            <span>Show Director Signature Line</span>
+          </label>
+        </div>
+
+        <div class="pt-3 border-t border-slate-200 space-y-2.5">
+          <div class="font-bold text-slate-700">Upload Custom Art &amp; Images</div>
+          <!-- Background Image -->
+          <div class="p-2.5 bg-slate-50 rounded-lg border border-slate-200 space-y-2">
+            <div class="flex items-center justify-between">
+              <span class="font-semibold text-slate-700">Background Artwork</span>
+              <div class="flex gap-1.5">
+                <label class="px-2 py-1 bg-[#0F172A] text-white text-[10px] font-bold rounded cursor-pointer">
+                  Upload
+                  <input type="file" accept="image/*" onchange="uploadArtAsset(event, 'bgImageDataUrl', 1600, 0.86)" class="hidden" />
+                </label>
+                <button type="button" onclick="clearArtAsset('bgImageDataUrl')" class="px-2 py-1 border border-slate-300 text-slate-600 text-[10px] font-semibold rounded hover:bg-slate-100">Clear</button>
+              </div>
+            </div>
+            <label class="flex items-center justify-between text-[10px] text-slate-600">
+              <span>Opacity (<span id="bgOpacityVal" class="tabular-nums">100%</span>)</span>
+              <input type="range" id="bgOpacityInput" min="10" max="100" oninput="updatePageSetting('bgImageOpacity', Number(this.value)/100)" class="w-28" />
+            </label>
+          </div>
+          <!-- Logo / Crest -->
+          <div class="p-2.5 bg-slate-50 rounded-lg border border-slate-200 space-y-1.5">
+            <div class="flex items-center justify-between">
+              <span class="font-semibold text-slate-700">Logo / Crest (PNG)</span>
+              <div class="flex gap-1.5">
+                <label class="px-2 py-1 bg-indigo-700 text-white text-[10px] font-bold rounded cursor-pointer">
+                  Upload
+                  <input type="file" accept="image/*" onchange="uploadArtAsset(event, 'logoDataUrl', 520, 0.9)" class="hidden" />
+                </label>
+                <button type="button" onclick="clearArtAsset('logoDataUrl')" class="px-2 py-1 border border-slate-300 text-slate-600 text-[10px] font-semibold rounded hover:bg-slate-100">Clear</button>
+              </div>
+            </div>
+            <div class="text-[10px] text-slate-500">Select "Academy Logo" in Layers to resize or drag it anywhere.</div>
+          </div>
+          <!-- Director Signature -->
+          <div class="p-2.5 bg-slate-50 rounded-lg border border-slate-200 space-y-1.5">
+            <div class="flex items-center justify-between">
+              <span class="font-semibold text-slate-700">Signature Image (PNG)</span>
+              <div class="flex gap-1.5">
+                <label class="px-2 py-1 bg-indigo-700 text-white text-[10px] font-bold rounded cursor-pointer">
+                  Upload
+                  <input type="file" accept="image/*" onchange="uploadArtAsset(event, 'signatureDataUrl', 520, 0.9)" class="hidden" />
+                </label>
+                <button type="button" onclick="clearArtAsset('signatureDataUrl')" class="px-2 py-1 border border-slate-300 text-slate-600 text-[10px] font-semibold rounded hover:bg-slate-100">Clear</button>
+              </div>
+            </div>
+            <div class="text-[10px] text-slate-500">Select "Signature Image" in Layers to resize or drag it above the signatory line.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 3: QR, JSON & BATCH EXPORT -->
+      <div id="sidebarPanel_export" class="p-3.5 space-y-4 overflow-y-auto flex-1 hidden text-xs">
+        <div class="space-y-2.5">
+          <div class="font-bold text-slate-700">Verification QR Code</div>
+          <label class="flex items-center gap-2 font-semibold text-slate-700 cursor-pointer">
+            <input type="checkbox" id="qrShowCheckbox" onchange="updateSpecialLayer('qr', 'visible', this.checked)" class="w-4 h-4 accent-[#0F172A]" />
+            <span>Show Scannable Verification QR</span>
+          </label>
+          <div class="grid grid-cols-2 gap-2">
+            <label class="space-y-1">
+              <span class="text-[10px] text-slate-500 font-semibold">QR Size (pt)</span>
+              <input type="number" id="qrSizeInput" min="36" max="140" oninput="updateSpecialLayer('qr', 'size', Number(this.value))" class="w-full px-2 py-1 border border-slate-300 rounded tabular-nums" />
+            </label>
+            <div class="flex items-end">
+              <button type="button" onclick="selectElement('qr')" class="w-full py-1.5 px-2 bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold rounded border border-slate-300">Select &amp; Drag QR</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="pt-3 border-t border-slate-200 space-y-2.5">
+          <div class="font-bold text-slate-700">Batch Export Certificates (Multi-Page PDF)</div>
+          <p class="text-[11px] text-slate-500">Select students below to generate one print-ready PDF containing all customized certificates.</p>
+          <div class="flex gap-1.5">
+            <button type="button" onclick="selectBatchStudents('all')" class="px-2 py-1 text-[10px] font-semibold bg-slate-100 hover:bg-slate-200 rounded border border-slate-300">Select All</button>
+            <button type="button" onclick="selectBatchStudents('eligible')" class="px-2 py-1 text-[10px] font-semibold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded border border-emerald-200">48+ Days Only</button>
+            <button type="button" onclick="selectBatchStudents('none')" class="px-2 py-1 text-[10px] font-semibold bg-slate-100 hover:bg-slate-200 rounded border border-slate-300">Clear</button>
+          </div>
+          <div id="batchStudentsList" class="max-h-48 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100 bg-slate-50"></div>
+          <button type="button" onclick="exportBatchPdf()" class="w-full py-2 px-3 bg-[#0F172A] hover:bg-slate-800 text-white font-bold rounded-lg transition">Generate Batch Certificate PDF</button>
+        </div>
+
+        <div class="pt-3 border-t border-slate-200 space-y-2">
+          <div class="font-bold text-slate-700">External Template Preset File (.json)</div>
+          <p class="text-[11px] text-slate-500">Save multiple certificate templates on your computer (e.g. Grade 1, Annual Concert, Workshop) and reload anytime.</p>
+          <div class="flex gap-2">
+            <button type="button" onclick="exportTemplateJson()" class="flex-1 py-1.5 px-2.5 bg-white hover:bg-slate-50 border border-slate-300 font-semibold rounded-lg">Export JSON</button>
+            <label class="flex-1 py-1.5 px-2.5 bg-white hover:bg-slate-50 border border-slate-300 font-semibold rounded-lg text-center cursor-pointer">
+              Import JSON
+              <input type="file" accept="application/json" onchange="importTemplateJson(event)" class="hidden" />
+            </label>
+          </div>
+          <button type="button" onclick="resetDefaultDesign()" class="w-full py-1.5 px-2.5 text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 font-semibold rounded-lg">Reset to Default Design</button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- CENTER STAGE: INTERACTIVE DRAG-AND-DROP CANVAS -->
+    <section class="lg:col-span-6 canvas-stage p-4 sm:p-6 flex flex-col items-center justify-center relative overflow-auto">
+      <div class="w-full max-w-[860px] flex flex-wrap items-center justify-between gap-2 mb-3 text-xs">
+        <div class="text-slate-600 font-medium">
+          Drag elements directly on the certificate &bull; <span id="selectedElementBadge" class="font-bold text-[#0F172A]">Click any text, seal, logo, or QR to edit</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <label class="inline-flex items-center gap-1.5 text-[11px] font-semibold text-slate-600 cursor-pointer">
+            <input type="checkbox" id="snapCenterToggle" checked class="w-3.5 h-3.5 accent-[#0F172A]" />
+            <span>Snap Center</span>
+          </label>
+          <label class="inline-flex items-center gap-1.5 text-[11px] font-semibold text-slate-600 cursor-pointer">
+            <input type="checkbox" id="showGuidesToggle" checked onchange="renderCanvas()" class="w-3.5 h-3.5 accent-[#0F172A]" />
+            <span>Guides</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="relative shadow-2xl rounded-sm bg-white border border-slate-300 overflow-hidden" style="max-width: 100%;">
+        <canvas id="certCanvas" class="block max-w-full h-auto touch-none cursor-grab active:cursor-grabbing"></canvas>
+      </div>
+
+      <div class="mt-3 text-[11px] text-slate-500 flex flex-wrap items-center justify-center gap-3 tabular-nums">
+        <span id="pageDimsLabel">792 × 612 pt (US Letter Landscape)</span>
+        <span>&bull;</span>
+        <span>300 DPI Print-Ready PDF Export</span>
+      </div>
+    </section>
+
+    <!-- RIGHT SIDEBAR: SELECTED ELEMENT INSPECTOR -->
+    <aside class="lg:col-span-3 bg-white border-l border-slate-200 p-4 overflow-y-auto text-xs space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-200 pb-2.5">
+        <h2 class="text-xs font-bold uppercase tracking-wide text-slate-700">Element Inspector</h2>
+        <button type="button" onclick="centerSelectedHorizontally()" class="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold rounded border border-slate-200">Center X</button>
+      </div>
+      <div id="inspectorContainer" class="space-y-3.5"></div>
+    </aside>
+  </main>
+
+  <!-- TOAST NOTIFICATION -->
+  <div id="studioToast" class="fixed bottom-4 right-4 z-50 px-4 py-2.5 bg-[#0F172A] text-white text-xs font-semibold rounded-xl shadow-lg hidden"></div>
+
+  <script>
+    const STORAGE_KEY = 'tsm_pwa_state_v8';
+    const SESSION_KEY = 'tsm_active_session_v8';
+    const CONFIG_KEY = 'tsm_firebase_config_v1';
+
+    const DEFAULT_FIREBASE_CONFIG = {
+      apiKey: "AIzaSyD6UUHQL7hcWxvnOIFIzVxOPPU0wrSojFQ",
+      authDomain: "tikariya-music---foundation.firebaseapp.com",
+      projectId: "tikariya-music---foundation",
+      storageBucket: "tikariya-music---foundation.firebasestorage.app",
+      messagingSenderId: "869254236044",
+      appId: "1:869254236044:web:fb6f5fccca9129cc4d78a9",
+      measurementId: "G-0HC5PTKZQ3"
+    };
+
+    const PAGE_FORMATS = {
+      letter_landscape: { w: 792, h: 612, label: '792 × 612 pt (US Letter Landscape)' },
+      letter_portrait: { w: 612, h: 792, label: '612 × 792 pt (US Letter Portrait)' },
+      a4_landscape: { w: 841.89, h: 595.28, label: '842 × 595 pt (A4 Landscape)' },
+      a4_portrait: { w: 595.28, h: 841.89, label: '595 × 842 pt (A4 Portrait)' }
+    };
+
+    const FONT_OPTIONS = [
+      { value: 'Playfair Display', label: 'Playfair Display (Classic Serif)' },
+      { value: 'Cinzel', label: 'Cinzel (Engraved Roman)' },
+      { value: 'Cormorant Garamond', label: 'Cormorant Garamond (Conservatory)' },
+      { value: 'Great Vibes', label: 'Great Vibes (Calligraphy Script)' },
+      { value: 'Plus Jakarta Sans', label: 'Plus Jakarta Sans (Modern Sans)' },
+      { value: 'DM Sans', label: 'DM Sans (Clean Geometric)' },
+      { value: 'JetBrains Mono', label: 'JetBrains Mono (Serial / Code)' }
+    ];
+
+    const PLACEHOLDER_CHIPS = [
+      '{{studentName}}', '{{rollNo}}', '{{course}}', '{{grade}}',
+      '{{genuineDays}}', '{{certLevel}}', '{{certSerial}}', '{{issueDate}}',
+      '{{batch}}', '{{academyName}}', '{{foundation}}', '{{cin}}'
+    ];
+
+    function buildDefaultCertDesign() {
+      return {
+        pageFormat: 'letter_landscape',
+        bgColor: '#FFFDF7',
+        borderColor: '#0F172A',
+        accentColor: '#B4882E',
+        borderStyle: 'double_filigree',
+        dividerStyle: 'diamond_rule',
+        borderInset: 26,
+        showSeal: true,
+        showSignatureLine: true,
+        bgImageDataUrl: '',
+        bgImageOpacity: 1,
+        logoDataUrl: '',
+        signatureDataUrl: '',
+        logo: { visible: true, x: 50, y: 12, widthPct: 11 },
+        signature: { visible: true, x: 75, y: 78, widthPct: 18 },
+        seal: { visible: true, x: 18, y: 79, size: 68 },
+        qr: { visible: true, x: 88, y: 17, size: 66 },
+        elements: [
+          { id: 'foundation', label: 'Foundation Line', text: '{{foundation}}', x: 50, y: 12, fontFamily: 'Cinzel', fontSize: 11, bold: true, italic: false, uppercase: true, letterSpacing: 2.2, color: '#475569', align: 'center', maxWidthPct: 78, visible: true, highlightRedM: false },
+          { id: 'cin', label: 'CIN / Registration', text: 'CIN: {{cin}}', x: 50, y: 16, fontFamily: 'Plus Jakarta Sans', fontSize: 8.5, bold: false, italic: false, uppercase: false, letterSpacing: 0.8, color: '#64748B', align: 'center', maxWidthPct: 70, visible: true, highlightRedM: false },
+          { id: 'academy', label: 'Academy Title', text: "{{academyName}}", x: 50, y: 23, fontFamily: 'Cinzel', fontSize: 22, bold: true, italic: false, uppercase: true, letterSpacing: 1.8, color: '#0F172A', align: 'center', maxWidthPct: 86, visible: true, highlightRedM: true },
+          { id: 'certTitle', label: 'Certificate Heading', text: 'Certificate of Musical Achievement', x: 50, y: 33, fontFamily: 'Playfair Display', fontSize: 24, bold: true, italic: false, uppercase: false, letterSpacing: 0.6, color: '#9A6E1C', align: 'center', maxWidthPct: 82, visible: true, highlightRedM: false },
+          { id: 'presentedTo', label: 'Presented To Line', text: 'This is proudly presented to', x: 50, y: 42, fontFamily: 'Cormorant Garamond', fontSize: 15, bold: false, italic: true, uppercase: false, letterSpacing: 0.4, color: '#475569', align: 'center', maxWidthPct: 70, visible: true, highlightRedM: false },
+          { id: 'studentName', label: 'Student Name', text: '{{studentName}}', x: 50, y: 51, fontFamily: 'Great Vibes', fontSize: 44, bold: false, italic: false, uppercase: false, letterSpacing: 0.5, color: '#0F172A', align: 'center', maxWidthPct: 84, visible: true, highlightRedM: false },
+          { id: 'rollLine', label: 'Roll Number', text: 'Roll No: {{rollNo}}  •  Level {{certLevel}} of 8', x: 50, y: 58, fontFamily: 'JetBrains Mono', fontSize: 10, bold: true, italic: false, uppercase: false, letterSpacing: 0.5, color: '#475569', align: 'center', maxWidthPct: 76, visible: true, highlightRedM: false },
+          { id: 'bodyText', label: 'Achievement Statement', text: 'for successfully completing {{genuineDays}} genuine days of practical training, weekly evaluations, and audio assessments in', x: 50, y: 65, fontFamily: 'Cormorant Garamond', fontSize: 14, bold: false, italic: false, uppercase: false, letterSpacing: 0.2, color: '#334155', align: 'center', maxWidthPct: 72, visible: true, highlightRedM: false },
+          { id: 'courseGrade', label: 'Grade & Course', text: '{{grade}} — {{course}}', x: 50, y: 72, fontFamily: 'Playfair Display', fontSize: 17, bold: true, italic: false, uppercase: false, letterSpacing: 0.5, color: '#1E3A8A', align: 'center', maxWidthPct: 80, visible: true, highlightRedM: false },
+          { id: 'serialMeta', label: 'Serial & Date', text: 'Serial: {{certSerial}}  |  Issued: {{issueDate}}', x: 50, y: 88, fontFamily: 'JetBrains Mono', fontSize: 8.5, bold: false, italic: false, uppercase: false, letterSpacing: 0.3, color: '#475569', align: 'center', maxWidthPct: 50, visible: true, highlightRedM: false },
+          { id: 'signatory', label: 'Signatory Label', text: "Director, TIKARIYA'S SCHOOL OF MUSIC", x: 75, y: 86, fontFamily: 'Plus Jakarta Sans', fontSize: 9.5, bold: true, italic: false, uppercase: false, letterSpacing: 0.2, color: '#0F172A', align: 'center', maxWidthPct: 36, visible: true, highlightRedM: false }
+        ]
+      };
+    }
+
+    let appState = null;
+    let db = null;
+    let design = buildDefaultCertDesign();
+    let selectedId = 'studentName';
+    let activeSidebarTab = 'text';
+    let previewStudentId = '';
+    let batchSelectedIds = new Set();
+    let loadedImages = {}; // dataUrl -> HTMLImageElement
+    let qrCanvasCache = { text: '', canvas: null };
+    let elementHitBoxes = []; // [{ id, x, y, w, h }] in logical page pt
+    let dragState = null;
+    let snapCenterActive = { x: false, y: false };
+    let toastTimer = null;
+
+    function showToast(msg) {
+      const el = document.getElementById('studioToast');
+      if (!el) return;
+      el.textContent = msg;
+      el.classList.remove('hidden');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => el.classList.add('hidden'), 3200);
+    }
+
+    function escapeHtml(str) {
+      return String(str ?? '')
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    function formatLocalDate(d = new Date()) {
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    }
+
+    function getAppBaseUrl() {
+      const cleanPath = window.location.pathname.replace(/[^/]*$/, '');
+      return `${window.location.origin}${cleanPath}`;
+    }
+
+    function getSampleStudent() {
+      return {
+        id: 'sample_preview',
+        rollNo: 'TSM-0001',
+        name: 'Aarav Sharma',
+        course: 'Piano, Vocals',
+        grade: 'Elementary Grade 1',
+        batch: '5:00 PM',
+        genuineDays: 48
+      };
+    }
+
+    function getPreviewStudent() {
+      const students = (appState && Array.isArray(appState.students)) ? appState.students : [];
+      const found = students.find(s => s.id === previewStudentId) || students[0];
+      return found || getSampleStudent();
+    }
+
+    function getStudentTokens(stu) {
+      const genuine = Number(stu.genuineDays || 0);
+      const certLevel = Math.min(8, Math.max(1, Math.floor(genuine / 48) || 1));
+      const suffix = String(stu.rollNo || '0001').split('-').pop();
+      const certSerial = `TSM-CERT-${suffix}-G${certLevel}`;
+      return {
+        studentName: stu.name || 'Student Name',
+        rollNo: stu.rollNo || 'TSM-0001',
+        course: stu.course || 'Music',
+        grade: stu.grade || 'Elementary Grade 1',
+        genuineDays: String(genuine || 48),
+        certLevel: String(certLevel),
+        certSerial,
+        issueDate: formatLocalDate(),
+        batch: stu.batch || 'Regular',
+        academyName: "TIKARIYA'S SCHOOL OF MUSIC",
+        foundation: 'B. S. TIKARIYA CULTURAL FOUNDATION',
+        cin: 'U88900MH2025NPL454435'
+      };
+    }
+
+    function resolvePlaceholders(text, tokens) {
+      return String(text || '').replace(/\{\{(\w+)\}\}/g, (_, k) => tokens[k] !== undefined ? tokens[k] : `{{${k}}}`);
+    }
+
+    function loadLocalAppState() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY) || localStorage.getItem('tsm_pwa_state_v7');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && Array.isArray(parsed.students)) {
+            appState = parsed;
+            if (parsed.certDesignConfig && Array.isArray(parsed.certDesignConfig.elements)) {
+              design = mergeDesignWithDefaults(parsed.certDesignConfig);
+            } else if (parsed.certBgDataUrl) {
+              design.bgImageDataUrl = parsed.certBgDataUrl;
+            }
+            return;
+          }
+        }
+      } catch (e) { console.warn('Local state load error:', e); }
+      appState = { students: [], certDesignConfig: null, certBgDataUrl: '' };
+    }
+
+    function mergeDesignWithDefaults(cfg) {
+      const def = buildDefaultCertDesign();
+      return {
+        ...def,
+        ...cfg,
+        logo: { ...def.logo, ...(cfg.logo || {}) },
+        signature: { ...def.signature, ...(cfg.signature || {}) },
+        seal: { ...def.seal, ...(cfg.seal || {}) },
+        qr: { ...def.qr, ...(cfg.qr || {}) },
+        elements: Array.isArray(cfg.elements) && cfg.elements.length ? cfg.elements.map(e => ({ ...e })) : def.elements
+      };
+    }
+
+    async function initStudioFirebase() {
+      const statusEl = document.getElementById('syncStatusText');
+      try {
+        let cfg = DEFAULT_FIREBASE_CONFIG;
+        const cfgRaw = localStorage.getItem(CONFIG_KEY);
+        if (cfgRaw) {
+          const parsed = JSON.parse(cfgRaw);
+          if (parsed && parsed.apiKey && parsed.projectId) cfg = parsed;
+        }
+        if (!firebase.apps.length) firebase.initializeApp(cfg);
+        if (firebase.auth && !firebase.auth().currentUser) {
+          try { await firebase.auth().signInAnonymously(); } catch (_) {}
+        }
+        db = firebase.firestore();
+        const doc = await db.collection('tsm_system').doc('master_state').get();
+        if (doc.exists) {
+          const remote = doc.data();
+          if (remote && Array.isArray(remote.students)) {
+            appState = remote;
+            if (remote.certDesignConfig && Array.isArray(remote.certDesignConfig.elements)) {
+              design = mergeDesignWithDefaults(remote.certDesignConfig);
+            } else if (remote.certBgDataUrl && !design.bgImageDataUrl) {
+              design.bgImageDataUrl = remote.certBgDataUrl;
+            }
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(appState));
+            populateStudentSelectors();
+            syncArtControlsFromDesign();
+            renderLayersList();
+            renderInspector();
+            preloadAssetsAndRender();
+          }
+        }
+        if (statusEl) statusEl.textContent = 'Cloud Connected • Synced with Academy Portal';
+      } catch (err) {
+        console.warn('Studio Firebase warning:', err);
+        if (statusEl) statusEl.textContent = 'Local Mode • Saves to Academy Browser Cache';
+      }
+    }
+
+    async function saveDesignToAcademy() {
+      if (!appState) appState = { students: [] };
+      appState.certDesignConfig = JSON.parse(JSON.stringify(design));
+      if (design.bgImageDataUrl) appState.certBgDataUrl = design.bgImageDataUrl;
+      else appState.certBgDataUrl = '';
+
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(appState));
+      } catch (e) {
+        showToast('Saved layout (image too large for local cache — try a smaller background image).');
+      }
+
+      if (db && Array.isArray(appState.students) && appState.students.length > 0) {
+        try {
+          await db.collection('tsm_system').doc('master_state').set({
+            certDesignConfig: appState.certDesignConfig,
+            certBgDataUrl: appState.certBgDataUrl || '',
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+          }, { merge: true });
+          showToast('Certificate design saved & synced to Academy Cloud');
+          return;
+        } catch (err) {
+          console.warn('Cloud save failed:', err);
+        }
+      }
+      showToast('Certificate design saved to Academy Portal');
+    }
+
+    function setSidebarTab(tab) {
+      activeSidebarTab = tab;
+      ['text', 'art', 'export'].forEach(t => {
+        const panel = document.getElementById('sidebarPanel_' + t);
+        const btn = document.getElementById('tabBtn_' + t);
+        if (panel) panel.classList.toggle('hidden', t !== tab);
+        if (btn) {
+          btn.className = t === tab
+            ? 'py-2 px-2 text-xs font-bold rounded-lg transition bg-[#0F172A] text-white'
+            : 'py-2 px-2 text-xs font-bold rounded-lg transition text-slate-600 hover:bg-slate-200';
+        }
+      });
+    }
+
+    function populateStudentSelectors() {
+      const students = (appState && Array.isArray(appState.students)) ? appState.students : [];
+      const sel = document.getElementById('studentPreviewSelect');
+      const urlParamStu = new URLSearchParams(window.location.search).get('student');
+      if (urlParamStu && students.some(s => s.id === urlParamStu)) {
+        previewStudentId = urlParamStu;
+      } else if (!previewStudentId && students.length) {
+        previewStudentId = students[0].id;
+      }
+
+      if (sel) {
+        if (students.length) {
+          sel.innerHTML = students.map(s => `<option value="${escapeHtml(s.id)}" ${s.id === previewStudentId ? 'selected' : ''}>${escapeHtml(s.name)} (${escapeHtml(s.rollNo)})</option>`).join('');
+        } else {
+          sel.innerHTML = `<option value="sample_preview">Aarav Sharma (Sample)</option>`;
+        }
+      }
+
+      const batchList = document.getElementById('batchStudentsList');
+      if (batchList) {
+        if (!students.length) {
+          batchList.innerHTML = `<div class="p-3 text-[11px] text-slate-500 text-center">No students loaded yet.</div>`;
+        } else {
+          batchList.innerHTML = students.map(s => {
+            const checked = batchSelectedIds.has(s.id);
+            return `
+              <label class="flex items-center justify-between px-2.5 py-2 hover:bg-white cursor-pointer">
+                <span class="flex items-center gap-2 min-w-0">
+                  <input type="checkbox" ${checked ? 'checked' : ''} onchange="toggleBatchStudent('${escapeHtml(s.id)}', this.checked)" class="w-3.5 h-3.5 accent-[#0F172A]" />
+                  <span class="truncate font-semibold text-slate-800">${escapeHtml(s.name)}</span>
+                </span>
+                <span class="font-mono text-[10px] text-slate-500 shrink-0">${escapeHtml(s.rollNo)} · ${Number(s.genuineDays || 0)}d</span>
+              </label>
+            `;
+          }).join('');
+        }
+      }
+    }
+
+    function onPreviewStudentChanged(stuId) {
+      previewStudentId = stuId;
+      renderCanvas();
+    }
+
+    function toggleBatchStudent(stuId, checked) {
+      if (checked) batchSelectedIds.add(stuId);
+      else batchSelectedIds.delete(stuId);
+    }
+
+    function selectBatchStudents(mode) {
+      const students = (appState && Array.isArray(appState.students)) ? appState.students : [];
+      batchSelectedIds.clear();
+      if (mode === 'all') students.forEach(s => batchSelectedIds.add(s.id));
+      else if (mode === 'eligible') students.filter(s => Number(s.genuineDays || 0) >= 48).forEach(s => batchSelectedIds.add(s.id));
+      populateStudentSelectors();
+    }
+
+    function syncArtControlsFromDesign() {
+      const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+      const setChk = (id, v) => { const el = document.getElementById(id); if (el) el.checked = !!v; };
+      setVal('pageFormatSelect', design.pageFormat);
+      setVal('bgColorInput', design.bgColor);
+      setVal('borderColorInput', design.borderColor);
+      setVal('accentColorInput', design.accentColor);
+      setVal('borderStyleSelect', design.borderStyle);
+      setVal('dividerStyleSelect', design.dividerStyle);
+      setVal('borderInsetInput', design.borderInset);
+      const biv = document.getElementById('borderInsetVal');
+      if (biv) biv.textContent = String(design.borderInset);
+      setChk('showSealCheckbox', design.showSeal);
+      setChk('showSigLineCheckbox', design.showSignatureLine);
+      setVal('bgOpacityInput', Math.round((design.bgImageOpacity ?? 1) * 100));
+      const bov = document.getElementById('bgOpacityVal');
+      if (bov) bov.textContent = Math.round((design.bgImageOpacity ?? 1) * 100) + '%';
+      setChk('qrShowCheckbox', design.qr.visible);
+      setVal('qrSizeInput', design.qr.size);
+    }
+
+    function updatePageSetting(key, val) {
+      design[key] = val;
+      if (key === 'borderInset') {
+        const biv = document.getElementById('borderInsetVal');
+        if (biv) biv.textContent = String(val);
+      }
+      if (key === 'bgImageOpacity') {
+        const bov = document.getElementById('bgOpacityVal');
+        if (bov) bov.textContent = Math.round(val * 100) + '%';
+      }
+      renderCanvas();
+    }
+
+    function updateSpecialLayer(layerKey, field, val) {
+      if (!design[layerKey]) return;
+      design[layerKey][field] = val;
+      renderLayersList();
+      renderInspector();
+      renderCanvas();
+    }
+
+    function applyArtPreset(preset) {
+      const base = buildDefaultCertDesign();
+      // Keep user's uploaded logo/signature/bg if any, and preserve custom page format
+      const keepAssets = {
+        pageFormat: design.pageFormat,
+        logoDataUrl: design.logoDataUrl,
+        signatureDataUrl: design.signatureDataUrl,
+        bgImageDataUrl: preset === 'clean_blank' ? design.bgImageDataUrl : ''
+      };
+      if (preset === 'royal_gold') {
+        design = { ...base, ...keepAssets };
+      } else if (preset === 'tsm_navy') {
+        design = {
+          ...base, ...keepAssets,
+          bgColor: '#FFFFFF', borderColor: '#0F172A', accentColor: '#B91C1C',
+          borderStyle: 'double_classic', dividerStyle: 'simple_rule',
+          elements: base.elements.map(el => {
+            if (el.id === 'certTitle') return { ...el, color: '#B91C1C', fontFamily: 'Cinzel', fontSize: 21, uppercase: true, letterSpacing: 1.5 };
+            if (el.id === 'studentName') return { ...el, fontFamily: 'Playfair Display', fontSize: 34, bold: true };
+            if (el.id === 'courseGrade') return { ...el, color: '#0F172A' };
+            return el;
+          })
+        };
+      } else if (preset === 'midnight_gala') {
+        design = {
+          ...base, ...keepAssets,
+          bgColor: '#0B1224', borderColor: '#D4AF37', accentColor: '#EF4444',
+          borderStyle: 'double_filigree', dividerStyle: 'diamond_rule',
+          elements: base.elements.map(el => {
+            if (el.id === 'foundation' || el.id === 'cin' || el.id === 'presentedTo' || el.id === 'rollLine' || el.id === 'serialMeta') return { ...el, color: '#CBD5E1' };
+            if (el.id === 'bodyText') return { ...el, color: '#E2E8F0' };
+            if (el.id === 'academy' || el.id === 'studentName' || el.id === 'signatory') return { ...el, color: '#FFFFFF' };
+            if (el.id === 'certTitle' || el.id === 'courseGrade') return { ...el, color: '#FACC15' };
+            return el;
+          })
+        };
+      } else if (preset === 'minimal_ivory') {
+        design = {
+          ...base, ...keepAssets,
+          bgColor: '#FAF9F6', borderColor: '#1E293B', accentColor: '#475569',
+          borderStyle: 'single_clean', dividerStyle: 'simple_rule', showSeal: false,
+          elements: base.elements.map(el => {
+            if (el.id === 'certTitle') return { ...el, fontFamily: 'Cormorant Garamond', fontSize: 26, color: '#0F172A' };
+            if (el.id === 'studentName') return { ...el, fontFamily: 'Playfair Display', fontSize: 34, bold: true };
+            return el;
+          })
+        };
+      } else if (preset === 'musical_crest') {
+        design = {
+          ...base, ...keepAssets,
+          bgColor: '#FFFFFF', borderColor: '#1E3A8A', accentColor: '#15803D',
+          borderStyle: 'corner_brackets', dividerStyle: 'musical_staff', showSeal: true,
+          elements: base.elements.map(el => {
+            if (el.id === 'certTitle') return { ...el, color: '#1E3A8A' };
+            if (el.id === 'courseGrade') return { ...el, color: '#15803D' };
+            return el;
+          })
+        };
+      } else if (preset === 'clean_blank') {
+        design = {
+          ...base, ...keepAssets,
+          bgColor: '#FFFFFF', borderStyle: 'none', dividerStyle: 'none', showSeal: false
+        };
+      }
+      syncArtControlsFromDesign();
+      renderLayersList();
+      renderInspector();
+      preloadAssetsAndRender();
+      showToast('Applied certificate design preset');
+    }
+
+    function resetDefaultDesign() {
+      design = buildDefaultCertDesign();
+      selectedId = 'studentName';
+      syncArtControlsFromDesign();
+      renderLayersList();
+      renderInspector();
+      preloadAssetsAndRender();
+      showToast('Reset to default certificate design');
+    }
+
+    function uploadArtAsset(e, field, maxDim, quality) {
+      const file = e.target && e.target.files && e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = ev => {
+        const img = new Image();
+        img.onload = () => {
+          const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+          const w = Math.max(1, Math.round(img.width * scale));
+          const h = Math.max(1, Math.round(img.height * scale));
+          const c = document.createElement('canvas');
+          c.width = w; c.height = h;
+          const ctx = c.getContext('2d');
+          ctx.drawImage(img, 0, 0, w, h);
+          const isPng = file.type === 'image/png' || field !== 'bgImageDataUrl';
+          const outUrl = isPng ? c.toDataURL('image/png') : c.toDataURL('image/jpeg', quality);
+          design[field] = outUrl;
+          if (field === 'logoDataUrl') { design.logo.visible = true; selectedId = 'logo'; }
+          if (field === 'signatureDataUrl') { design.signature.visible = true; selectedId = 'signature'; }
+          preloadAssetsAndRender();
+          renderLayersList();
+          renderInspector();
+          showToast('Art asset loaded — drag on canvas to place');
+        };
+        img.src = ev.target.result;
+      };
+      reader.readAsDataURL(file);
+      e.target.value = '';
+    }
+
+    function clearArtAsset(field) {
+      design[field] = '';
+      renderLayersList();
+      renderInspector();
+      renderCanvas();
+      showToast('Removed image asset');
+    }
+
+    function selectElement(id) {
+      selectedId = id;
+      renderLayersList();
+      renderInspector();
+      renderCanvas();
+    }
+
+    function addCustomTextLayer() {
+      const id = 'txt_' + Date.now();
+      design.elements.push({
+        id,
+        label: 'Custom Text',
+        text: 'Distinction Award',
+        x: 50, y: 78,
+        fontFamily: 'Playfair Display',
+        fontSize: 16,
+        bold: true, italic: false, uppercase: false,
+        letterSpacing: 0.5, color: '#0F172A', align: 'center',
+        maxWidthPct: 70, visible: true, highlightRedM: false
+      });
+      selectElement(id);
+      showToast('Added custom text element');
+    }
+
+    function duplicateSelectedText() {
+      const el = design.elements.find(e => e.id === selectedId);
+      if (!el) return;
+      const copy = { ...el, id: 'txt_' + Date.now(), label: el.label + ' Copy', y: Math.min(94, el.y + 5) };
+      design.elements.push(copy);
+      selectElement(copy.id);
+    }
+
+    function deleteSelectedText() {
+      const idx = design.elements.findIndex(e => e.id === selectedId);
+      if (idx === -1) return;
+      design.elements.splice(idx, 1);
+      selectedId = design.elements[0]?.id || 'qr';
+      renderLayersList();
+      renderInspector();
+      renderCanvas();
+    }
+
+    function updateSelectedText(field, val) {
+      const el = design.elements.find(e => e.id === selectedId);
+      if (!el) return;
+      el[field] = val;
+      if (field === 'label' || field === 'visible') renderLayersList();
+      renderCanvas();
+    }
+
+    function insertPlaceholderIntoSelected(token) {
+      const el = design.elements.find(e => e.id === selectedId);
+      if (!el) return;
+      el.text = (el.text ? el.text + ' ' : '') + token;
+      renderInspector();
+      renderCanvas();
+    }
+
+    function centerSelectedHorizontally() {
+      const el = design.elements.find(e => e.id === selectedId);
+      if (el) { el.x = 50; renderInspector(); renderCanvas(); return; }
+      if (['qr', 'seal', 'logo', 'signature'].includes(selectedId) && design[selectedId]) {
+        design[selectedId].x = 50;
+        renderInspector();
+        renderCanvas();
+      }
+    }
+
+    function renderLayersList() {
+      const host = document.getElementById('layersListContainer');
+      if (!host) return;
+      const specialLayers = [
+        { id: 'qr', label: 'Verification QR Code', visible: design.qr.visible, tag: 'QR' },
+        { id: 'seal', label: 'Conservatory Seal', visible: design.showSeal && design.seal.visible, tag: 'Art' },
+        ...(design.logoDataUrl ? [{ id: 'logo', label: 'Uploaded Logo / Crest', visible: design.logo.visible, tag: 'Img' }] : []),
+        ...(design.signatureDataUrl ? [{ id: 'signature', label: 'Uploaded Signature', visible: design.signature.visible, tag: 'Img' }] : [])
+      ];
+
+      const textRows = design.elements.map(el => `
+        <button type="button" onclick="selectElement('${escapeHtml(el.id)}')"
+          class="w-full px-2.5 py-2 rounded-lg border text-left flex items-center justify-between gap-2 transition ${
+            selectedId === el.id
+              ? 'bg-[#0F172A] text-white border-[#0F172A]'
+              : 'bg-white hover:bg-slate-50 text-slate-800 border-slate-200'
+          }">
+          <span class="truncate text-xs font-semibold ${el.visible ? '' : 'opacity-45 line-through'}">${escapeHtml(el.label || el.text)}</span>
+          <span class="text-[10px] font-mono opacity-75 shrink-0">${el.fontSize}pt</span>
+        </button>
+      `).join('');
+
+      const specialRows = specialLayers.map(sp => `
+        <button type="button" onclick="selectElement('${sp.id}')"
+          class="w-full px-2.5 py-2 rounded-lg border text-left flex items-center justify-between gap-2 transition ${
+            selectedId === sp.id
+              ? 'bg-indigo-700 text-white border-indigo-700'
+              : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
+          }">
+          <span class="truncate text-xs font-semibold ${sp.visible ? '' : 'opacity-45 line-through'}">${escapeHtml(sp.label)}</span>
+          <span class="text-[10px] font-mono opacity-75 shrink-0">${sp.tag}</span>
+        </button>
+      `).join('');
+
+      host.innerHTML = textRows + `<div class="pt-2 border-t border-slate-200 space-y-1.5">${specialRows}</div>`;
+    }
+
+    function renderInspector() {
+      const host = document.getElementById('inspectorContainer');
+      const badge = document.getElementById('selectedElementBadge');
+      if (!host) return;
+
+      const textEl = design.elements.find(e => e.id === selectedId);
+      if (textEl) {
+        if (badge) badge.textContent = `Editing: ${textEl.label || textEl.id}`;
+        host.innerHTML = `
+          <div class="space-y-1.5">
+            <label class="block font-bold text-slate-700">Layer Name</label>
+            <input value="${escapeHtml(textEl.label || '')}" oninput="updateSelectedText('label', this.value)" class="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg" />
+          </div>
+
+          <div class="space-y-1.5">
+            <label class="block font-bold text-slate-700">Text Content</label>
+            <textarea rows="3" oninput="updateSelectedText('text', this.value)" class="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg font-medium">${escapeHtml(textEl.text || '')}</textarea>
+            <div class="flex flex-wrap gap-1 pt-0.5">
+              ${PLACEHOLDER_CHIPS.map(tok => `<button type="button" onclick="insertPlaceholderIntoSelected('${tok}')" class="px-1.5 py-0.5 bg-slate-100 hover:bg-indigo-50 hover:text-indigo-700 border border-slate-200 rounded font-mono text-[9.5px]">${tok}</button>`).join('')}
+            </div>
+          </div>
+
+          <div class="space-y-2 pt-2 border-t border-slate-200">
+            <label class="block font-bold text-slate-700">Font Family</label>
+            <select onchange="updateSelectedText('fontFamily', this.value)" class="w-full px-2.5 py-2 border border-slate-300 rounded-lg bg-white font-semibold">
+              ${FONT_OPTIONS.map(f => `<option value="${f.value}" ${textEl.fontFamily === f.value ? 'selected' : ''}>${f.label}</option>`).join('')}
+            </select>
+
+            <div class="grid grid-cols-2 gap-2">
+              <label class="space-y-1">
+                <span class="block text-[10px] font-semibold text-slate-500">Font Size (pt)</span>
+                <input type="number" min="7" max="80" step="0.5" value="${textEl.fontSize}" oninput="updateSelectedText('fontSize', Number(this.value))" class="w-full px-2 py-1.5 border border-slate-300 rounded-lg tabular-nums font-bold" />
+              </label>
+              <label class="space-y-1">
+                <span class="block text-[10px] font-semibold text-slate-500">Text Color</span>
+                <input type="color" value="${textEl.color}" oninput="updateSelectedText('color', this.value)" class="w-full h-9 rounded-lg border border-slate-300 cursor-pointer" />
+              </label>
+            </div>
+            <input type="range" min="8" max="68" step="0.5" value="${textEl.fontSize}" oninput="updateSelectedText('fontSize', Number(this.value)); this.previousElementSibling.querySelector('input[type=number]').value=this.value;" class="w-full" />
+
+            <div class="grid grid-cols-3 gap-1.5">
+              <button type="button" onclick="updateSelectedText('bold', ${!textEl.bold}); renderInspector();" class="py-1.5 rounded-lg border font-bold ${textEl.bold ? 'bg-[#0F172A] text-white border-[#0F172A]' : 'bg-white text-slate-700 border-slate-300'}">Bold</button>
+              <button type="button" onclick="updateSelectedText('italic', ${!textEl.italic}); renderInspector();" class="py-1.5 rounded-lg border italic font-semibold ${textEl.italic ? 'bg-[#0F172A] text-white border-[#0F172A]' : 'bg-white text-slate-700 border-slate-300'}">Italic</button>
+              <button type="button" onclick="updateSelectedText('uppercase', ${!textEl.uppercase}); renderInspector();" class="py-1.5 rounded-lg border font-semibold ${textEl.uppercase ? 'bg-[#0F172A] text-white border-[#0F172A]' : 'bg-white text-slate-700 border-slate-300'}">AA</button>
+            </div>
+
+            <div class="grid grid-cols-3 gap-1.5">
+              ${['left', 'center', 'right'].map(a => `
+                <button type="button" onclick="updateSelectedText('align', '${a}'); renderInspector();" class="py-1.5 rounded-lg border font-semibold capitalize ${textEl.align === a ? 'bg-indigo-700 text-white border-indigo-700' : 'bg-white text-slate-700 border-slate-300'}">${a}</button>
+              `).join('')}
+            </div>
+
+            <div class="grid grid-cols-2 gap-2">
+              <label class="space-y-1">
+                <span class="block text-[10px] font-semibold text-slate-500">Letter Spacing</span>
+                <input type="number" min="-1" max="12" step="0.2" value="${textEl.letterSpacing || 0}" oninput="updateSelectedText('letterSpacing', Number(this.value))" class="w-full px-2 py-1 border border-slate-300 rounded tabular-nums" />
+              </label>
+              <label class="space-y-1">
+                <span class="block text-[10px] font-semibold text-slate-500">Wrap Width (%)</span>
+                <input type="number" min="20" max="96" value="${textEl.maxWidthPct || 80}" oninput="updateSelectedText('maxWidthPct', Number(this.value))" class="w-full px-2 py-1 border border-slate-300 rounded tabular-nums" />
+              </label>
+            </div>
+          </div>
+
+          <div class="space-y-2 pt-2 border-t border-slate-200">
+            <div class="font-bold text-slate-700">Exact Placement (%)</div>
+            <div class="grid grid-cols-2 gap-2">
+              <label class="space-y-1">
+                <span class="block text-[10px] font-semibold text-slate-500">X Horizontal (%)</span>
+                <input type="number" min="2" max="98" step="0.5" value="${Number(textEl.x).toFixed(1)}" oninput="updateSelectedText('x', Number(this.value))" class="w-full px-2 py-1 border border-slate-300 rounded tabular-nums" />
+              </label>
+              <label class="space-y-1">
+                <span class="block text-[10px] font-semibold text-slate-500">Y Vertical (%)</span>
+                <input type="number" min="2" max="98" step="0.5" value="${Number(textEl.y).toFixed(1)}" oninput="updateSelectedText('y', Number(this.value))" class="w-full px-2 py-1 border border-slate-300 rounded tabular-nums" />
+              </label>
+            </div>
+            <label class="flex items-center gap-2 font-semibold text-slate-700 cursor-pointer pt-1">
+              <input type="checkbox" ${textEl.visible ? 'checked' : ''} onchange="updateSelectedText('visible', this.checked)" class="w-4 h-4 accent-[#0F172A]" />
+              <span>Visible on Certificate</span>
+            </label>
+            <label class="flex items-center gap-2 font-semibold text-slate-700 cursor-pointer">
+              <input type="checkbox" ${textEl.highlightRedM ? 'checked' : ''} onchange="updateSelectedText('highlightRedM', this.checked)" class="w-4 h-4 accent-[#B91C1C]" />
+              <span>Highlight Red "M" in MUSIC</span>
+            </label>
+          </div>
+
+          <div class="pt-3 border-t border-slate-200 flex gap-2">
+            <button type="button" onclick="duplicateSelectedText()" class="flex-1 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold rounded-lg border border-slate-300">Duplicate</button>
+            <button type="button" onclick="deleteSelectedText()" class="flex-1 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 font-semibold rounded-lg border border-red-200">Delete</button>
+          </div>
+        `;
+        return;
+      }
+
+      if (['qr', 'seal', 'logo', 'signature'].includes(selectedId)) {
+        const obj = design[selectedId];
+        const titles = { qr: 'Verification QR Code', seal: 'Conservatory Seal Medallion', logo: 'Uploaded Academy Logo', signature: 'Uploaded Signature Image' };
+        if (badge) badge.textContent = `Editing: ${titles[selectedId]}`;
+        const sizeField = (selectedId === 'qr' || selectedId === 'seal') ? 'size' : 'widthPct';
+        const sizeLabel = (selectedId === 'qr' || selectedId === 'seal') ? 'Size (pt)' : 'Width (% of Page)';
+        host.innerHTML = `
+          <div class="font-bold text-sm text-[#0F172A]">${titles[selectedId]}</div>
+          <p class="text-[11px] text-slate-500">Drag directly on the certificate canvas or adjust exact coordinates below.</p>
+          <div class="grid grid-cols-2 gap-2">
+            <label class="space-y-1">
+              <span class="block text-[10px] font-semibold text-slate-500">X Position (%)</span>
+              <input type="number" min="4" max="96" step="0.5" value="${Number(obj.x).toFixed(1)}" oninput="updateSpecialLayer('${selectedId}', 'x', Number(this.value))" class="w-full px-2 py-1.5 border border-slate-300 rounded tabular-nums" />
+            </label>
+            <label class="space-y-1">
+              <span class="block text-[10px] font-semibold text-slate-500">Y Position (%)</span>
+              <input type="number" min="4" max="96" step="0.5" value="${Number(obj.y).toFixed(1)}" oninput="updateSpecialLayer('${selectedId}', 'y', Number(this.value))" class="w-full px-2 py-1.5 border border-slate-300 rounded tabular-nums" />
+            </label>
+          </div>
+          <label class="block space-y-1">
+            <span class="block text-[10px] font-semibold text-slate-500">${sizeLabel}: <b class="tabular-nums">${obj[sizeField]}</b></span>
+            <input type="range" min="${sizeField === 'size' ? 36 : 6}" max="${sizeField === 'size' ? 140 : 45}" value="${obj[sizeField]}" oninput="updateSpecialLayer('${selectedId}', '${sizeField}', Number(this.value))" class="w-full" />
+          </label>
+          <label class="flex items-center gap-2 font-semibold text-slate-700 cursor-pointer pt-1">
+            <input type="checkbox" ${obj.visible ? 'checked' : ''} onchange="updateSpecialLayer('${selectedId}', 'visible', this.checked)" class="w-4 h-4 accent-[#0F172A]" />
+            <span>Visible on Certificate</span>
+          </label>
+        `;
+      }
+    }
+
+    function ensureImageLoaded(dataUrl) {
+      return new Promise(resolve => {
+        if (!dataUrl) return resolve(null);
+        if (loadedImages[dataUrl] && loadedImages[dataUrl].complete) return resolve(loadedImages[dataUrl]);
+        const img = new Image();
+        img.onload = () => { loadedImages[dataUrl] = img; resolve(img); };
+        img.onerror = () => resolve(null);
+        img.src = dataUrl;
+      });
+    }
+
+    async function preloadAssetsAndRender() {
+      await Promise.all([
+        ensureImageLoaded(design.bgImageDataUrl),
+        ensureImageLoaded(design.logoDataUrl),
+        ensureImageLoaded(design.signatureDataUrl)
+      ]);
+      renderCanvas();
+    }
+
+    function getQrCanvasForSerial(serial) {
+      const url = `${getAppBaseUrl()}?cert=${encodeURIComponent(serial)}`;
+      if (qrCanvasCache.text === url && qrCanvasCache.canvas) return qrCanvasCache.canvas;
+      const tmp = document.createElement('div');
+      tmp.style.position = 'fixed';
+      tmp.style.left = '-9999px';
+      document.body.appendChild(tmp);
+      try {
+        new QRCode(tmp, { text: url, width: 256, height: 256, correctLevel: QRCode.CorrectLevel.M });
+        const qrEl = tmp.querySelector('canvas');
+        if (qrEl) {
+          const copy = document.createElement('canvas');
+          copy.width = qrEl.width; copy.height = qrEl.height;
+          copy.getContext('2d').drawImage(qrEl, 0, 0);
+          qrCanvasCache = { text: url, canvas: copy };
+          return copy;
+        }
+      } catch (e) { console.warn('QR render error:', e); }
+      finally { document.body.removeChild(tmp); }
+      return null;
+    }
+
+    function drawSpacedTextLine(ctx, text, x, y, align, spacing, highlightRedM) {
+      const drawChars = (str, startX) => {
+        let cx = startX;
+        const idxM = highlightRedM ? str.toUpperCase().indexOf('OF MUSIC') : -1;
+        const mPos = idxM !== -1 ? idxM + 3 : -1;
+        const baseColor = ctx.fillStyle;
+        for (let i = 0; i < str.length; i++) {
+          const ch = str[i];
+          ctx.fillStyle = (i === mPos) ? '#B91C1C' : baseColor;
+          ctx.fillText(ch, cx, y);
+          cx += ctx.measureText(ch).width + spacing;
+        }
+        ctx.fillStyle = baseColor;
+      };
+
+      let totalW = 0;
+      for (let i = 0; i < text.length; i++) {
+        totalW += ctx.measureText(text[i]).width + (i < text.length - 1 ? spacing : 0);
+      }
+      let startX = x;
+      if (align === 'center') startX = x - totalW / 2;
+      else if (align === 'right') startX = x - totalW;
+      ctx.textAlign = 'left';
+      drawChars(text, startX);
+      return totalW;
+    }
+
+    function wrapSpacedText(ctx, text, maxWidth, spacing) {
+      const words = String(text || '').split(/\s+/);
+      const lines = [];
+      let current = '';
+      const measure = (s) => {
+        let w = 0;
+        for (let i = 0; i < s.length; i++) w += ctx.measureText(s[i]).width + (i < s.length - 1 ? spacing : 0);
+        return w;
+      };
+      words.forEach(word => {
+        const test = current ? current + ' ' + word : word;
+        if (measure(test) > maxWidth && current) {
+          lines.push(current);
+          current = word;
+        } else {
+          current = test;
+        }
+      });
+      if (current) lines.push(current);
+      return lines.length ? lines : [''];
+    }
+
+    function drawVectorCornerFlourish(ctx, cx, cy, sx, sy, color, size) {
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.scale(sx, sy);
+      ctx.strokeStyle = color;
+      ctx.fillStyle = color;
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(0, 0); ctx.lineTo(size, 0);
+      ctx.moveTo(0, 0); ctx.lineTo(0, size);
+      ctx.moveTo(6, 6); ctx.lineTo(size * 0.72, 6);
+      ctx.moveTo(6, 6); ctx.lineTo(6, size * 0.72);
+      ctx.stroke();
+      // Decorative diamond
+      ctx.beginPath();
+      ctx.moveTo(12, 6); ctx.lineTo(17, 12); ctx.lineTo(12, 18); ctx.lineTo(6, 12);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+
+    function drawConservatorySeal(ctx, cx, cy, r, primaryColor, accentColor) {
+      ctx.save();
+      ctx.translate(cx, cy);
+      // Ribbons behind seal
+      ctx.fillStyle = primaryColor;
+      ctx.beginPath();
+      ctx.moveTo(-r * 0.35, r * 0.55); ctx.lineTo(-r * 0.55, r * 1.45);
+      ctx.lineTo(-r * 0.25, r * 1.25); ctx.lineTo(-r * 0.04, r * 1.45);
+      ctx.lineTo(0, r * 0.65); ctx.closePath(); ctx.fill();
+
+      ctx.beginPath();
+      ctx.moveTo(r * 0.35, r * 0.55); ctx.lineTo(r * 0.55, r * 1.45);
+      ctx.lineTo(r * 0.25, r * 1.25); ctx.lineTo(r * 0.04, r * 1.45);
+      ctx.lineTo(0, r * 0.65); ctx.closePath(); ctx.fill();
+
+      // Starburst outer rim
+      const teeth = 28;
+      ctx.beginPath();
+      for (let i = 0; i < teeth * 2; i++) {
+        const ang = (i * Math.PI) / teeth;
+        const rad = i % 2 === 0 ? r : r * 0.88;
+        const px = Math.cos(ang) * rad;
+        const py = Math.sin(ang) * rad;
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      ctx.fillStyle = accentColor;
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.arc(0, 0, r * 0.76, 0, Math.PI * 2);
+      ctx.fillStyle = primaryColor;
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.arc(0, 0, r * 0.68, 0, Math.PI * 2);
+      ctx.strokeStyle = accentColor;
+      ctx.lineWidth = 1.4;
+      ctx.stroke();
+
+      ctx.fillStyle = '#FFFFFF';
+      ctx.font = `800 ${Math.round(r * 0.38)}px "Cinzel", serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('TSM', 0, -r * 0.06);
+
+      ctx.fillStyle = accentColor;
+      ctx.font = `700 ${Math.round(r * 0.16)}px "Plus Jakarta Sans", sans-serif`;
+      ctx.fillText('VERIFIED', 0, r * 0.28);
+      ctx.restore();
+    }
+
+    function drawCertificateToContext(ctx, stu, pageW, pageH, showEditorOverlay) {
+      const tokens = getStudentTokens(stu);
+      const hitBoxes = [];
+
+      // 1. Paper Background
+      ctx.fillStyle = design.bgColor || '#FFFFFF';
+      ctx.fillRect(0, 0, pageW, pageH);
+
+      // 2. Uploaded Background Image
+      if (design.bgImageDataUrl && loadedImages[design.bgImageDataUrl]) {
+        ctx.save();
+        ctx.globalAlpha = design.bgImageOpacity ?? 1;
+        ctx.drawImage(loadedImages[design.bgImageDataUrl], 0, 0, pageW, pageH);
+        ctx.restore();
+      }
+
+      // 3. Vector Frame / Art Borders
+      const inset = Number(design.borderInset || 26);
+      const bw = pageW - inset * 2;
+      const bh = pageH - inset * 2;
+      if (design.borderStyle === 'double_filigree') {
+        ctx.strokeStyle = design.borderColor;
+        ctx.lineWidth = 2.6;
+        ctx.strokeRect(inset, inset, bw, bh);
+        ctx.strokeStyle = design.accentColor;
+        ctx.lineWidth = 1.2;
+        ctx.strokeRect(inset + 7, inset + 7, bw - 14, bh - 14);
+        drawVectorCornerFlourish(ctx, inset + 12, inset + 12, 1, 1, design.accentColor, 34);
+        drawVectorCornerFlourish(ctx, pageW - inset - 12, inset + 12, -1, 1, design.accentColor, 34);
+        drawVectorCornerFlourish(ctx, inset + 12, pageH - inset - 12, 1, -1, design.accentColor, 34);
+        drawVectorCornerFlourish(ctx, pageW - inset - 12, pageH - inset - 12, -1, -1, design.accentColor, 34);
+      } else if (design.borderStyle === 'double_classic') {
+        ctx.strokeStyle = design.borderColor;
+        ctx.lineWidth = 3;
+        ctx.strokeRect(inset, inset, bw, bh);
+        ctx.strokeStyle = design.accentColor;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(inset + 8, inset + 8, bw - 16, bh - 16);
+      } else if (design.borderStyle === 'single_clean') {
+        ctx.strokeStyle = design.borderColor;
+        ctx.lineWidth = 1.6;
+        ctx.strokeRect(inset, inset, bw, bh);
+      } else if (design.borderStyle === 'corner_brackets') {
+        drawVectorCornerFlourish(ctx, inset, inset, 1, 1, design.borderColor, 48);
+        drawVectorCornerFlourish(ctx, pageW - inset, inset, -1, 1, design.borderColor, 48);
+        drawVectorCornerFlourish(ctx, inset, pageH - inset, 1, -1, design.borderColor, 48);
+        drawVectorCornerFlourish(ctx, pageW - inset, pageH - inset, -1, -1, design.borderColor, 48);
+      }
+
+      // 4. Decorative Divider Art (between Academy Title and Certificate Heading)
+      const divY = pageH * 0.275;
+      if (design.dividerStyle === 'diamond_rule') {
+        ctx.save();
+        ctx.strokeStyle = design.accentColor;
+        ctx.fillStyle = design.accentColor;
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.moveTo(pageW * 0.28, divY); ctx.lineTo(pageW * 0.47, divY);
+        ctx.moveTo(pageW * 0.53, divY); ctx.lineTo(pageW * 0.72, divY);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(pageW * 0.5, divY - 5); ctx.lineTo(pageW * 0.5 + 8, divY);
+        ctx.lineTo(pageW * 0.5, divY + 5); ctx.lineTo(pageW * 0.5 - 8, divY);
+        ctx.closePath(); ctx.fill();
+        ctx.restore();
+      } else if (design.dividerStyle === 'musical_staff') {
+        ctx.save();
+        ctx.strokeStyle = design.accentColor;
+        ctx.globalAlpha = 0.65;
+        ctx.lineWidth = 0.8;
+        for (let i = -2; i <= 2; i++) {
+          ctx.beginPath();
+          ctx.moveTo(pageW * 0.24, divY + i * 3);
+          ctx.lineTo(pageW * 0.76, divY + i * 3);
+          ctx.stroke();
+        }
+        ctx.restore();
+      } else if (design.dividerStyle === 'simple_rule') {
+        ctx.save();
+        ctx.strokeStyle = design.accentColor;
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.moveTo(pageW * 0.34, divY); ctx.lineTo(pageW * 0.66, divY);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // 5. Optional Signature Line above Signatory
+      if (design.showSignatureLine) {
+        const sigEl = design.elements.find(e => e.id === 'signatory');
+        if (sigEl && sigEl.visible) {
+          const sx = (sigEl.x / 100) * pageW;
+          const sy = (sigEl.y / 100) * pageH - 12;
+          ctx.save();
+          ctx.strokeStyle = design.borderColor;
+          ctx.globalAlpha = 0.5;
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(sx - 85, sy);
+          ctx.lineTo(sx + 85, sy);
+          ctx.stroke();
+          ctx.restore();
+        }
+      }
+
+      // 6. Uploaded Logo / Crest
+      if (design.logoDataUrl && design.logo.visible && loadedImages[design.logoDataUrl]) {
+        const img = loadedImages[design.logoDataUrl];
+        const w = (design.logo.widthPct / 100) * pageW;
+        const h = w * (img.height / img.width);
+        const cx = (design.logo.x / 100) * pageW;
+        const cy = (design.logo.y / 100) * pageH;
+        ctx.drawImage(img, cx - w / 2, cy - h / 2, w, h);
+        hitBoxes.push({ id: 'logo', x: cx - w / 2, y: cy - h / 2, w, h });
+      }
+
+      // 7. Uploaded Director Signature
+      if (design.signatureDataUrl && design.signature.visible && loadedImages[design.signatureDataUrl]) {
+        const img = loadedImages[design.signatureDataUrl];
+        const w = (design.signature.widthPct / 100) * pageW;
+        const h = w * (img.height / img.width);
+        const cx = (design.signature.x / 100) * pageW;
+        const cy = (design.signature.y / 100) * pageH;
+        ctx.drawImage(img, cx - w / 2, cy - h / 2, w, h);
+        hitBoxes.push({ id: 'signature', x: cx - w / 2, y: cy - h / 2, w, h });
+      }
+
+      // 8. Vector Conservatory Seal Medallion
+      if (design.showSeal && design.seal.visible) {
+        const cx = (design.seal.x / 100) * pageW;
+        const cy = (design.seal.y / 100) * pageH;
+        const r = Number(design.seal.size || 68) / 2;
+        drawConservatorySeal(ctx, cx, cy, r, design.borderColor, design.accentColor);
+        hitBoxes.push({ id: 'seal', x: cx - r, y: cy - r, w: r * 2, h: r * 2.4 });
+      }
+
+      // 9. Scannable Verification QR Code
+      if (design.qr.visible) {
+        const qrCanvas = getQrCanvasForSerial(tokens.certSerial);
+        const size = Number(design.qr.size || 66);
+        const cx = (design.qr.x / 100) * pageW;
+        const cy = (design.qr.y / 100) * pageH;
+        ctx.save();
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(cx - size / 2 - 4, cy - size / 2 - 4, size + 8, size + 8);
+        ctx.strokeStyle = 'rgba(15,23,42,0.22)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(cx - size / 2 - 4, cy - size / 2 - 4, size + 8, size + 8);
+        if (qrCanvas) ctx.drawImage(qrCanvas, cx - size / 2, cy - size / 2, size, size);
+        ctx.restore();
+        hitBoxes.push({ id: 'qr', x: cx - size / 2 - 4, y: cy - size / 2 - 4, w: size + 8, h: size + 8 });
+      }
+
+      // 10. All Text Layers
+      design.elements.forEach(el => {
+        if (!el.visible) return;
+        let text = resolvePlaceholders(el.text, tokens);
+        if (el.uppercase) text = text.toUpperCase();
+        const stylePart = `${el.italic ? 'italic ' : ''}${el.bold ? '700 ' : '400 '}${el.fontSize}px "${el.fontFamily}", serif`;
+        ctx.save();
+        ctx.font = stylePart;
+        ctx.fillStyle = el.color || '#0F172A';
+        ctx.textBaseline = 'middle';
+
+        const spacing = Number(el.letterSpacing || 0);
+        const maxW = ((el.maxWidthPct || 80) / 100) * pageW;
+        const lines = wrapSpacedText(ctx, text, maxW, spacing);
+        const lineH = el.fontSize * 1.32;
+        const cx = (el.x / 100) * pageW;
+        const cy = (el.y / 100) * pageH;
+        const totalH = lines.length * lineH;
+        const startY = cy - totalH / 2 + lineH / 2;
+
+        let widest = 0;
+        lines.forEach((ln, idx) => {
+          const w = drawSpacedTextLine(ctx, ln, cx, startY + idx * lineH, el.align || 'center', spacing, !!el.highlightRedM);
+          if (w > widest) widest = w;
+        });
+        ctx.restore();
+
+        const boxW = Math.max(40, widest + 16);
+        const boxH = Math.max(20, totalH + 8);
+        let boxX = cx - boxW / 2;
+        if (el.align === 'left') boxX = cx - 8;
+        else if (el.align === 'right') boxX = cx - boxW + 8;
+        hitBoxes.push({ id: el.id, x: boxX, y: cy - boxH / 2, w: boxW, h: boxH });
+      });
+
+      // 11. Interactive Editor Guides & Selection Box (never included in PDF/PNG export!)
+      if (showEditorOverlay) {
+        const showGuides = document.getElementById('showGuidesToggle')?.checked;
+        if (showGuides) {
+          ctx.save();
+          ctx.setLineDash([4, 4]);
+          ctx.strokeStyle = snapCenterActive.x ? '#DC2626' : 'rgba(59,130,246,0.22)';
+          ctx.lineWidth = snapCenterActive.x ? 1.4 : 0.9;
+          ctx.beginPath(); ctx.moveTo(pageW / 2, 0); ctx.lineTo(pageW / 2, pageH); ctx.stroke();
+          if (snapCenterActive.y) {
+            ctx.strokeStyle = '#DC2626';
+            ctx.lineWidth = 1.4;
+            ctx.beginPath(); ctx.moveTo(0, pageH / 2); ctx.lineTo(pageW, pageH / 2); ctx.stroke();
+          }
+          ctx.restore();
+        }
+        const activeBox = hitBoxes.find(b => b.id === selectedId);
+        if (activeBox) {
+          ctx.save();
+          ctx.strokeStyle = '#2563EB';
+          ctx.lineWidth = 1.5;
+          ctx.setLineDash([5, 3]);
+          ctx.strokeRect(activeBox.x, activeBox.y, activeBox.w, activeBox.h);
+          ctx.setLineDash([]);
+          // Corner handles
+          const corners = [
+            [activeBox.x, activeBox.y], [activeBox.x + activeBox.w, activeBox.y],
+            [activeBox.x, activeBox.y + activeBox.h], [activeBox.x + activeBox.w, activeBox.y + activeBox.h]
+          ];
+          ctx.fillStyle = '#FFFFFF';
+          corners.forEach(([hx, hy]) => {
+            ctx.fillRect(hx - 3.5, hy - 3.5, 7, 7);
+            ctx.strokeRect(hx - 3.5, hy - 3.5, 7, 7);
+          });
+          ctx.restore();
+        }
+      }
+
+      return hitBoxes;
+    }
+
+    function renderCanvas() {
+      const canvas = document.getElementById('certCanvas');
+      if (!canvas) return;
+      const fmt = PAGE_FORMATS[design.pageFormat] || PAGE_FORMATS.letter_landscape;
+      const dimsLbl = document.getElementById('pageDimsLabel');
+      if (dimsLbl) dimsLbl.textContent = fmt.label;
+
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const displayScale = fmt.w > fmt.h ? 1.0 : 0.88;
+      canvas.style.width = Math.round(fmt.w * displayScale) + 'px';
+      canvas.style.height = Math.round(fmt.h * displayScale) + 'px';
+      canvas.width = Math.round(fmt.w * dpr);
+      canvas.height = Math.round(fmt.h * dpr);
+
+      const ctx = canvas.getContext('2d');
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      elementHitBoxes = drawCertificateToContext(ctx, getPreviewStudent(), fmt.w, fmt.h, true);
+    }
+
+    function getCanvasPageCoords(evt) {
+      const canvas = document.getElementById('certCanvas');
+      const rect = canvas.getBoundingClientRect();
+      const fmt = PAGE_FORMATS[design.pageFormat] || PAGE_FORMATS.letter_landscape;
+      const clientX = evt.touches ? evt.touches[0].clientX : evt.clientX;
+      const clientY = evt.touches ? evt.touches[0].clientY : evt.clientY;
+      return {
+        px: ((clientX - rect.left) / rect.width) * fmt.w,
+        py: ((clientY - rect.top) / rect.height) * fmt.h,
+        fmt
+      };
+    }
+
+    function getElementPositionObj(id) {
+      const el = design.elements.find(e => e.id === id);
+      if (el) return el;
+      if (['qr', 'seal', 'logo', 'signature'].includes(id)) return design[id];
+      return null;
+    }
+
+    function bindCanvasDrag() {
+      const canvas = document.getElementById('certCanvas');
+      if (!canvas) return;
+
+      const onDown = (e) => {
+        const { px, py, fmt } = getCanvasPageCoords(e);
+        // Hit test from topmost rendered item backwards
+        let hit = null;
+        for (let i = elementHitBoxes.length - 1; i >= 0; i--) {
+          const b = elementHitBoxes[i];
+          if (px >= b.x && px <= b.x + b.w && py >= b.y && py <= b.y + b.h) {
+            hit = b;
+            break;
+          }
+        }
+        if (hit) {
+          e.preventDefault();
+          selectedId = hit.id;
+          const pos = getElementPositionObj(hit.id);
+          if (pos) {
+            dragState = {
+              id: hit.id,
+              startPx: px,
+              startPy: py,
+              origX: Number(pos.x),
+              origY: Number(pos.y),
+              fmt
+            };
+          }
+          renderLayersList();
+          renderInspector();
+          renderCanvas();
+        }
+      };
+
+      const onMove = (e) => {
+        if (!dragState) return;
+        e.preventDefault();
+        const { px, py, fmt } = getCanvasPageCoords(e);
+        const pos = getElementPositionObj(dragState.id);
+        if (!pos) return;
+        let nx = dragState.origX + ((px - dragState.startPx) / fmt.w) * 100;
+        let ny = dragState.origY + ((py - dragState.startPy) / fmt.h) * 100;
+        nx = Math.max(2, Math.min(98, nx));
+        ny = Math.max(2, Math.min(98, ny));
+
+        const snap = document.getElementById('snapCenterToggle')?.checked;
+        snapCenterActive = { x: false, y: false };
+        if (snap && Math.abs(nx - 50) < 1.4) { nx = 50; snapCenterActive.x = true; }
+        if (snap && Math.abs(ny - 50) < 1.4) { ny = 50; snapCenterActive.y = true; }
+
+        pos.x = Math.round(nx * 10) / 10;
+        pos.y = Math.round(ny * 10) / 10;
+        renderCanvas();
+      };
+
+      const onUp = () => {
+        if (!dragState) return;
+        dragState = null;
+        snapCenterActive = { x: false, y: false };
+        renderInspector();
+        renderCanvas();
+      };
+
+      canvas.addEventListener('mousedown', onDown);
+      window.addEventListener('mousemove', onMove);
+      window.addEventListener('mouseup', onUp);
+      canvas.addEventListener('touchstart', onDown, { passive: false });
+      window.addEventListener('touchmove', onMove, { passive: false });
+      window.addEventListener('touchend', onUp);
+    }
+
+    async function renderHighResCertificatePngBytes(stu, scale = 3.0) {
+      if (document.fonts && document.fonts.ready) {
+        try { await document.fonts.ready; } catch (_) {}
+      }
+      const fmt = PAGE_FORMATS[design.pageFormat] || PAGE_FORMATS.letter_landscape;
+      const off = document.createElement('canvas');
+      off.width = Math.round(fmt.w * scale);
+      off.height = Math.round(fmt.h * scale);
+      const ctx = off.getContext('2d');
+      ctx.setTransform(scale, 0, 0, scale, 0, 0);
+      drawCertificateToContext(ctx, stu, fmt.w, fmt.h, false);
+      return { dataUrl: off.toDataURL('image/png'), fmt };
+    }
+
+    async function exportCurrentPdf() {
+      const stu = getPreviewStudent();
+      showToast('Generating 300-DPI Print-Ready PDF...');
+      try {
+        const { dataUrl, fmt } = await renderHighResCertificatePngBytes(stu, 3.0);
+        const { PDFDocument } = PDFLib;
+        const pdfDoc = await PDFDocument.create();
+        const page = pdfDoc.addPage([fmt.w, fmt.h]);
+        const pngImg = await pdfDoc.embedPng(dataUrl);
+        page.drawImage(pngImg, { x: 0, y: 0, width: fmt.w, height: fmt.h });
+        const bytes = await pdfDoc.save();
+        const blob = new Blob([bytes], { type: 'application/pdf' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `TSM_Certificate_${stu.rollNo}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => { a.remove(); URL.revokeObjectURL(url); }, 1000);
+        showToast(`Downloaded TSM_Certificate_${stu.rollNo}.pdf`);
+      } catch (err) {
+        console.error('PDF Export error:', err);
+        showToast('Could not export PDF. Please try again.');
+      }
+    }
+
+    async function exportCurrentPng() {
+      const stu = getPreviewStudent();
+      showToast('Exporting high-resolution PNG...');
+      const { dataUrl } = await renderHighResCertificatePngBytes(stu, 3.0);
+      const a = document.createElement('a');
+      a.href = dataUrl;
+      a.download = `TSM_Certificate_${stu.rollNo}.png`;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => a.remove(), 500);
+      showToast(`Downloaded TSM_Certificate_${stu.rollNo}.png`);
+    }
+
+    async function exportBatchPdf() {
+      const students = (appState && Array.isArray(appState.students)) ? appState.students : [];
+      const targets = students.filter(s => batchSelectedIds.has(s.id));
+      if (!targets.length) {
+        showToast('Select at least one student for Batch Export.');
+        return;
+      }
+      showToast(`Building ${targets.length}-page Certificate PDF...`);
+      try {
+        const { PDFDocument } = PDFLib;
+        const pdfDoc = await PDFDocument.create();
+        for (const stu of targets) {
+          const { dataUrl, fmt } = await renderHighResCertificatePngBytes(stu, 2.6);
+          const page = pdfDoc.addPage([fmt.w, fmt.h]);
+          const pngImg = await pdfDoc.embedPng(dataUrl);
+          page.drawImage(pngImg, { x: 0, y: 0, width: fmt.w, height: fmt.h });
+        }
+        const bytes = await pdfDoc.save();
+        const blob = new Blob([bytes], { type: 'application/pdf' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `TSM_Batch_Certificates_${targets.length}_Students.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => { a.remove(); URL.revokeObjectURL(url); }, 1000);
+        showToast(`Downloaded ${targets.length}-page Batch Certificate PDF`);
+      } catch (err) {
+        console.error('Batch PDF error:', err);
+        showToast('Batch PDF generation failed.');
+      }
+    }
+
+    function exportTemplateJson() {
+      const blob = new Blob([JSON.stringify(design, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `TSM_Cert_Template_${formatLocalDate()}.json`;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => { a.remove(); URL.revokeObjectURL(url); }, 1000);
+      showToast('Exported certificate template JSON');
+    }
+
+    function importTemplateJson(e) {
+      const file = e.target && e.target.files && e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = ev => {
+        try {
+          const parsed = JSON.parse(ev.target.result);
+          if (!parsed || !Array.isArray(parsed.elements)) throw new Error('Invalid template');
+          design = mergeDesignWithDefaults(parsed);
+          selectedId = design.elements[0]?.id || 'qr';
+          syncArtControlsFromDesign();
+          renderLayersList();
+          renderInspector();
+          preloadAssetsAndRender();
+          showToast('Imported certificate template');
+        } catch (_) {
+          showToast('Invalid certificate template JSON file');
+        }
+      };
+      reader.readAsText(file);
+      e.target.value = '';
+    }
+
+    // Bootstrap
+    loadLocalAppState();
+    populateStudentSelectors();
+    syncArtControlsFromDesign();
+    renderLayersList();
+    renderInspector();
+    bindCanvasDrag();
+    preloadAssetsAndRender();
+    if (document.fonts && document.fonts.ready) {
+      document.fonts.ready.then(() => renderCanvas());
+    }
+    initStudioFirebase();
+  </script>
+</body>
+</html>
