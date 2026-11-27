@@ -1869,8 +1869,12 @@
       }
       if (roleParam === 'student') {
         document.getElementById('teacherLaunchCard')?.classList.add('hidden');
+        const gridWrap = document.getElementById('studentLaunchCard')?.parentElement;
+        if (gridWrap) gridWrap.classList.remove('lg:grid-cols-2');
       } else if (roleParam === 'teacher') {
         document.getElementById('studentLaunchCard')?.classList.add('hidden');
+        const gridWrap = document.getElementById('teacherLaunchCard')?.parentElement;
+        if (gridWrap) gridWrap.classList.remove('lg:grid-cols-2');
       }
     }
 
