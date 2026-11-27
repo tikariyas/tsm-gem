@@ -116,7 +116,7 @@
             </div>
 
             <button type="button" id="btnStartTeacherClass" onclick="startTeacherClass()" class="w-full h-10 bg-[#0F172A] hover:bg-slate-800 text-white text-xs font-bold rounded-lg transition">
-              Start Video Class as Teacher
+              Start Video Class
             </button>
           </div>
 
@@ -998,7 +998,7 @@
         showToast(err.message || 'Could not start Video Class');
         await teardownTeacherResources();
       } finally {
-        if (btn) { btn.disabled = false; btn.textContent = 'Start Video Class as Teacher'; }
+        if (btn) { btn.disabled = false; btn.textContent = 'Start Video Class'; }
       }
     }
 
