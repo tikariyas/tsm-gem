@@ -1,0 +1,1894 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#0F172A" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="TSM Video Class" />
+  <title>Video Class (Trial) — TIKARIYA'S SCHOOL OF MUSIC</title>
+  <link rel="icon" type="image/png" href="./favicon.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+    body { font-family: 'Inter', sans-serif; background-color: #F8FAFC; color: #0F172A; }
+    .tabular-nums { font-variant-numeric: tabular-nums; }
+    video { background-color: #050810; }
+    .mirror-video { transform: scaleX(-1); }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+  <!-- TOP HEADER (MATCHING MAIN APP AESTHETIC) -->
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-30">
+    <div class="max-w-7xl mx-auto px-3 sm:px-6 py-2.5 flex items-center justify-between gap-2">
+      <div class="min-w-0">
+        <div class="font-extrabold text-sm sm:text-base text-[#0F172A] uppercase tracking-tight truncate">
+          TIKARIYA'S SCHOOL OF <span class="text-[#B91C1C]">M</span>USIC
+        </div>
+        <div class="text-[11px] text-slate-500 font-medium truncate">
+          Live Music Video Class &bull; Guitar / Instrument Raw Audio Mode (Trial)
+        </div>
+      </div>
+      <div class="flex items-center gap-2 shrink-0">
+        <span id="liveRoomTimer" class="hidden px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-bold tabular-nums">LIVE 00:00</span>
+        <a href="./index.html" class="h-8 px-3 inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700 whitespace-nowrap">
+          Back to App
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <!-- MAIN WORKSPACE -->
+  <main class="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 py-4 space-y-4">
+
+    <!-- 1. TRIAL LOBBY / SETUP VIEW -->
+    <section id="lobbyView" class="space-y-4">
+      <div class="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 space-y-4">
+        <div class="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 pb-3">
+          <div>
+            <h1 class="text-base font-extrabold text-[#0F172A]">Batch Video Class Trial Room (4&ndash;6 Students)</h1>
+            <p class="text-xs text-slate-600 mt-0.5">
+              Test acoustic/electric guitar clarity and multi-student phones here before adding the Video Class button to the main app.
+            </p>
+          </div>
+          <span id="firebaseBadge" class="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
+            Connecting Cloud...
+          </span>
+        </div>
+
+        <!-- BATCH / ROOM SELECTION -->
+        <div class="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
+          <div class="md:col-span-5">
+            <label for="roomBatchSelect" class="block text-xs font-bold text-slate-700 mb-1">Select Batch / Trial Room</label>
+            <select id="roomBatchSelect" onchange="onLobbyRoomChanged()" class="w-full h-10 px-3 text-xs font-semibold bg-white border border-slate-300 rounded-lg text-[#0F172A]">
+              <option value="Guitar Trial Batch">Guitar Trial Batch</option>
+            </select>
+          </div>
+          <div class="md:col-span-4">
+            <label for="customRoomInput" class="block text-xs font-bold text-slate-700 mb-1">Or Custom Room Name (Optional)</label>
+            <input id="customRoomInput" oninput="onLobbyRoomChanged()" placeholder="e.g. Evening Guitar Batch 1" class="w-full h-10 px-3 text-xs bg-white border border-slate-300 rounded-lg" />
+          </div>
+          <div class="md:col-span-3">
+            <div id="roomLiveStatusPill" class="h-10 px-3 rounded-lg border border-slate-200 bg-slate-50 flex items-center justify-between text-xs font-semibold text-slate-600">
+              <span>Room Status</span>
+              <span id="roomLiveStatusText" class="font-bold text-slate-500">Checking...</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- TWO CLEAN LAUNCH CARDS: TEACHER VS STUDENT -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 pt-1">
+
+          <!-- TEACHER CARD -->
+          <div id="teacherLaunchCard" class="p-4 rounded-xl border-2 border-[#0F172A]/15 bg-slate-50/70 space-y-3">
+            <div class="flex items-center justify-between gap-2">
+              <div>
+                <h2 class="text-sm font-extrabold text-[#0F172A]">Teacher Console (Host)</h2>
+                <p class="text-[11px] text-slate-600">See &amp; hear up to 6 students simultaneously. Solo any guitar student cleanly.</p>
+              </div>
+              <span class="px-2 py-0.5 rounded bg-[#0F172A] text-white text-[10px] font-bold uppercase">Host</span>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
+              <div>
+                <label for="teacherNameInput" class="block text-[11px] font-semibold text-slate-600 mb-1">Teacher Display Name</label>
+                <input id="teacherNameInput" value="Instructor (TSM)" class="w-full h-9 px-2.5 bg-white border border-slate-300 rounded-lg font-medium" />
+              </div>
+              <div>
+                <label for="defaultAudioProfile" class="block text-[11px] font-semibold text-slate-600 mb-1">Default Student Audio Mode</label>
+                <select id="defaultAudioProfile" class="w-full h-9 px-2.5 bg-white border border-slate-300 rounded-lg font-semibold text-emerald-900">
+                  <option value="music_raw" selected>Guitar / Instrument Raw (Best Sound)</option>
+                  <option value="music_ec">Music + Echo Cancel (No Headphones)</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="text-[11px] text-slate-600 bg-white border border-slate-200 rounded-lg p-2.5 space-y-1">
+              <div><b class="text-[#0F172A]">Music Audio Tuning:</b> Noise Suppression <b class="text-emerald-700">OFF</b> &bull; Auto-Gain <b class="text-emerald-700">OFF</b> &bull; Silence Cut (DTX) <b class="text-emerald-700">OFF</b> &bull; 128 kbps Opus</div>
+              <div><b class="text-[#0F172A]">Controls:</b> Solo 1 Student, Pin/Zoom Fretboard, Local Mute, Per-Student Echo Cancel, End Class.</div>
+            </div>
+
+            <button type="button" id="btnStartTeacherClass" onclick="startTeacherClass()" class="w-full h-10 bg-[#0F172A] hover:bg-slate-800 text-white text-xs font-bold rounded-lg transition">
+              Start Video Class as Teacher
+            </button>
+          </div>
+
+          <!-- STUDENT CARD -->
+          <div id="studentLaunchCard" class="p-4 rounded-xl border border-slate-200 bg-white space-y-3">
+            <div class="flex items-center justify-between gap-2">
+              <div>
+                <h2 class="text-sm font-extrabold text-[#0F172A]">Student Join (Always-On Cam &amp; Mic)</h2>
+                <p class="text-[11px] text-slate-600">Students cannot start calls. Button activates only when Teacher starts the batch.</p>
+              </div>
+              <span class="px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 text-[10px] font-bold uppercase">Student</span>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
+              <div>
+                <label for="studentNameInput" class="block text-[11px] font-semibold text-slate-600 mb-1">Student Name (For Trial)</label>
+                <input id="studentNameInput" placeholder="e.g. Aarav (Guitar)" class="w-full h-9 px-2.5 bg-white border border-slate-300 rounded-lg font-medium" />
+              </div>
+              <div>
+                <label for="studentRosterSelect" class="block text-[11px] font-semibold text-slate-600 mb-1">Or Pick From Academy Roster</label>
+                <select id="studentRosterSelect" onchange="onRosterStudentPicked()" class="w-full h-9 px-2.5 bg-white border border-slate-300 rounded-lg font-medium">
+                  <option value="">-- Type name manually --</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="text-[11px] text-slate-600 bg-amber-50/70 border border-amber-200 rounded-lg p-2.5 space-y-1">
+              <div><b class="text-amber-900">Student Rules:</b> Camera &amp; Microphone remain <b>always ON</b> during class (no mute/cam-off buttons).</div>
+              <div><b class="text-amber-900">Tip for Guitar:</b> Wear earphones or keep phone volume moderate so your guitar sounds loud &amp; clean to the teacher.</div>
+            </div>
+
+            <button type="button" id="btnJoinStudentClass" onclick="joinStudentClass()" disabled class="w-full h-10 bg-slate-200 text-slate-500 text-xs font-bold rounded-lg transition disabled:cursor-not-allowed">
+              Waiting for Teacher to Start Video Class...
+            </button>
+          </div>
+        </div>
+
+        <!-- GUITAR MIC SELF-CHECK + OPTIONAL TURN CONFIG -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 pt-2 border-t border-slate-100">
+          <!-- Local Guitar Mic Test -->
+          <div class="p-3 rounded-xl border border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-2 text-xs">
+            <div class="min-w-0 flex-1">
+              <div class="font-bold text-[#0F172A]">Quick Guitar Mic Check (Local)</div>
+              <div id="micTestStatus" class="text-[11px] text-slate-500 truncate">Test raw instrument pickup before starting class</div>
+              <div class="mt-1.5 h-2 bg-slate-200 rounded-full overflow-hidden">
+                <div id="micTestMeterBar" class="h-full bg-emerald-500 transition-all duration-75" style="width: 0%"></div>
+              </div>
+            </div>
+            <button type="button" id="btnToggleMicTest" onclick="toggleLocalGuitarMicTest()" class="h-8 px-3 bg-white border border-slate-300 hover:bg-slate-100 text-slate-800 text-[11px] font-bold rounded-lg shrink-0">
+              Test Mic
+            </button>
+          </div>
+
+          <!-- Optional TURN Relay (For Strict Mobile 4G Networks) -->
+          <div class="p-3 rounded-xl border border-slate-200 bg-slate-50 text-xs">
+            <div class="flex items-center justify-between gap-2">
+              <div>
+                <div class="font-bold text-[#0F172A]">Network / Mobile 4G Relay (Optional TURN)</div>
+                <div id="turnStatusText" class="text-[11px] text-slate-500">Using free Google STUN servers (works on most Wi-Fi &amp; 4G/5G)</div>
+              </div>
+              <button type="button" onclick="toggleTurnConfigPanel()" class="h-8 px-3 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 text-[11px] font-semibold rounded-lg shrink-0">
+                Configure
+              </button>
+            </div>
+            <div id="turnConfigPanel" class="hidden mt-2.5 pt-2.5 border-t border-slate-200 space-y-2">
+              <input id="turnUrlInput" placeholder="turn:global.relay.metered.ca:80" class="w-full h-8 px-2.5 bg-white border border-slate-300 rounded text-[11px] font-mono" />
+              <div class="grid grid-cols-2 gap-2">
+                <input id="turnUserInput" placeholder="TURN Username" class="h-8 px-2.5 bg-white border border-slate-300 rounded text-[11px] font-mono" />
+                <input id="turnPassInput" placeholder="TURN Credential" class="h-8 px-2.5 bg-white border border-slate-300 rounded text-[11px] font-mono" />
+              </div>
+              <div class="flex justify-end gap-1.5">
+                <button type="button" onclick="clearTurnConfig()" class="h-7 px-2.5 border border-slate-300 bg-white text-slate-600 rounded text-[11px] font-semibold">Reset Default</button>
+                <button type="button" onclick="saveTurnConfig()" class="h-7 px-3 bg-[#0F172A] text-white rounded text-[11px] font-semibold">Save TURN</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. TEACHER ACTIVE CLASSROOM VIEW -->
+    <section id="teacherStageView" class="hidden space-y-3">
+      <!-- Teacher Top Action Bar -->
+      <div class="bg-white border border-slate-200 rounded-xl p-3 flex flex-wrap items-center justify-between gap-2.5">
+        <div class="flex flex-wrap items-center gap-2 min-w-0">
+          <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shrink-0"></span>
+          <div class="min-w-0">
+            <div class="text-xs sm:text-sm font-extrabold text-[#0F172A] truncate">
+              <span id="teacherRoomTitle">Guitar Trial Batch</span>
+              <span class="ml-1.5 px-2 py-0.5 rounded bg-indigo-50 text-indigo-800 border border-indigo-200 text-[10px] font-bold tabular-nums" id="teacherStudentCountBadge">0 / 6 Students</span>
+            </div>
+            <div id="teacherAudioProfileLabel" class="text-[10px] text-emerald-700 font-semibold">
+              Guitar Music Mode: Raw 48kHz / 128kbps Opus (Noise Suppression OFF)
+            </div>
+          </div>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-1.5 text-[11px]">
+          <button type="button" onclick="openInviteTrialModal()" class="h-8 px-3 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 font-bold rounded-lg">
+            Invite / QR Link
+          </button>
+          <button type="button" id="btnTeacherMicToggle" onclick="toggleTeacherMic()" class="h-8 px-3 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 font-bold rounded-lg">
+            My Mic: ON
+          </button>
+          <button type="button" id="btnTeacherCamToggle" onclick="toggleTeacherCam()" class="h-8 px-3 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 font-bold rounded-lg">
+            My Cam: ON
+          </button>
+          <button type="button" onclick="flipLocalCamera()" class="h-8 px-3 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 font-bold rounded-lg">
+            Flip Cam
+          </button>
+          <button type="button" id="btnClearSolo" onclick="clearSoloStudent()" class="hidden h-8 px-3 bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 font-bold rounded-lg">
+            Hear All Students
+          </button>
+          <button type="button" onclick="endTeacherClass()" class="h-8 px-3 bg-[#B91C1C] hover:bg-red-800 text-white font-bold rounded-lg">
+            End Class
+          </button>
+        </div>
+      </div>
+
+      <!-- Teacher Main Grid: Student Tiles (Left/Main) + Teacher Self Preview Strip -->
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-3 items-start">
+        <!-- Students Video Grid (9 cols on desktop) -->
+        <div class="lg:col-span-9 space-y-3">
+          <!-- Pinned Student Spotlight (hidden until teacher clicks Pin on a student) -->
+          <div id="pinnedStudentContainer" class="hidden"></div>
+
+          <!-- 4-6 Student Tiles Grid -->
+          <div id="teacherStudentsGrid" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+            <!-- Empty state rendered dynamically -->
+          </div>
+        </div>
+
+        <!-- Teacher Self Preview & Quick Audio Mix Panel (3 cols on desktop) -->
+        <div class="lg:col-span-3 space-y-3">
+          <div class="bg-[#050810] border border-slate-800 rounded-xl overflow-hidden shadow-sm">
+            <div class="relative aspect-video bg-[#050810]">
+              <video id="teacherLocalVideo" autoplay playsinline muted class="w-full h-full object-cover mirror-video"></video>
+              <div class="absolute bottom-2 left-2 px-2 py-0.5 rounded bg-black/70 text-white text-[10px] font-bold">
+                You (Teacher)
+              </div>
+              <div class="absolute bottom-2 right-2 w-16 h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                <div id="teacherSelfAudioBar" class="h-full bg-emerald-400 transition-all duration-75" style="width: 0%"></div>
+              </div>
+            </div>
+            <div class="p-2.5 bg-slate-900 text-[11px] text-slate-300 space-y-1.5">
+              <div class="flex items-center justify-between">
+                <span class="text-slate-400">Your Mic Mode</span>
+                <button type="button" id="btnTeacherAudioMode" onclick="toggleTeacherOwnEchoCancel()" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-emerald-300 font-bold text-[10px]">
+                  Raw Guitar
+                </button>
+              </div>
+              <div class="text-[10px] text-slate-400 leading-snug">
+                Tip: Click <b>Solo</b> on any student tile to listen only to their guitar while checking hand posture.
+              </div>
+            </div>
+          </div>
+
+          <!-- Connected Students Quick Roster -->
+          <div class="bg-white border border-slate-200 rounded-xl p-3 space-y-2">
+            <div class="flex items-center justify-between">
+              <h3 class="text-[11px] font-bold uppercase text-slate-600">Batch Audio Mixer</h3>
+              <button type="button" onclick="unmuteAllStudentsLocally()" class="text-[10px] font-bold text-indigo-700 hover:underline">Hear All</button>
+            </div>
+            <div id="teacherAudioMixerList" class="space-y-1.5 text-xs text-slate-500">
+              No students joined yet.
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3. STUDENT ACTIVE CLASSROOM VIEW (NO MUTE / NO CAM-OFF / NO CALLING) -->
+    <section id="studentStageView" class="hidden space-y-3">
+      <!-- Track Interrupted Warning Banner -->
+      <div id="studentAvWarningBanner" class="hidden bg-red-600 text-white rounded-xl p-3 flex flex-wrap items-center justify-between gap-2 text-xs font-bold shadow">
+        <span id="studentAvWarningText">Camera or Microphone was interrupted by your device! Video &amp; Audio must stay ON during class.</span>
+        <button type="button" onclick="restoreStudentCameraAndMic()" class="h-8 px-3 bg-white text-red-700 font-extrabold rounded-lg shrink-0">
+          Restore Camera &amp; Mic
+        </button>
+      </div>
+
+      <!-- Student Top Status Strip -->
+      <div class="bg-white border border-slate-200 rounded-xl p-3 flex flex-wrap items-center justify-between gap-2">
+        <div class="flex items-center gap-2 min-w-0">
+          <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shrink-0"></span>
+          <div class="min-w-0">
+            <div class="text-xs sm:text-sm font-extrabold text-[#0F172A] truncate" id="studentRoomHeaderTitle">Video Class</div>
+            <div class="text-[10px] text-slate-500 font-semibold flex flex-wrap items-center gap-2">
+              <span id="studentConnBadge" class="text-indigo-700">Connecting to Teacher...</span>
+              <span>&bull;</span>
+              <span id="studentAudioModeBadge" class="text-emerald-700">Guitar Raw Audio ON</span>
+            </div>
+          </div>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <span class="px-2 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-[10px] font-bold">
+            CAM &amp; MIC ALWAYS ON
+          </span>
+        </div>
+      </div>
+
+      <!-- Main Teacher Video Stage + Student Self PiP -->
+      <div class="relative bg-[#050810] border border-slate-800 rounded-2xl overflow-hidden shadow-lg aspect-[4/3] sm:aspect-video max-h-[72vh] w-full flex items-center justify-center">
+        <video id="studentRemoteTeacherVideo" autoplay playsinline class="w-full h-full object-contain"></video>
+
+        <!-- Waiting / Connecting Overlay -->
+        <div id="studentTeacherVideoOverlay" class="absolute inset-0 bg-[#050810]/85 flex flex-col items-center justify-center text-center p-4 text-white space-y-2">
+          <div class="w-8 h-8 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin"></div>
+          <div id="studentOverlayText" class="text-sm font-bold">Connecting to your Teacher's live stream...</div>
+          <div class="text-[11px] text-slate-300 max-w-sm">Keep your camera angled so your teacher can see both hands on your instrument clearly.</div>
+        </div>
+
+        <!-- Tap to Unmute Teacher Audio Helper (iOS/Android autoplay policy safety) -->
+        <button type="button" id="btnStudentUnblockAudio" onclick="unblockStudentTeacherAudio()" class="hidden absolute top-3 left-1/2 -translate-x-1/2 z-20 px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-extrabold rounded-xl shadow-lg">
+          Tap Here to Hear Teacher Audio
+        </button>
+
+        <!-- Teacher Name Badge -->
+        <div class="absolute top-3 left-3 px-2.5 py-1 rounded-lg bg-black/70 text-white text-[11px] font-bold backdrop-blur-sm">
+          <span id="studentTeacherNameTag">Teacher</span>
+        </div>
+
+        <!-- Student Self-Preview PiP (Bottom-Right) -->
+        <div class="absolute bottom-3 right-3 w-28 sm:w-44 aspect-video rounded-xl overflow-hidden border-2 border-emerald-500/80 bg-[#050810] shadow-xl">
+          <video id="studentLocalSelfVideo" autoplay playsinline muted class="w-full h-full object-cover mirror-video"></video>
+          <div class="absolute bottom-1 left-1 right-1 flex items-center justify-between gap-1 px-1.5 py-0.5 rounded bg-black/70">
+            <span class="text-[9px] font-bold text-white truncate" id="studentSelfNameTag">You</span>
+            <div class="w-10 h-1 bg-slate-700 rounded-full overflow-hidden shrink-0">
+              <div id="studentSelfMicBar" class="h-full bg-emerald-400 transition-all duration-75" style="width: 0%"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Minimal Student Bottom Controls: ONLY Flip Camera & Leave Class (NO Mute, NO Cam-Off) -->
+      <div class="bg-white border border-slate-200 rounded-xl p-3 flex flex-wrap items-center justify-between gap-2">
+        <div class="text-[11px] text-slate-600">
+          <b>Instrument Tip:</b> Position your phone 1&ndash;1.5m away facing your guitar/instrument.
+        </div>
+        <div class="flex items-center gap-2">
+          <button type="button" onclick="flipLocalCamera()" class="h-9 px-3.5 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 text-xs font-bold rounded-lg">
+            Flip Camera
+          </button>
+          <button type="button" onclick="leaveStudentClass()" class="h-9 px-4 bg-[#B91C1C] hover:bg-red-800 text-white text-xs font-bold rounded-lg">
+            Leave Class
+          </button>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- MODAL FOR INVITE LINK & QR (TRIAL TESTING ON PHONES) -->
+  <div id="trialModalBackdrop" onclick="if(event.target===this) closeTrialModal()" class="hidden fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4">
+    <div id="trialModalBox" class="bg-white border border-slate-200 rounded-2xl shadow-xl max-w-md w-full p-5 space-y-4 text-xs"></div>
+  </div>
+
+  <!-- TOAST -->
+  <div id="vcToast" class="hidden fixed bottom-4 left-1/2 -translate-x-1/2 z-50 bg-[#0F172A] text-white text-xs font-semibold px-4 py-2.5 rounded-xl shadow-lg border border-slate-700"></div>
+
+  <script>
+    // =========================================================================
+    // 1. SHARED CONFIG & FIREBASE INITIALIZATION (EXACT MATCH WITH MAIN APP)
+    // =========================================================================
+    const STORAGE_KEY = 'tsm_pwa_state_v8';
+    const CONFIG_KEY = 'tsm_firebase_config_v1';
+    const TURN_KEY = 'tsm_video_turn_v1';
+    const ROOMS_COLLECTION = 'tsm_video_rooms';
+    const MAX_BATCH_STUDENTS = 6;
+
+    const DEFAULT_FIREBASE_CONFIG = {
+      apiKey: "AIzaSyD6UUHQL7hcWxvnOIFIzVxOPPU0wrSojFQ",
+      authDomain: "tikariya-music---foundation.firebaseapp.com",
+      projectId: "tikariya-music---foundation",
+      storageBucket: "tikariya-music---foundation.firebasestorage.app",
+      messagingSenderId: "869254236044",
+      appId: "1:869254236044:web:fb6f5fccca9129cc4d78a9",
+      measurementId: "G-0HC5PTKZQ3"
+    };
+
+    const DEFAULT_STUN_SERVERS = [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:stun2.l.google.com:19302' },
+      { urls: 'stun:stun3.l.google.com:19302' }
+    ];
+
+    let db = null;
+    let localAppState = { batches: [], students: [] };
+
+    // Active role & room state
+    let currentRole = null; // 'teacher' | 'student' | null
+    let activeRoomSlug = '';
+    let activeRoomDisplayName = '';
+    let teacherSessionId = '';
+    let localStream = null;
+    let currentFacingMode = 'user';
+    let teacherOwnEchoCancel = false;
+    let teacherMicEnabled = true;
+    let teacherCamEnabled = true;
+
+    // Teacher peers map: peerId -> { pc, meta, remoteStream, pendingIce, unsubIce, localMuted, solo, pinned, analyserRaf, audioCtx }
+    const teacherPeers = new Map();
+    let soloPeerId = null;
+    let pinnedPeerId = null;
+    let unsubTeacherPeers = null;
+    let teacherHeartbeatTimer = null;
+    let liveTimerInterval = null;
+    let classStartedAtMs = 0;
+
+    // Student connection state
+    let studentPeerId = '';
+    let studentPeerRef = null;
+    let studentPc = null;
+    let studentPendingIce = [];
+    let studentCurrentAudioMode = 'music_raw';
+    let unsubStudentRoom = null;
+    let unsubStudentPeerDoc = null;
+    let unsubStudentTeacherIce = null;
+    let studentWatchdogInterval = null;
+    let studentLastCmdAt = 0;
+    let studentReconnecting = false;
+
+    // Lobby room status watcher
+    let unsubLobbyRoom = null;
+    let lobbyRoomLive = false;
+    let lobbyRoomData = null;
+
+    // Audio level meters
+    let micTestStream = null;
+    let micTestCtx = null;
+    let micTestRaf = null;
+    let localSelfAudioCtx = null;
+    let localSelfMeterRaf = null;
+
+    // =========================================================================
+    // 2. UTILITIES
+    // =========================================================================
+    function escapeHtml(str) {
+      return String(str == null ? '' : str)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    let toastTimer = null;
+    function showToast(msg) {
+      const el = document.getElementById('vcToast');
+      if (!el) return;
+      el.textContent = msg;
+      el.classList.remove('hidden');
+      if (toastTimer) clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => el.classList.add('hidden'), 3600);
+    }
+
+    function slugifyRoom(name) {
+      const clean = String(name || 'guitar_trial_batch')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '')
+        .slice(0, 48);
+      return clean || 'guitar_trial_batch';
+    }
+
+    function getSelectedRoomInfo() {
+      const custom = (document.getElementById('customRoomInput')?.value || '').trim();
+      const sel = (document.getElementById('roomBatchSelect')?.value || 'Guitar Trial Batch').trim();
+      const displayName = custom || sel || 'Guitar Trial Batch';
+      return { displayName, slug: slugifyRoom(displayName) };
+    }
+
+    function getIceConfiguration() {
+      const servers = [...DEFAULT_STUN_SERVERS];
+      try {
+        const raw = localStorage.getItem(TURN_KEY);
+        if (raw) {
+          const t = JSON.parse(raw);
+          if (t && t.url) {
+            const entry = { urls: t.url.trim() };
+            if (t.username) entry.username = t.username.trim();
+            if (t.credential) entry.credential = t.credential.trim();
+            servers.push(entry);
+          }
+        }
+      } catch (e) {}
+      return { iceServers: servers, iceCandidatePoolSize: 6 };
+    }
+
+    function loadTurnConfigUi() {
+      try {
+        const raw = localStorage.getItem(TURN_KEY);
+        if (!raw) return;
+        const t = JSON.parse(raw);
+        if (t && t.url) {
+          document.getElementById('turnUrlInput').value = t.url || '';
+          document.getElementById('turnUserInput').value = t.username || '';
+          document.getElementById('turnPassInput').value = t.credential || '';
+          document.getElementById('turnStatusText').textContent = `Custom TURN relay active (${t.url})`;
+        }
+      } catch (e) {}
+    }
+
+    function toggleTurnConfigPanel() {
+      document.getElementById('turnConfigPanel')?.classList.toggle('hidden');
+    }
+
+    function saveTurnConfig() {
+      const url = (document.getElementById('turnUrlInput')?.value || '').trim();
+      const username = (document.getElementById('turnUserInput')?.value || '').trim();
+      const credential = (document.getElementById('turnPassInput')?.value || '').trim();
+      if (!url) {
+        clearTurnConfig();
+        return;
+      }
+      localStorage.setItem(TURN_KEY, JSON.stringify({ url, username, credential }));
+      document.getElementById('turnStatusText').textContent = `Custom TURN relay active (${url})`;
+      document.getElementById('turnConfigPanel')?.classList.add('hidden');
+      showToast('Saved custom TURN server for strict mobile networks');
+    }
+
+    function clearTurnConfig() {
+      localStorage.removeItem(TURN_KEY);
+      document.getElementById('turnUrlInput').value = '';
+      document.getElementById('turnUserInput').value = '';
+      document.getElementById('turnPassInput').value = '';
+      document.getElementById('turnStatusText').textContent = 'Using free Google STUN servers (works on most Wi-Fi & 4G/5G)';
+      document.getElementById('turnConfigPanel')?.classList.add('hidden');
+      showToast('Reset to default STUN servers');
+    }
+
+    function startLiveClock() {
+      stopLiveClock();
+      classStartedAtMs = Date.now();
+      const badge = document.getElementById('liveRoomTimer');
+      if (badge) {
+        badge.classList.remove('hidden');
+        badge.textContent = 'LIVE 00:00';
+      }
+      liveTimerInterval = setInterval(() => {
+        const sec = Math.max(0, Math.floor((Date.now() - classStartedAtMs) / 1000));
+        const mm = String(Math.floor(sec / 60)).padStart(2, '0');
+        const ss = String(sec % 60).padStart(2, '0');
+        if (badge) badge.textContent = `LIVE ${mm}:${ss}`;
+      }, 1000);
+    }
+
+    function stopLiveClock() {
+      if (liveTimerInterval) { clearInterval(liveTimerInterval); liveTimerInterval = null; }
+      const badge = document.getElementById('liveRoomTimer');
+      if (badge) badge.classList.add('hidden');
+    }
+
+    // =========================================================================
+    // 3. GUITAR & MUSICAL INSTRUMENT AUDIO ENGINE (OPUS 128KBPS + RAW MIC)
+    // =========================================================================
+    function buildMusicAudioConstraints(mode = 'music_raw') {
+      const useEc = (mode === 'music_ec');
+      return {
+        echoCancellation: useEc,
+        noiseSuppression: false,
+        autoGainControl: false,
+        channelCount: 1,
+        sampleRate: 48000,
+        sampleSize: 16
+      };
+    }
+
+    function buildVideoConstraints(facingMode = 'user', isTeacher = false) {
+      return {
+        facingMode: { ideal: facingMode },
+        width: { ideal: isTeacher ? 960 : 640, max: isTeacher ? 1280 : 854 },
+        height: { ideal: isTeacher ? 540 : 360, max: isTeacher ? 720 : 480 },
+        frameRate: { ideal: 24, max: 30 }
+      };
+    }
+
+    async function acquireMusicMediaStream({ audioMode = 'music_raw', facingMode = 'user', isTeacher = false } = {}) {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error('Camera & Microphone API unavailable. Open over HTTPS.');
+      }
+      const attempts = [
+        { audio: buildMusicAudioConstraints(audioMode), video: buildVideoConstraints(facingMode, isTeacher) },
+        { audio: { echoCancellation: audioMode === 'music_ec', noiseSuppression: false, autoGainControl: false }, video: { facingMode } },
+        { audio: true, video: true }
+      ];
+      let lastErr = null;
+      for (const constraints of attempts) {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia(constraints);
+          const vTrack = stream.getVideoTracks()[0];
+          const aTrack = stream.getAudioTracks()[0];
+          if (!vTrack || !aTrack) {
+            stream.getTracks().forEach(t => t.stop());
+            throw new Error('Both Camera and Microphone are required for Video Class.');
+          }
+          // Hint browser that audio is music (supported in Chromium)
+          try { if ('contentHint' in aTrack) aTrack.contentHint = 'music'; } catch (e) {}
+          try { if ('contentHint' in vTrack) vTrack.contentHint = 'motion'; } catch (e) {}
+          return stream;
+        } catch (err) {
+          lastErr = err;
+          if (err && (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError')) {
+            throw new Error('Camera or Microphone permission was denied. Please allow both to join the Video Class.');
+          }
+        }
+      }
+      throw lastErr || new Error('Could not access Camera and Microphone.');
+    }
+
+    // Tunes WebRTC SDP so Opus runs in high-clarity music mode with DTX OFF (sustained guitar notes never cut out!)
+    function tuneSdpForMusicAudio(sdp, bitrateBps = 128000) {
+      if (!sdp) return sdp;
+      const lines = sdp.split('\r\n');
+      let opusPt = null;
+      for (const line of lines) {
+        const m = line.match(/^a=rtpmap:(\d+)\s+opus\/48000\/2/i);
+        if (m) { opusPt = m[1]; break; }
+      }
+      if (!opusPt) return sdp;
+
+      const musicParams = `minptime=10;useinbandfec=1;usedtx=0;maxaveragebitrate=${bitrateBps};cbr=1;maxplaybackrate=48000;sprop-maxcapturerate=48000`;
+      let foundFmtp = false;
+      const out = lines.map(line => {
+        if (line.startsWith(`a=fmtp:${opusPt} `)) {
+          foundFmtp = true;
+          return `a=fmtp:${opusPt} ${musicParams}`;
+        }
+        return line;
+      });
+      if (!foundFmtp) {
+        const rtpmapIdx = out.findIndex(l => l.startsWith(`a=rtpmap:${opusPt} `));
+        if (rtpmapIdx !== -1) out.splice(rtpmapIdx + 1, 0, `a=fmtp:${opusPt} ${musicParams}`);
+      }
+      return out.join('\r\n');
+    }
+
+    async function applyTrackBitratePriorities(pc, isTeacher = false) {
+      try {
+        const senders = pc.getSenders ? pc.getSenders() : [];
+        for (const sender of senders) {
+          if (!sender.track) continue;
+          const params = sender.getParameters ? sender.getParameters() : null;
+          if (!params) continue;
+          if (!Array.isArray(params.encodings) || !params.encodings.length) {
+            params.encodings = [{}];
+          }
+          if (sender.track.kind === 'audio') {
+            params.encodings[0].maxBitrate = 128000;
+            try { params.encodings[0].priority = 'high'; } catch (e) {}
+          } else if (sender.track.kind === 'video') {
+            // Keep student video smooth & light (420 kbps) so 4-6 guitar audio streams stay crystal clear
+            params.encodings[0].maxBitrate = isTeacher ? 900000 : 420000;
+          }
+          await sender.setParameters(params).catch(() => {});
+        }
+      } catch (e) {}
+    }
+
+    function attachAudioMeter(stream, barElementId) {
+      try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx || !stream || !stream.getAudioTracks().length) return null;
+        const ctx = new AudioCtx();
+        const src = ctx.createMediaStreamSource(stream);
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 256;
+        src.connect(analyser);
+        const data = new Uint8Array(analyser.frequencyBinCount);
+        let stopped = false;
+        let rafId = 0;
+
+        const tick = () => {
+          if (stopped) return;
+          analyser.getByteTimeDomainData(data);
+          let sumSq = 0;
+          for (let i = 0; i < data.length; i++) {
+            const v = (data[i] - 128) / 128;
+            sumSq += v * v;
+          }
+          const rms = Math.sqrt(sumSq / data.length);
+          const pct = Math.min(100, Math.round(rms * 320));
+          const el = document.getElementById(barElementId);
+          if (el) el.style.width = pct + '%';
+          rafId = requestAnimationFrame(tick);
+        };
+        tick();
+
+        return {
+          stop: () => {
+            stopped = true;
+            cancelAnimationFrame(rafId);
+            try { src.disconnect(); } catch (e) {}
+            try { ctx.close(); } catch (e) {}
+          }
+        };
+      } catch (e) {
+        return null;
+      }
+    }
+
+    // Local lobby guitar mic test
+    async function toggleLocalGuitarMicTest() {
+      const btn = document.getElementById('btnToggleMicTest');
+      const status = document.getElementById('micTestStatus');
+      const bar = document.getElementById('micTestMeterBar');
+
+      if (micTestStream) {
+        stopLocalGuitarMicTest();
+        return;
+      }
+      try {
+        if (btn) btn.textContent = 'Starting...';
+        micTestStream = await navigator.mediaDevices.getUserMedia({
+          audio: buildMusicAudioConstraints('music_raw'),
+          video: false
+        });
+        const track = micTestStream.getAudioTracks()[0];
+        const settings = track.getSettings ? track.getSettings() : {};
+        const nsOff = settings.noiseSuppression === false ? 'OFF' : String(settings.noiseSuppression ?? 'raw');
+        const agcOff = settings.autoGainControl === false ? 'OFF' : String(settings.autoGainControl ?? 'raw');
+        if (status) status.textContent = `Live! Strum guitar now — NoiseSupp: ${nsOff} | AGC: ${agcOff} | ${settings.sampleRate || 48000}Hz`;
+        if (btn) btn.textContent = 'Stop Test';
+        const meter = attachAudioMeter(micTestStream, 'micTestMeterBar');
+        micTestCtx = meter;
+      } catch (err) {
+        if (status) status.textContent = 'Mic blocked or unavailable. Allow microphone permission.';
+        if (btn) btn.textContent = 'Test Mic';
+        if (bar) bar.style.width = '0%';
+      }
+    }
+
+    function stopLocalGuitarMicTest() {
+      if (micTestCtx) { micTestCtx.stop(); micTestCtx = null; }
+      if (micTestStream) { micTestStream.getTracks().forEach(t => t.stop()); micTestStream = null; }
+      const btn = document.getElementById('btnToggleMicTest');
+      const bar = document.getElementById('micTestMeterBar');
+      const status = document.getElementById('micTestStatus');
+      if (btn) btn.textContent = 'Test Mic';
+      if (bar) bar.style.width = '0%';
+      if (status) status.textContent = 'Test raw instrument pickup before starting class';
+    }
+
+    // =========================================================================
+    // 4. FIREBASE BOOT + LOBBY ROSTER & LIVE ROOM WATCHER
+    // =========================================================================
+    async function initFirebase() {
+      const badge = document.getElementById('firebaseBadge');
+      try {
+        let cfg = DEFAULT_FIREBASE_CONFIG;
+        const cfgRaw = localStorage.getItem(CONFIG_KEY);
+        if (cfgRaw) {
+          const parsed = JSON.parse(cfgRaw);
+          if (parsed && parsed.apiKey && parsed.projectId) cfg = parsed;
+        }
+        if (!firebase.apps.length) firebase.initializeApp(cfg);
+        if (firebase.auth && !firebase.auth().currentUser) {
+          await Promise.race([
+            firebase.auth().signInAnonymously().catch(() => {}),
+            new Promise(r => setTimeout(r, 6000))
+          ]);
+        }
+        db = firebase.firestore();
+        if (badge) {
+          badge.textContent = 'Cloud Signaling Ready';
+          badge.className = 'px-2.5 py-1 rounded-lg text-[11px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200';
+        }
+      } catch (e) {
+        console.warn('Video Class Firebase init error:', e);
+        if (badge) {
+          badge.textContent = 'Cloud Offline';
+          badge.className = 'px-2.5 py-1 rounded-lg text-[11px] font-bold bg-red-50 text-red-700 border border-red-200';
+        }
+      }
+    }
+
+    function loadLocalAcademyRoster() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed) {
+            localAppState.batches = Array.isArray(parsed.batches) ? parsed.batches : [];
+            localAppState.students = Array.isArray(parsed.students) ? parsed.students : [];
+          }
+        }
+      } catch (e) {}
+
+      const batchSel = document.getElementById('roomBatchSelect');
+      if (batchSel) {
+        const batchSet = new Set(['Guitar Trial Batch', ...(localAppState.batches || [])]);
+        batchSel.innerHTML = [...batchSet].map(b => `<option value="${escapeHtml(b)}">${escapeHtml(b)}</option>`).join('');
+      }
+
+      const stuSel = document.getElementById('studentRosterSelect');
+      if (stuSel && localAppState.students.length) {
+        stuSel.innerHTML = `<option value="">-- Type name manually --</option>` +
+          localAppState.students.map(s => `<option value="${escapeHtml(s.id)}">${escapeHtml(s.name)} (${escapeHtml(s.rollNo || '')} &bull; ${escapeHtml(s.batch || '')})</option>`).join('');
+      }
+    }
+
+    function onRosterStudentPicked() {
+      const id = document.getElementById('studentRosterSelect')?.value;
+      if (!id) return;
+      const stu = localAppState.students.find(s => s.id === id);
+      if (!stu) return;
+      document.getElementById('studentNameInput').value = stu.name || '';
+      if (stu.batch) {
+        const batchSel = document.getElementById('roomBatchSelect');
+        if (batchSel && [...batchSel.options].some(o => o.value === stu.batch)) {
+          batchSel.value = stu.batch;
+          document.getElementById('customRoomInput').value = '';
+          onLobbyRoomChanged();
+        }
+      }
+    }
+
+    function onLobbyRoomChanged() {
+      if (currentRole) return;
+      watchLobbyRoomStatus();
+    }
+
+    function watchLobbyRoomStatus() {
+      if (unsubLobbyRoom) { unsubLobbyRoom(); unsubLobbyRoom = null; }
+      const { slug, displayName } = getSelectedRoomInfo();
+      const statusText = document.getElementById('roomLiveStatusText');
+      const joinBtn = document.getElementById('btnJoinStudentClass');
+
+      if (!db) {
+        if (statusText) statusText.textContent = 'Offline';
+        return;
+      }
+      if (statusText) {
+        statusText.textContent = 'Checking...';
+        statusText.className = 'font-bold text-slate-500';
+      }
+
+      unsubLobbyRoom = db.collection(ROOMS_COLLECTION).doc(slug).onSnapshot((snap) => {
+        const d = snap.exists ? snap.data() : null;
+        const freshHeartbeat = d && d.teacherHeartbeat && (Date.now() - Number(d.teacherHeartbeat) < 120000);
+        const isLive = Boolean(d && d.status === 'live' && freshHeartbeat);
+        lobbyRoomLive = isLive;
+        lobbyRoomData = d;
+
+        if (isLive) {
+          if (statusText) {
+            statusText.textContent = 'LIVE NOW';
+            statusText.className = 'font-extrabold text-emerald-700';
+          }
+          if (joinBtn) {
+            joinBtn.disabled = false;
+            joinBtn.className = 'w-full h-10 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg transition shadow-sm';
+            joinBtn.textContent = `Join Video Class — ${d.batchName || displayName} (Live)`;
+          }
+        } else {
+          if (statusText) {
+            statusText.textContent = 'Not Started';
+            statusText.className = 'font-bold text-slate-500';
+          }
+          if (joinBtn) {
+            joinBtn.disabled = true;
+            joinBtn.className = 'w-full h-10 bg-slate-200 text-slate-500 text-xs font-bold rounded-lg transition disabled:cursor-not-allowed';
+            joinBtn.textContent = `Waiting for Teacher to Start (${displayName})...`;
+          }
+        }
+      }, (err) => {
+        console.warn('Lobby room watch error:', err);
+      });
+    }
+
+    // =========================================================================
+    // 5. TEACHER CONSOLE (HUB FOR 4-6 STUDENTS)
+    // =========================================================================
+    async function startTeacherClass() {
+      if (!db) {
+        showToast('Firebase cloud signaling is not connected.');
+        return;
+      }
+      stopLocalGuitarMicTest();
+
+      const btn = document.getElementById('btnStartTeacherClass');
+      if (btn) { btn.disabled = true; btn.textContent = 'Starting Camera & Mic...'; }
+
+      try {
+        const { displayName, slug } = getSelectedRoomInfo();
+        const teacherName = (document.getElementById('teacherNameInput')?.value || 'Instructor (TSM)').trim();
+        const defaultAudioMode = document.getElementById('defaultAudioProfile')?.value || 'music_raw';
+        teacherOwnEchoCancel = (defaultAudioMode === 'music_ec');
+
+        localStream = await acquireMusicMediaStream({
+          audioMode: defaultAudioMode,
+          facingMode: currentFacingMode,
+          isTeacher: true
+        });
+
+        activeRoomSlug = slug;
+        activeRoomDisplayName = displayName;
+        teacherSessionId = 't_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+        currentRole = 'teacher';
+        teacherMicEnabled = true;
+        teacherCamEnabled = true;
+
+        if (unsubLobbyRoom) { unsubLobbyRoom(); unsubLobbyRoom = null; }
+
+        const roomRef = db.collection(ROOMS_COLLECTION).doc(slug);
+        await roomRef.set({
+          roomId: slug,
+          batchName: displayName,
+          status: 'live',
+          teacherSessionId,
+          teacherName,
+          defaultAudioMode,
+          maxStudents: MAX_BATCH_STUDENTS,
+          startedAt: Date.now(),
+          teacherHeartbeat: Date.now()
+        });
+
+        // Clean out stale peers from previous sessions
+        try {
+          const oldPeers = await roomRef.collection('peers').get();
+          const dels = [];
+          oldPeers.forEach(doc => {
+            if (doc.data().teacherSessionId !== teacherSessionId) {
+              dels.push(doc.ref.delete().catch(() => {}));
+            }
+          });
+          if (dels.length) await Promise.all(dels);
+        } catch (e) {}
+
+        // Heartbeat every 15s so students always know room is genuinely alive
+        teacherHeartbeatTimer = setInterval(() => {
+          if (currentRole === 'teacher' && db && activeRoomSlug) {
+            db.collection(ROOMS_COLLECTION).doc(activeRoomSlug).update({
+              teacherHeartbeat: Date.now()
+            }).catch(() => {});
+          }
+        }, 15000);
+
+        // Switch UI to Teacher Stage
+        document.getElementById('lobbyView').classList.add('hidden');
+        document.getElementById('teacherStageView').classList.remove('hidden');
+        document.getElementById('teacherRoomTitle').textContent = displayName;
+        updateTeacherAudioModeBadge();
+
+        const localVid = document.getElementById('teacherLocalVideo');
+        if (localVid) localVid.srcObject = localStream;
+        localSelfAudioCtx = attachAudioMeter(localStream, 'teacherSelfAudioBar');
+
+        startLiveClock();
+        renderTeacherStudentsGrid();
+
+        // Listen for student peer join requests
+        unsubTeacherPeers = roomRef.collection('peers').onSnapshot((snap) => {
+          snap.docChanges().forEach((change) => {
+            const peerId = change.doc.id;
+            const data = change.doc.data() || {};
+            if (data.teacherSessionId !== teacherSessionId) return;
+
+            if (change.type === 'removed' || data.left === true) {
+              cleanupTeacherPeer(peerId);
+              return;
+            }
+            if (data.offer && !teacherPeers.has(peerId)) {
+              if (teacherPeers.size >= MAX_BATCH_STUDENTS) {
+                change.doc.ref.update({ remoteCmd: { kicked: true, reason: 'Batch room full (max 6 students)', cmdAt: Date.now() } }).catch(() => {});
+                return;
+              }
+              acceptStudentPeerOffer(peerId, data, change.doc.ref);
+            } else if (teacherPeers.has(peerId)) {
+              // Update student track health metadata (videoLive / audioLive / audioMode)
+              const p = teacherPeers.get(peerId);
+              p.meta = { ...p.meta, ...data };
+              updateStudentTileStatusBadges(peerId);
+            }
+          });
+        });
+
+        showToast(`Video Class LIVE for ${displayName}! Share QR/Link to test on student phones.`);
+      } catch (err) {
+        console.error('Start teacher class error:', err);
+        showToast(err.message || 'Could not start Video Class');
+        await teardownTeacherResources();
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = 'Start Video Class as Teacher'; }
+      }
+    }
+
+    async function acceptStudentPeerOffer(peerId, peerData, peerRef) {
+      const pc = new RTCPeerConnection(getIceConfiguration());
+      const remoteStream = new MediaStream();
+      const peerEntry = {
+        peerId,
+        pc,
+        peerRef,
+        meta: peerData,
+        remoteStream,
+        pendingIce: [],
+        unsubIce: null,
+        localMuted: false,
+        connState: 'connecting',
+        meter: null,
+        lastAvAlert: Boolean(peerData.videoLive === false || peerData.audioLive === false),
+        lastAudioMode: peerData.audioMode || 'music_raw'
+      };
+      teacherPeers.set(peerId, peerEntry);
+
+      // Add Teacher's live audio & video tracks
+      if (localStream) {
+        localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+      }
+
+      pc.ontrack = (evt) => {
+        if (evt.streams && evt.streams[0]) {
+          evt.streams[0].getTracks().forEach(t => {
+            if (!remoteStream.getTracks().some(x => x.id === t.id)) remoteStream.addTrack(t);
+          });
+        } else if (evt.track) {
+          if (!remoteStream.getTracks().some(x => x.id === evt.track.id)) remoteStream.addTrack(evt.track);
+        }
+        bindPeerVideoElement(peerId);
+      };
+
+      pc.onicecandidate = (evt) => {
+        if (evt.candidate) {
+          peerRef.collection('iceTeacher').add(evt.candidate.toJSON()).catch(() => {});
+        }
+      };
+
+      pc.onconnectionstatechange = () => {
+        peerEntry.connState = pc.connectionState || pc.iceConnectionState || 'connecting';
+        updateStudentTileStatusBadges(peerId);
+        if (pc.connectionState === 'closed') {
+          cleanupTeacherPeer(peerId);
+        }
+      };
+
+      pc.oniceconnectionstatechange = () => {
+        if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+          peerEntry.connState = 'connected';
+          updateStudentTileStatusBadges(peerId);
+        } else if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed') {
+          peerEntry.connState = pc.iceConnectionState;
+          updateStudentTileStatusBadges(peerId);
+        }
+      };
+
+      renderTeacherStudentsGrid();
+
+      try {
+        await pc.setRemoteDescription(new RTCSessionDescription(peerData.offer));
+        const answer = await pc.createAnswer();
+        answer.sdp = tuneSdpForMusicAudio(answer.sdp, 128000);
+        await pc.setLocalDescription(answer);
+        await applyTrackBitratePriorities(pc, true);
+
+        await peerRef.update({
+          answer: { type: answer.type, sdp: answer.sdp }
+        });
+
+        // Flush any buffered ICE candidates & subscribe to student ICE candidates
+        peerEntry.unsubIce = peerRef.collection('iceStudent').onSnapshot((snap) => {
+          snap.docChanges().forEach((chg) => {
+            if (chg.type !== 'added') return;
+            const c = chg.doc.data();
+            if (!c) return;
+            if (pc.remoteDescription) {
+              pc.addIceCandidate(new RTCIceCandidate(c)).catch(() => {});
+            } else {
+              peerEntry.pendingIce.push(c);
+            }
+          });
+        });
+
+        for (const c of peerEntry.pendingIce) {
+          await pc.addIceCandidate(new RTCIceCandidate(c)).catch(() => {});
+        }
+        peerEntry.pendingIce = [];
+      } catch (err) {
+        console.error('Accept student offer error:', err);
+        cleanupTeacherPeer(peerId);
+      }
+    }
+
+    function bindPeerVideoElement(peerId) {
+      const p = teacherPeers.get(peerId);
+      if (!p) return;
+      const vid = document.getElementById(`stuVid_${peerId}`);
+      if (vid && vid.srcObject !== p.remoteStream) {
+        vid.srcObject = p.remoteStream;
+        vid.play().catch(() => {});
+      }
+      const pinVid = document.getElementById(`pinStuVid_${peerId}`);
+      if (pinVid && pinVid.srcObject !== p.remoteStream) {
+        pinVid.srcObject = p.remoteStream;
+        pinVid.play().catch(() => {});
+      }
+      applyTeacherAudioMixing();
+      if (!p.meter && p.remoteStream.getAudioTracks().length) {
+        p.meter = attachAudioMeter(p.remoteStream, `stuMeter_${peerId}`);
+      }
+    }
+
+    function applyTeacherAudioMixing() {
+      const clearSoloBtn = document.getElementById('btnClearSolo');
+      if (clearSoloBtn) clearSoloBtn.classList.toggle('hidden', !soloPeerId);
+
+      teacherPeers.forEach((p, pid) => {
+        const shouldMute = soloPeerId ? (pid !== soloPeerId) : p.localMuted;
+        const vid = document.getElementById(`stuVid_${pid}`);
+        const pinVid = document.getElementById(`pinStuVid_${pid}`);
+        if (pinVid) {
+          pinVid.muted = shouldMute;
+          if (vid) vid.muted = true; // Avoid double audio when pinned
+        } else if (vid) {
+          vid.muted = shouldMute;
+        }
+      });
+      renderTeacherAudioMixer();
+    }
+
+    function toggleSoloStudent(peerId) {
+      soloPeerId = (soloPeerId === peerId) ? null : peerId;
+      renderTeacherStudentsGrid();
+      applyTeacherAudioMixing();
+      if (soloPeerId) {
+        const p = teacherPeers.get(soloPeerId);
+        showToast(`Solo listening: ${p?.meta?.studentName || 'Student'}`);
+      } else {
+        showToast('Listening to all students');
+      }
+    }
+
+    function clearSoloStudent() {
+      soloPeerId = null;
+      renderTeacherStudentsGrid();
+      applyTeacherAudioMixing();
+      showToast('Listening to all students');
+    }
+
+    function toggleLocalMuteStudent(peerId) {
+      const p = teacherPeers.get(peerId);
+      if (!p) return;
+      if (soloPeerId === peerId) soloPeerId = null;
+      p.localMuted = !p.localMuted;
+      renderTeacherStudentsGrid();
+      applyTeacherAudioMixing();
+    }
+
+    function unmuteAllStudentsLocally() {
+      soloPeerId = null;
+      teacherPeers.forEach(p => { p.localMuted = false; });
+      renderTeacherStudentsGrid();
+      applyTeacherAudioMixing();
+      showToast('All students audible');
+    }
+
+    function togglePinStudent(peerId) {
+      pinnedPeerId = (pinnedPeerId === peerId) ? null : peerId;
+      renderTeacherStudentsGrid();
+    }
+
+    async function toggleRemoteStudentEchoCancel(peerId) {
+      const p = teacherPeers.get(peerId);
+      if (!p) return;
+      const nextEc = p.meta.audioMode !== 'music_ec';
+      try {
+        await p.peerRef.update({
+          remoteCmd: { forceEchoCancel: nextEc, kicked: false, cmdAt: Date.now() }
+        });
+        showToast(`${p.meta.studentName}: Switching mic to ${nextEc ? 'Music + Echo Cancel' : 'Raw Guitar Mode'}...`);
+      } catch (e) {
+        showToast('Could not send audio mode command');
+      }
+    }
+
+    async function kickStudentFromClass(peerId) {
+      const p = teacherPeers.get(peerId);
+      if (!p) return;
+      try {
+        await p.peerRef.update({
+          remoteCmd: { kicked: true, reason: 'Removed by Teacher', cmdAt: Date.now() }
+        });
+      } catch (e) {}
+      cleanupTeacherPeer(peerId);
+      showToast(`Removed ${p.meta.studentName || 'student'} from class`);
+    }
+
+    function cleanupTeacherPeer(peerId) {
+      const p = teacherPeers.get(peerId);
+      if (!p) return;
+      if (p.unsubIce) { try { p.unsubIce(); } catch (e) {} }
+      if (p.meter) { try { p.meter.stop(); } catch (e) {} }
+      if (p.pc) { try { p.pc.close(); } catch (e) {} }
+      teacherPeers.delete(peerId);
+      if (soloPeerId === peerId) soloPeerId = null;
+      if (pinnedPeerId === peerId) pinnedPeerId = null;
+      renderTeacherStudentsGrid();
+    }
+
+    function buildStudentTileHtml(p, isPinnedLarge = false) {
+      const pid = p.peerId;
+      const name = escapeHtml(p.meta.studentName || 'Student');
+      const isSolo = soloPeerId === pid;
+      const isMutedOnTeacher = soloPeerId ? !isSolo : p.localMuted;
+      const isEc = p.meta.audioMode === 'music_ec';
+      const avAlert = (p.meta.videoLive === false || p.meta.audioLive === false);
+      const vidId = isPinnedLarge ? `pinStuVid_${pid}` : `stuVid_${pid}`;
+
+      return `
+        <div class="bg-[#050810] rounded-xl overflow-hidden border-2 ${isSolo ? 'border-amber-400 shadow-lg' : avAlert ? 'border-red-500' : 'border-slate-800'} flex flex-col">
+          <div class="relative ${isPinnedLarge ? 'aspect-video max-h-[52vh]' : 'aspect-video'} bg-[#050810]">
+            <video id="${vidId}" autoplay playsinline class="w-full h-full object-cover"></video>
+            <div class="absolute top-2 left-2 flex flex-wrap items-center gap-1">
+              <span class="px-2 py-0.5 rounded bg-black/75 text-white text-[11px] font-bold backdrop-blur-sm">${name}</span>
+              ${isSolo ? `<span class="px-1.5 py-0.5 rounded bg-amber-400 text-slate-950 text-[9px] font-extrabold uppercase">SOLO</span>` : ''}
+              <span id="stuConn_${pid}" class="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${p.connState === 'connected' ? 'bg-emerald-600/90 text-white' : 'bg-slate-700/90 text-slate-200'}">${escapeHtml(p.connState)}</span>
+              ${avAlert ? `<span class="px-1.5 py-0.5 rounded bg-red-600 text-white text-[9px] font-extrabold uppercase">AV INTERRUPTED</span>` : ''}
+            </div>
+            <!-- Live Guitar / Mic Audio Level Bar -->
+            <div class="absolute bottom-2 left-2 right-2 flex items-center gap-2">
+              <div class="flex-1 h-1.5 bg-black/60 rounded-full overflow-hidden">
+                <div id="stuMeter_${pid}" class="h-full ${isMutedOnTeacher ? 'bg-slate-500' : 'bg-emerald-400'} transition-all duration-75" style="width: 0%"></div>
+              </div>
+              <span class="px-1.5 py-0.5 rounded bg-black/70 text-[9px] font-bold ${isEc ? 'text-sky-300' : 'text-emerald-300'}">${isEc ? 'EC' : 'RAW'}</span>
+            </div>
+          </div>
+          <!-- Uniform Teacher Control Row Per Student -->
+          <div class="p-1.5 bg-slate-900 grid grid-cols-4 gap-1 text-[10px]">
+            <button type="button" onclick="toggleSoloStudent('${pid}')" class="h-7 rounded font-bold inline-flex items-center justify-center ${isSolo ? 'bg-amber-400 text-slate-950' : 'bg-slate-800 hover:bg-slate-700 text-amber-300'}">${isSolo ? 'Unsolo' : 'Solo'}</button>
+            <button type="button" onclick="toggleLocalMuteStudent('${pid}')" class="h-7 rounded font-bold inline-flex items-center justify-center ${isMutedOnTeacher ? 'bg-red-700 text-white' : 'bg-slate-800 hover:bg-slate-700 text-slate-200'}">${isMutedOnTeacher ? 'Muted' : 'Silence'}</button>
+            <button type="button" onclick="togglePinStudent('${pid}')" class="h-7 rounded font-bold inline-flex items-center justify-center ${pinnedPeerId === pid ? 'bg-indigo-600 text-white' : 'bg-slate-800 hover:bg-slate-700 text-indigo-300'}">${pinnedPeerId === pid ? 'Unpin' : 'Zoom'}</button>
+            <button type="button" onclick="toggleRemoteStudentEchoCancel('${pid}')" class="h-7 rounded font-bold inline-flex items-center justify-center ${isEc ? 'bg-sky-700 text-white' : 'bg-slate-800 hover:bg-slate-700 text-emerald-300'}" title="Toggle Echo Cancel on student mic">${isEc ? 'Raw' : 'EchoFix'}</button>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderTeacherStudentsGrid() {
+      const grid = document.getElementById('teacherStudentsGrid');
+      const pinBox = document.getElementById('pinnedStudentContainer');
+      const countBadge = document.getElementById('teacherStudentCountBadge');
+      if (countBadge) countBadge.textContent = `${teacherPeers.size} / ${MAX_BATCH_STUDENTS} Students`;
+
+      const peersArr = [...teacherPeers.values()];
+
+      if (pinnedPeerId && teacherPeers.has(pinnedPeerId)) {
+        pinBox.classList.remove('hidden');
+        pinBox.innerHTML = buildStudentTileHtml(teacherPeers.get(pinnedPeerId), true);
+      } else {
+        pinBox.classList.add('hidden');
+        pinBox.innerHTML = '';
+      }
+
+      if (!peersArr.length) {
+        grid.innerHTML = `
+          <div class="col-span-full bg-white border-2 border-dashed border-slate-300 rounded-2xl p-8 text-center space-y-3">
+            <div class="text-sm font-extrabold text-[#0F172A]">Batch Room "${escapeHtml(activeRoomDisplayName)}" is LIVE</div>
+            <p class="text-xs text-slate-500 max-w-md mx-auto">
+              Waiting for students (up to 6) to tap <b>Join Video Class</b>. For this trial, tap <b>Invite / QR Link</b> to open on your test phones.
+            </p>
+            <button type="button" onclick="openInviteTrialModal()" class="h-9 px-4 bg-[#0F172A] hover:bg-slate-800 text-white text-xs font-bold rounded-lg">
+              Show Student Trial QR &amp; Link
+            </button>
+          </div>
+        `;
+      } else {
+        const gridPeers = peersArr.filter(p => p.peerId !== pinnedPeerId);
+        grid.innerHTML = gridPeers.map(p => buildStudentTileHtml(p, false)).join('');
+      }
+
+      // Re-bind live MediaStreams to freshly rendered video tags
+      peersArr.forEach(p => bindPeerVideoElement(p.peerId));
+      applyTeacherAudioMixing();
+    }
+
+    function renderTeacherAudioMixer() {
+      const box = document.getElementById('teacherAudioMixerList');
+      if (!box) return;
+      const peersArr = [...teacherPeers.values()];
+      if (!peersArr.length) {
+        box.innerHTML = '<div class="text-[11px] text-slate-400">No students connected yet.</div>';
+        return;
+      }
+      box.innerHTML = peersArr.map(p => {
+        const isSolo = soloPeerId === p.peerId;
+        const isMuted = soloPeerId ? !isSolo : p.localMuted;
+        return `
+          <div class="flex items-center justify-between gap-2 p-1.5 rounded-lg bg-slate-50 border border-slate-200">
+            <div class="min-w-0">
+              <div class="font-bold text-[#0F172A] text-[11px] truncate">${escapeHtml(p.meta.studentName || 'Student')}</div>
+              <div class="text-[10px] ${isSolo ? 'text-amber-700 font-bold' : isMuted ? 'text-red-600' : 'text-emerald-700'}">
+                ${isSolo ? 'Solo Focus' : isMuted ? 'Silenced on speaker' : 'Audible'}
+              </div>
+            </div>
+            <button type="button" onclick="kickStudentFromClass('${p.peerId}')" class="px-2 py-1 text-[10px] font-bold text-red-700 bg-red-50 border border-red-200 rounded hover:bg-red-100 shrink-0">Remove</button>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function updateStudentTileStatusBadges(peerId) {
+      const p = teacherPeers.get(peerId);
+      if (!p) return;
+      const el = document.getElementById(`stuConn_${peerId}`);
+      if (el) {
+        el.textContent = p.connState;
+        el.className = `px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${p.connState === 'connected' ? 'bg-emerald-600/90 text-white' : p.connState === 'failed' ? 'bg-red-600 text-white' : 'bg-slate-700/90 text-slate-200'}`;
+      }
+      const avAlert = Boolean(p.meta.videoLive === false || p.meta.audioLive === false);
+      const audioMode = p.meta.audioMode || 'music_raw';
+      if (avAlert !== p.lastAvAlert || audioMode !== p.lastAudioMode) {
+        p.lastAvAlert = avAlert;
+        p.lastAudioMode = audioMode;
+        renderTeacherStudentsGrid();
+      }
+    }
+
+    function toggleTeacherMic() {
+      if (!localStream) return;
+      teacherMicEnabled = !teacherMicEnabled;
+      localStream.getAudioTracks().forEach(t => { t.enabled = teacherMicEnabled; });
+      const btn = document.getElementById('btnTeacherMicToggle');
+      if (btn) {
+        btn.textContent = teacherMicEnabled ? 'My Mic: ON' : 'My Mic: MUTED';
+        btn.className = teacherMicEnabled
+          ? 'h-8 px-3 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 font-bold rounded-lg'
+          : 'h-8 px-3 bg-red-100 hover:bg-red-200 text-red-800 border border-red-300 font-bold rounded-lg';
+      }
+    }
+
+    function toggleTeacherCam() {
+      if (!localStream) return;
+      teacherCamEnabled = !teacherCamEnabled;
+      localStream.getVideoTracks().forEach(t => { t.enabled = teacherCamEnabled; });
+      const btn = document.getElementById('btnTeacherCamToggle');
+      if (btn) {
+        btn.textContent = teacherCamEnabled ? 'My Cam: ON' : 'My Cam: OFF';
+        btn.className = teacherCamEnabled
+          ? 'h-8 px-3 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 font-bold rounded-lg'
+          : 'h-8 px-3 bg-red-100 hover:bg-red-200 text-red-800 border border-red-300 font-bold rounded-lg';
+      }
+    }
+
+    async function toggleTeacherOwnEchoCancel() {
+      teacherOwnEchoCancel = !teacherOwnEchoCancel;
+      await swapLocalAudioTrack(teacherOwnEchoCancel ? 'music_ec' : 'music_raw');
+      updateTeacherAudioModeBadge();
+      showToast(`Teacher Mic: ${teacherOwnEchoCancel ? 'Music + Echo Cancel' : 'Raw Guitar Mode'}`);
+    }
+
+    function updateTeacherAudioModeBadge() {
+      const btn = document.getElementById('btnTeacherAudioMode');
+      if (btn) btn.textContent = teacherOwnEchoCancel ? 'Music + EC' : 'Raw Guitar';
+    }
+
+    async function endTeacherClass() {
+      try {
+        if (db && activeRoomSlug) {
+          await db.collection(ROOMS_COLLECTION).doc(activeRoomSlug).update({
+            status: 'ended',
+            endedAt: Date.now()
+          }).catch(() => {});
+        }
+      } catch (e) {}
+      await teardownTeacherResources();
+      showToast('Video Class ended');
+    }
+
+    async function teardownTeacherResources() {
+      if (unsubTeacherPeers) { unsubTeacherPeers(); unsubTeacherPeers = null; }
+      if (teacherHeartbeatTimer) { clearInterval(teacherHeartbeatTimer); teacherHeartbeatTimer = null; }
+      stopLiveClock();
+      [...teacherPeers.keys()].forEach(pid => cleanupTeacherPeer(pid));
+      if (localSelfAudioCtx) { localSelfAudioCtx.stop(); localSelfAudioCtx = null; }
+      if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
+      currentRole = null;
+      soloPeerId = null;
+      pinnedPeerId = null;
+      document.getElementById('teacherStageView').classList.add('hidden');
+      document.getElementById('lobbyView').classList.remove('hidden');
+      watchLobbyRoomStatus();
+    }
+
+    // =========================================================================
+    // 6. STUDENT CLASSROOM (ALWAYS-ON CAM & MIC, TEACHER-ONLY VIEW)
+    // =========================================================================
+    async function joinStudentClass() {
+      if (!db) {
+        showToast('Cloud signaling not connected.');
+        return;
+      }
+      if (!lobbyRoomLive || !lobbyRoomData) {
+        showToast('Teacher has not started this Video Class yet.');
+        return;
+      }
+      stopLocalGuitarMicTest();
+
+      const studentName = (document.getElementById('studentNameInput')?.value || '').trim();
+      if (!studentName) {
+        showToast('Please enter your name (or pick from roster) before joining.');
+        document.getElementById('studentNameInput')?.focus();
+        return;
+      }
+
+      const btn = document.getElementById('btnJoinStudentClass');
+      if (btn) { btn.disabled = true; btn.textContent = 'Requesting Camera & Mic...'; }
+
+      try {
+        const { displayName, slug } = getSelectedRoomInfo();
+        const targetTeacherSession = lobbyRoomData.teacherSessionId;
+        studentCurrentAudioMode = lobbyRoomData.defaultAudioMode || 'music_raw';
+
+        localStream = await acquireMusicMediaStream({
+          audioMode: studentCurrentAudioMode,
+          facingMode: currentFacingMode,
+          isTeacher: false
+        });
+
+        activeRoomSlug = slug;
+        activeRoomDisplayName = lobbyRoomData.batchName || displayName;
+        studentPeerId = 'stu_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+        currentRole = 'student';
+        studentLastCmdAt = 0;
+
+        if (unsubLobbyRoom) { unsubLobbyRoom(); unsubLobbyRoom = null; }
+
+        // Switch UI to Student Classroom
+        document.getElementById('lobbyView').classList.add('hidden');
+        document.getElementById('studentStageView').classList.remove('hidden');
+        document.getElementById('studentRoomHeaderTitle').textContent = `Video Class — ${activeRoomDisplayName}`;
+        document.getElementById('studentTeacherNameTag').textContent = lobbyRoomData.teacherName || 'Teacher';
+        document.getElementById('studentSelfNameTag').textContent = studentName;
+        updateStudentAudioModeLabel();
+
+        const selfVid = document.getElementById('studentLocalSelfVideo');
+        if (selfVid) selfVid.srcObject = localStream;
+        localSelfAudioCtx = attachAudioMeter(localStream, 'studentSelfMicBar');
+
+        startLiveClock();
+
+        const roomRef = db.collection(ROOMS_COLLECTION).doc(slug);
+        const peerRef = roomRef.collection('peers').doc(studentPeerId);
+        studentPeerRef = peerRef;
+
+        // Watch Room Status so student auto-exits when Teacher ends class
+        unsubStudentRoom = roomRef.onSnapshot((snap) => {
+          const rd = snap.exists ? snap.data() : null;
+          if (!rd || rd.status !== 'live' || rd.teacherSessionId !== targetTeacherSession) {
+            showToast('Teacher ended the Video Class.');
+            leaveStudentClass(true);
+          }
+        });
+
+        // Create WebRTC Offer to Teacher Hub
+        await connectStudentPeerConnection(peerRef, targetTeacherSession, studentName);
+
+        // Start Always-On Camera/Mic Track Watchdog
+        attachStudentTrackWatchdog(peerRef);
+
+      } catch (err) {
+        console.error('Student join error:', err);
+        showToast(err.message || 'Could not join Video Class');
+        await leaveStudentClass(true);
+      }
+    }
+
+    async function connectStudentPeerConnection(peerRef, targetTeacherSession, studentName) {
+      if (studentPc) { try { studentPc.close(); } catch (e) {} }
+      studentPendingIce = [];
+
+      const pc = new RTCPeerConnection(getIceConfiguration());
+      studentPc = pc;
+
+      localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+
+      const teacherStream = new MediaStream();
+      pc.ontrack = (evt) => {
+        if (evt.streams && evt.streams[0]) {
+          evt.streams[0].getTracks().forEach(t => {
+            if (!teacherStream.getTracks().some(x => x.id === t.id)) teacherStream.addTrack(t);
+          });
+        } else if (evt.track) {
+          if (!teacherStream.getTracks().some(x => x.id === evt.track.id)) teacherStream.addTrack(evt.track);
+        }
+        const remoteVid = document.getElementById('studentRemoteTeacherVideo');
+        const overlay = document.getElementById('studentTeacherVideoOverlay');
+        if (remoteVid) {
+          remoteVid.srcObject = teacherStream;
+          const playPromise = remoteVid.play();
+          if (playPromise && typeof playPromise.catch === 'function') {
+            playPromise.catch(() => {
+              document.getElementById('btnStudentUnblockAudio')?.classList.remove('hidden');
+            });
+          }
+        }
+        if (overlay) overlay.classList.add('hidden');
+      };
+
+      pc.onicecandidate = (evt) => {
+        if (evt.candidate) {
+          peerRef.collection('iceStudent').add(evt.candidate.toJSON()).catch(() => {});
+        }
+      };
+
+      pc.oniceconnectionstatechange = () => {
+        const st = pc.iceConnectionState;
+        const badge = document.getElementById('studentConnBadge');
+        if (badge) {
+          if (st === 'connected' || st === 'completed') {
+            badge.textContent = 'Connected Live';
+            badge.className = 'text-emerald-700 font-bold';
+          } else if (st === 'disconnected' || st === 'failed') {
+            badge.textContent = 'Reconnecting...';
+            badge.className = 'text-amber-700 font-bold';
+          } else {
+            badge.textContent = 'Connecting...';
+            badge.className = 'text-indigo-700';
+          }
+        }
+      };
+
+      const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true });
+      offer.sdp = tuneSdpForMusicAudio(offer.sdp, 128000);
+      await pc.setLocalDescription(offer);
+      await applyTrackBitratePriorities(pc, false);
+
+      await peerRef.set({
+        peerId: studentPeerId,
+        studentName,
+        teacherSessionId: targetTeacherSession,
+        joinedAt: Date.now(),
+        lastSeen: Date.now(),
+        videoLive: true,
+        audioLive: true,
+        audioMode: studentCurrentAudioMode,
+        left: false,
+        offer: { type: offer.type, sdp: offer.sdp }
+      });
+
+      // Listen for Teacher Answer & Remote Commands (e.g. Echo Cancel toggle or Kick)
+      if (unsubStudentPeerDoc) unsubStudentPeerDoc();
+      unsubStudentPeerDoc = peerRef.onSnapshot(async (snap) => {
+        if (!snap.exists) return;
+        const d = snap.data() || {};
+
+        if (d.answer && !pc.currentRemoteDescription) {
+          try {
+            await pc.setRemoteDescription(new RTCSessionDescription(d.answer));
+            for (const c of studentPendingIce) {
+              await pc.addIceCandidate(new RTCIceCandidate(c)).catch(() => {});
+            }
+            studentPendingIce = [];
+          } catch (e) {
+            console.warn('Student setRemoteDescription warning:', e);
+          }
+        }
+
+        if (d.remoteCmd && Number(d.remoteCmd.cmdAt || 0) > studentLastCmdAt) {
+          studentLastCmdAt = Number(d.remoteCmd.cmdAt);
+          if (d.remoteCmd.kicked) {
+            showToast(d.remoteCmd.reason || 'Disconnected by Teacher');
+            leaveStudentClass(true);
+            return;
+          }
+          if (typeof d.remoteCmd.forceEchoCancel === 'boolean') {
+            const desiredMode = d.remoteCmd.forceEchoCancel ? 'music_ec' : 'music_raw';
+            if (desiredMode !== studentCurrentAudioMode) {
+              studentCurrentAudioMode = desiredMode;
+              await swapLocalAudioTrack(desiredMode);
+              updateStudentAudioModeLabel();
+              peerRef.update({ audioMode: desiredMode }).catch(() => {});
+              showToast(`Teacher set your mic to ${desiredMode === 'music_ec' ? 'Music + Echo Cancel' : 'Guitar Raw Mode'}`);
+            }
+          }
+        }
+      });
+
+      // Listen for Teacher ICE candidates
+      if (unsubStudentTeacherIce) unsubStudentTeacherIce();
+      unsubStudentTeacherIce = peerRef.collection('iceTeacher').onSnapshot((snap) => {
+        snap.docChanges().forEach((chg) => {
+          if (chg.type !== 'added') return;
+          const c = chg.doc.data();
+          if (!c) return;
+          if (pc.remoteDescription) {
+            pc.addIceCandidate(new RTCIceCandidate(c)).catch(() => {});
+          } else {
+            studentPendingIce.push(c);
+          }
+        });
+      });
+    }
+
+    function unblockStudentTeacherAudio() {
+      const vid = document.getElementById('studentRemoteTeacherVideo');
+      if (vid) {
+        vid.muted = false;
+        vid.play().catch(() => {});
+      }
+      document.getElementById('btnStudentUnblockAudio')?.classList.add('hidden');
+    }
+
+    function updateStudentAudioModeLabel() {
+      const el = document.getElementById('studentAudioModeBadge');
+      if (!el) return;
+      el.textContent = studentCurrentAudioMode === 'music_ec'
+        ? 'Music + Echo Cancel ON'
+        : 'Guitar Raw Audio ON (128kbps)';
+    }
+
+    function attachStudentTrackWatchdog(peerRef) {
+      if (studentWatchdogInterval) clearInterval(studentWatchdogInterval);
+      const checkHealth = () => {
+        if (currentRole !== 'student' || !localStream) return;
+        const vTrack = localStream.getVideoTracks()[0];
+        const aTrack = localStream.getAudioTracks()[0];
+        // Enforce enabled=true continuously on student tracks
+        if (vTrack && !vTrack.enabled) vTrack.enabled = true;
+        if (aTrack && !aTrack.enabled) aTrack.enabled = true;
+
+        const vLive = Boolean(vTrack && vTrack.readyState === 'live' && !vTrack.muted);
+        const aLive = Boolean(aTrack && aTrack.readyState === 'live' && !aTrack.muted);
+        const banner = document.getElementById('studentAvWarningBanner');
+        if (banner) banner.classList.toggle('hidden', vLive && aLive);
+
+        peerRef.update({ videoLive: vLive, audioLive: aLive, lastSeen: Date.now() }).catch(() => {});
+      };
+
+      localStream.getTracks().forEach(t => {
+        t.onended = checkHealth;
+        t.onmute = checkHealth;
+        t.onunmute = checkHealth;
+      });
+      studentWatchdogInterval = setInterval(checkHealth, 3500);
+    }
+
+    async function restoreStudentCameraAndMic() {
+      try {
+        const fresh = await acquireMusicMediaStream({
+          audioMode: studentCurrentAudioMode,
+          facingMode: currentFacingMode,
+          isTeacher: false
+        });
+        const newV = fresh.getVideoTracks()[0];
+        const newA = fresh.getAudioTracks()[0];
+        if (studentPc) {
+          const transceivers = studentPc.getTransceivers ? studentPc.getTransceivers() : [];
+          if (transceivers.length) {
+            for (const tr of transceivers) {
+              const kind = tr.sender?.track?.kind || tr.receiver?.track?.kind || '';
+              if (kind === 'video' && newV && tr.sender) await tr.sender.replaceTrack(newV).catch(() => {});
+              if (kind === 'audio' && newA && tr.sender) await tr.sender.replaceTrack(newA).catch(() => {});
+            }
+          } else {
+            for (const sender of studentPc.getSenders()) {
+              if (sender.track?.kind === 'video' && newV) await sender.replaceTrack(newV).catch(() => {});
+              if (sender.track?.kind === 'audio' && newA) await sender.replaceTrack(newA).catch(() => {});
+            }
+          }
+        }
+        if (localStream) localStream.getTracks().forEach(t => t.stop());
+        localStream = fresh;
+        const selfVid = document.getElementById('studentLocalSelfVideo');
+        if (selfVid) selfVid.srcObject = localStream;
+        if (localSelfAudioCtx) localSelfAudioCtx.stop();
+        localSelfAudioCtx = attachAudioMeter(localStream, 'studentSelfMicBar');
+        document.getElementById('studentAvWarningBanner')?.classList.add('hidden');
+        if (studentPeerRef) {
+          studentPeerRef.update({ videoLive: true, audioLive: true, lastSeen: Date.now() }).catch(() => {});
+          attachStudentTrackWatchdog(studentPeerRef);
+        }
+        showToast('Camera & Microphone restored!');
+      } catch (e) {
+        showToast(e.message || 'Please allow Camera and Microphone permissions.');
+      }
+    }
+
+    async function leaveStudentClass(silent = false) {
+      if (studentWatchdogInterval) { clearInterval(studentWatchdogInterval); studentWatchdogInterval = null; }
+      if (unsubStudentRoom) { unsubStudentRoom(); unsubStudentRoom = null; }
+      if (unsubStudentPeerDoc) { unsubStudentPeerDoc(); unsubStudentPeerDoc = null; }
+      if (unsubStudentTeacherIce) { unsubStudentTeacherIce(); unsubStudentTeacherIce = null; }
+      stopLiveClock();
+
+      if (db && activeRoomSlug && studentPeerId) {
+        db.collection(ROOMS_COLLECTION).doc(activeRoomSlug).collection('peers').doc(studentPeerId)
+          .update({ left: true, lastSeen: Date.now() }).catch(() => {});
+      }
+      if (studentPc) { try { studentPc.close(); } catch (e) {} studentPc = null; }
+      if (localSelfAudioCtx) { localSelfAudioCtx.stop(); localSelfAudioCtx = null; }
+      if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
+
+      const remoteVid = document.getElementById('studentRemoteTeacherVideo');
+      if (remoteVid) remoteVid.srcObject = null;
+      document.getElementById('studentTeacherVideoOverlay')?.classList.remove('hidden');
+      document.getElementById('btnStudentUnblockAudio')?.classList.add('hidden');
+      document.getElementById('studentAvWarningBanner')?.classList.add('hidden');
+
+      currentRole = null;
+      studentPeerId = '';
+      studentPeerRef = null;
+      document.getElementById('studentStageView').classList.add('hidden');
+      document.getElementById('lobbyView').classList.remove('hidden');
+      watchLobbyRoomStatus();
+      if (!silent) showToast('Left Video Class');
+    }
+
+    // =========================================================================
+    // 7. SHARED TRACK SWAPPERS (FLIP CAMERA & LIVE AUDIO MODE SWITCH)
+    // =========================================================================
+    async function flipLocalCamera() {
+      if (!localStream) return;
+      const nextFacing = currentFacingMode === 'user' ? 'environment' : 'user';
+      try {
+        const camStream = await navigator.mediaDevices.getUserMedia({
+          video: buildVideoConstraints(nextFacing, currentRole === 'teacher'),
+          audio: false
+        });
+        const newVideoTrack = camStream.getVideoTracks()[0];
+        if (!newVideoTrack) return;
+
+        currentFacingMode = nextFacing;
+        const oldVideoTrack = localStream.getVideoTracks()[0];
+        if (oldVideoTrack) {
+          localStream.removeTrack(oldVideoTrack);
+          oldVideoTrack.stop();
+        }
+        localStream.addTrack(newVideoTrack);
+
+        const pcs = currentRole === 'teacher'
+          ? [...teacherPeers.values()].map(p => p.pc)
+          : (studentPc ? [studentPc] : []);
+        for (const pc of pcs) {
+          const sender = pc.getSenders().find(s => s.track && s.track.kind === 'video');
+          if (sender) await sender.replaceTrack(newVideoTrack).catch(() => {});
+        }
+
+        const vidEl = document.getElementById(currentRole === 'teacher' ? 'teacherLocalVideo' : 'studentLocalSelfVideo');
+        if (vidEl) {
+          vidEl.srcObject = localStream;
+          vidEl.classList.toggle('mirror-video', currentFacingMode === 'user');
+        }
+        showToast(`Switched to ${currentFacingMode === 'environment' ? 'Rear' : 'Front'} Camera`);
+      } catch (e) {
+        showToast('Second camera unavailable on this device.');
+      }
+    }
+
+    async function swapLocalAudioTrack(audioMode) {
+      if (!localStream) return;
+      try {
+        const audioOnly = await navigator.mediaDevices.getUserMedia({
+          audio: buildMusicAudioConstraints(audioMode),
+          video: false
+        });
+        const newAudioTrack = audioOnly.getAudioTracks()[0];
+        if (!newAudioTrack) return;
+        try { if ('contentHint' in newAudioTrack) newAudioTrack.contentHint = 'music'; } catch (e) {}
+
+        const oldAudioTrack = localStream.getAudioTracks()[0];
+        if (oldAudioTrack) {
+          localStream.removeTrack(oldAudioTrack);
+          oldAudioTrack.stop();
+        }
+        localStream.addTrack(newAudioTrack);
+
+        const pcs = currentRole === 'teacher'
+          ? [...teacherPeers.values()].map(p => p.pc)
+          : (studentPc ? [studentPc] : []);
+        for (const pc of pcs) {
+          const sender = pc.getSenders().find(s => s.track && s.track.kind === 'audio');
+          if (sender) await sender.replaceTrack(newAudioTrack).catch(() => {});
+        }
+
+        if (localSelfAudioCtx) localSelfAudioCtx.stop();
+        localSelfAudioCtx = attachAudioMeter(localStream, currentRole === 'teacher' ? 'teacherSelfAudioBar' : 'studentSelfMicBar');
+        if (currentRole === 'student' && studentPeerRef) {
+          attachStudentTrackWatchdog(studentPeerRef);
+        }
+      } catch (e) {
+        console.warn('Swap audio track warning:', e);
+      }
+    }
+
+    // =========================================================================
+    // 8. INVITE QR / LINK MODAL FOR FAST MULTI-PHONE TRIALS
+    // =========================================================================
+    function getStudentTrialInviteUrl() {
+      const base = `${window.location.origin}${window.location.pathname}`;
+      return `${base}?role=student&batch=${encodeURIComponent(activeRoomDisplayName || 'Guitar Trial Batch')}`;
+    }
+
+    function openInviteTrialModal() {
+      const inviteUrl = getStudentTrialInviteUrl();
+      const box = document.getElementById('trialModalBox');
+      box.innerHTML = `
+        <div class="flex items-center justify-between border-b border-slate-200 pb-2.5">
+          <h3 class="text-sm font-extrabold text-[#0F172A]">Student Join QR &amp; Trial Link</h3>
+          <button type="button" onclick="closeTrialModal()" class="text-xs font-bold text-slate-500 hover:text-slate-900">Close</button>
+        </div>
+        <p class="text-xs text-slate-600">Scan this QR code or share the link on 1&ndash;6 test phones to join <b>${escapeHtml(activeRoomDisplayName)}</b> as students and test guitar audio live.</p>
+        <div class="flex justify-center py-2">
+          <div id="inviteQrContainer" class="p-3 bg-white border border-slate-200 rounded-xl"></div>
+        </div>
+        <div class="flex gap-1.5">
+          <input id="inviteUrlReadonly" value="${escapeHtml(inviteUrl)}" readonly class="flex-1 h-9 px-2.5 bg-slate-50 border border-slate-300 rounded-lg text-[11px] font-mono text-slate-700" />
+          <button type="button" onclick="copyInviteTrialUrl()" class="h-9 px-3 bg-[#0F172A] hover:bg-slate-800 text-white font-bold rounded-lg shrink-0">Copy</button>
+        </div>
+      `;
+      document.getElementById('trialModalBackdrop').classList.remove('hidden');
+      setTimeout(() => {
+        const qrEl = document.getElementById('inviteQrContainer');
+        if (qrEl && typeof QRCode !== 'undefined') {
+          new QRCode(qrEl, { text: inviteUrl, width: 170, height: 170, correctLevel: QRCode.CorrectLevel.M });
+        }
+      }, 30);
+    }
+
+    function copyInviteTrialUrl() {
+      const url = getStudentTrialInviteUrl();
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(url).then(() => showToast('Student trial link copied!')).catch(() => {});
+      } else {
+        const inp = document.getElementById('inviteUrlReadonly');
+        if (inp) { inp.select(); document.execCommand('copy'); showToast('Student trial link copied!'); }
+      }
+    }
+
+    function closeTrialModal() {
+      document.getElementById('trialModalBackdrop')?.classList.add('hidden');
+    }
+
+    // =========================================================================
+    // 9. URL PARAM PREFILL & CLEANUP ON PAGE UNLOAD
+    // =========================================================================
+    function applyUrlParams() {
+      const params = new URLSearchParams(window.location.search);
+      const roleParam = (params.get('role') || '').toLowerCase();
+      const batchParam = (params.get('batch') || '').trim();
+      const nameParam = (params.get('name') || '').trim();
+
+      if (batchParam) {
+        const sel = document.getElementById('roomBatchSelect');
+        if (sel && [...sel.options].some(o => o.value === batchParam)) {
+          sel.value = batchParam;
+        } else {
+          document.getElementById('customRoomInput').value = batchParam;
+        }
+      }
+      if (nameParam) {
+        document.getElementById('studentNameInput').value = nameParam;
+      }
+      if (roleParam === 'student') {
+        document.getElementById('teacherLaunchCard')?.classList.add('hidden');
+      } else if (roleParam === 'teacher') {
+        document.getElementById('studentLaunchCard')?.classList.add('hidden');
+      }
+    }
+
+    window.addEventListener('beforeunload', () => {
+      if (currentRole === 'teacher' && db && activeRoomSlug) {
+        db.collection(ROOMS_COLLECTION).doc(activeRoomSlug).update({ status: 'ended', endedAt: Date.now() }).catch(() => {});
+      } else if (currentRole === 'student' && db && activeRoomSlug && studentPeerId) {
+        db.collection(ROOMS_COLLECTION).doc(activeRoomSlug).collection('peers').doc(studentPeerId).update({ left: true }).catch(() => {});
+      }
+    });
+
+    (async function bootVideoClassTrial() {
+      loadLocalAcademyRoster();
+      loadTurnConfigUi();
+      applyUrlParams();
+      await initFirebase();
+      watchLobbyRoomStatus();
+    })();
+  </script>
+</body>
+</html>

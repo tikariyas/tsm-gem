@@ -13,6 +13,7 @@
   <link rel="manifest" href="./manifest.webmanifest" />
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/opentype.js@1.3.4/dist/opentype.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
@@ -56,36 +57,54 @@
         </div>
       </div>
 
-      <form onsubmit="handleDirectPdfVaultUpload(event)" class="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end bg-slate-50 p-3.5 rounded-xl border border-slate-200 text-xs">
-        <div class="sm:col-span-3">
-          <label class="block font-semibold text-slate-700 mb-1">Material Title</label>
-          <input id="directUploadTitle" placeholder="e.g. Guitar Beginner Chords Part 1" class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg font-medium" required />
+      <form onsubmit="handleDirectPdfVaultUpload(event)" class="bg-slate-50 p-3.5 rounded-xl border border-slate-200 text-xs space-y-3">
+        <div class="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
+          <div class="sm:col-span-3">
+            <label class="block font-semibold text-slate-700 mb-1">Material Title</label>
+            <input id="directUploadTitle" placeholder="e.g. Guitar Beginner Chords Part 1" class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg font-medium" required />
+          </div>
+          <div class="sm:col-span-3">
+            <label class="block font-semibold text-slate-700 mb-1">Target Course / Instrument</label>
+            <select id="directUploadCourse" class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg font-semibold text-indigo-900">
+              <!-- Populated dynamically -->
+            </select>
+          </div>
+          <div class="sm:col-span-2">
+            <label class="block font-semibold text-slate-700 mb-1">Classification</label>
+            <select id="directUploadCategory" class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg">
+              <option value="Study Material">Study Material</option>
+              <option value="Information">Information / Notice</option>
+              <option value="Brochure">Brochure</option>
+            </select>
+          </div>
+          <div class="sm:col-span-2">
+            <label class="block font-semibold text-slate-700 mb-1">Choose PDF File</label>
+            <label class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg font-semibold text-slate-700 cursor-pointer hover:bg-slate-100 flex items-center justify-center truncate">
+              <span id="directPdfFileName" class="truncate">Select PDF...</span>
+              <input type="file" id="directPdfFileInput" accept="application/pdf" onchange="onDirectPdfFileSelected(event)" class="hidden" />
+            </label>
+          </div>
+          <div class="sm:col-span-2">
+            <button type="submit" id="directUploadSubmitBtn" class="w-full py-2 px-3 bg-indigo-700 hover:bg-indigo-800 text-white font-bold rounded-lg shadow-sm transition">
+              + Upload to Vault
+            </button>
+          </div>
         </div>
-        <div class="sm:col-span-3">
-          <label class="block font-semibold text-slate-700 mb-1">Target Course / Instrument</label>
-          <select id="directUploadCourse" class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg font-semibold text-indigo-900">
-            <!-- Populated dynamically -->
-          </select>
-        </div>
-        <div class="sm:col-span-2">
-          <label class="block font-semibold text-slate-700 mb-1">Classification</label>
-          <select id="directUploadCategory" class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg">
-            <option value="Study Material">Study Material</option>
-            <option value="Information">Information / Notice</option>
-            <option value="Brochure">Brochure</option>
-          </select>
-        </div>
-        <div class="sm:col-span-2">
-          <label class="block font-semibold text-slate-700 mb-1">Choose PDF File</label>
-          <label class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg font-semibold text-slate-700 cursor-pointer hover:bg-slate-100 flex items-center justify-center truncate">
-            <span id="directPdfFileName" class="truncate">Select PDF...</span>
-            <input type="file" id="directPdfFileInput" accept="application/pdf" onchange="onDirectPdfFileSelected(event)" class="hidden" />
-          </label>
-        </div>
-        <div class="sm:col-span-2">
-          <button type="submit" id="directUploadSubmitBtn" class="w-full py-2 px-3 bg-indigo-700 hover:bg-indigo-800 text-white font-bold rounded-lg shadow-sm transition">
-            + Upload to Vault
-          </button>
+        <!-- PDF COMPRESSION TARGET SIZE BAR -->
+        <div class="flex flex-wrap items-center justify-between gap-2 pt-2.5 border-t border-slate-200">
+          <div class="flex flex-wrap items-center gap-2">
+            <label for="directPdfTargetSize" class="font-bold text-slate-700 whitespace-nowrap">Compress PDF to Target Size:</label>
+            <select id="directPdfTargetSize" onchange="onDirectPdfTargetSizeChange()" class="px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg font-semibold text-slate-800">
+              <option value="500" selected>500 KB (Fastest Mobile — Recommended)</option>
+              <option value="300">300 KB (Ultra Light)</option>
+              <option value="1000">1 MB (Balanced Quality)</option>
+              <option value="2000">2 MB (High Quality)</option>
+              <option value="custom">Custom Size (KB)...</option>
+              <option value="0">Original (No Compression)</option>
+            </select>
+            <input type="number" id="directPdfCustomKB" min="80" max="15000" step="50" value="400" placeholder="Target KB" class="hidden w-28 px-2.5 py-1.5 bg-white border border-indigo-300 rounded-lg font-mono font-bold text-indigo-900" />
+          </div>
+          <div id="directPdfCompressStatus" class="text-[11px] font-semibold text-slate-500">Auto-compresses large PDFs before syncing so students download quickly on mobile.</div>
         </div>
       </form>
 
@@ -482,13 +501,26 @@ async function tsmLoadBlob(key) {
         let fullData = meta.data || '';
         const totalChunks = Number(meta.totalChunks || 1);
         let allChunksLoaded = Boolean(fullData);
-        for (let i = 1; i < totalChunks; i++) {
-          const partSnap = await fsDb.collection('tsm_blobs').doc(`${key}_part_${i}`).get();
-          if (partSnap.exists && partSnap.data().data) {
-            fullData += partSnap.data().data;
-          } else {
-            allChunksLoaded = false;
-            break;
+        if (allChunksLoaded && totalChunks > 1) {
+          const partIndices = [];
+          for (let i = 1; i < totalChunks; i++) partIndices.push(i);
+          const partMap = new Map();
+          for (let b = 0; b < partIndices.length; b += 6) {
+            const batch = partIndices.slice(b, b + 6);
+            const snaps = await Promise.all(batch.map(idx => fsDb.collection('tsm_blobs').doc(`${key}_part_${idx}`).get()));
+            for (let k = 0; k < batch.length; k++) {
+              const ps = snaps[k];
+              if (ps.exists && ps.data().data) {
+                partMap.set(batch[k], ps.data().data);
+              } else {
+                allChunksLoaded = false;
+                break;
+              }
+            }
+            if (!allChunksLoaded) break;
+          }
+          if (allChunksLoaded) {
+            for (let i = 1; i < totalChunks; i++) fullData += partMap.get(i) || '';
           }
         }
         if (allChunksLoaded && fullData) {
@@ -539,10 +571,11 @@ async function triggerSafeDownloadFromDataUrl(dataUrl, fileName) {
     const link = document.createElement('a');
     link.href = blobUrl;
     link.download = fileName;
+    link.rel = 'noopener';
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 120000);
   } catch (e) {
     const link = document.createElement('a');
     link.href = dataUrl;
@@ -703,41 +736,189 @@ function populateCourseDropdowns() {
   }
 }
 
-let pendingDirectPdfDataUrl = '';
+let pendingDirectPdfFile = null;
+let pendingDirectPdfBytes = null;
 let pendingDirectPdfPages = 1;
 let isReadingDirectPdf = false;
+
+function formatByteSize(bytes) {
+  const b = Number(bytes || 0);
+  if (b >= 1024 * 1024) return `${(b / (1024 * 1024)).toFixed(2)} MB`;
+  return `${Math.max(1, Math.round(b / 1024))} KB`;
+}
+
+function uint8ArrayToPdfDataUrl(bytes) {
+  return new Promise((resolve, reject) => {
+    const blob = new Blob([bytes], { type: 'application/pdf' });
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error || new Error('Blob encode failed'));
+    reader.readAsDataURL(blob);
+  });
+}
+
+function onDirectPdfTargetSizeChange() {
+  const sel = document.getElementById('directPdfTargetSize');
+  const customInp = document.getElementById('directPdfCustomKB');
+  if (!sel || !customInp) return;
+  if (sel.value === 'custom') {
+    customInp.classList.remove('hidden');
+    customInp.focus();
+  } else {
+    customInp.classList.add('hidden');
+  }
+  if (pendingDirectPdfBytes && pendingDirectPdfBytes.length) {
+    const statusEl = document.getElementById('directPdfCompressStatus');
+    const targetKB = getDirectPdfTargetKB();
+    if (statusEl) {
+      const willCompress = targetKB > 0 && pendingDirectPdfBytes.length > targetKB * 1024;
+      statusEl.textContent = willCompress
+        ? `Ready: ${pendingDirectPdfPages} page(s), ${formatByteSize(pendingDirectPdfBytes.length)} — will compress to ~${targetKB} KB on upload.`
+        : `Ready: ${pendingDirectPdfPages} page(s), ${formatByteSize(pendingDirectPdfBytes.length)} (${targetKB === 0 ? 'original size' : 'already under target'}).`;
+    }
+  }
+}
+
+function getDirectPdfTargetKB() {
+  const sel = document.getElementById('directPdfTargetSize');
+  if (!sel) return 500;
+  if (sel.value === 'custom') {
+    const val = parseInt(document.getElementById('directPdfCustomKB')?.value || '400', 10);
+    return Math.max(80, Math.min(15000, isNaN(val) ? 400 : val));
+  }
+  return Math.max(0, parseInt(sel.value || '500', 10) || 0);
+}
+
+async function compressPdfBytesToTargetKB(rawBytes, targetKB, onProgress) {
+  const origSize = rawBytes.byteLength || rawBytes.length;
+  const targetBytes = targetKB > 0 ? targetKB * 1024 : 0;
+
+  // Step 0: Count pages & try lossless repack first
+  let pageCount = 1;
+  let bestBytes = rawBytes;
+  try {
+    const srcDoc = await PDFLib.PDFDocument.load(rawBytes, { ignoreEncryption: true });
+    pageCount = srcDoc.getPageCount() || 1;
+    const repacked = await srcDoc.save({ useObjectStreams: true });
+    if (repacked.length < bestBytes.length) bestBytes = repacked;
+  } catch (e) {}
+
+  if (!targetBytes || bestBytes.length <= targetBytes) {
+    return {
+      bytes: bestBytes,
+      pages: pageCount,
+      originalBytes: origSize,
+      compressedBytes: bestBytes.length,
+      wasCompressed: bestBytes.length < origSize
+    };
+  }
+
+  // Step 1: Adaptive rasterize + JPEG re-encode via pdf.js + PDFLib to hit targetKB
+  if (typeof pdfjsLib === 'undefined' || !pdfjsLib.getDocument) {
+    return { bytes: bestBytes, pages: pageCount, originalBytes: origSize, compressedBytes: bestBytes.length, wasCompressed: bestBytes.length < origSize };
+  }
+  try {
+    if (pdfjsLib.GlobalWorkerOptions) {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    }
+    const loadingTask = pdfjsLib.getDocument({ data: rawBytes.slice() });
+    const pdfJsDoc = await loadingTask.promise;
+    const numPages = pdfJsDoc.numPages || pageCount || 1;
+    pageCount = numPages;
+
+    const budgetPerPage = Math.max(10000, Math.floor((targetBytes * 0.90) / numPages));
+    let scale = budgetPerPage > 130000 ? 1.5 : budgetPerPage > 65000 ? 1.25 : budgetPerPage > 32000 ? 1.0 : 0.82;
+    let quality = budgetPerPage > 130000 ? 0.78 : budgetPerPage > 65000 ? 0.65 : budgetPerPage > 32000 ? 0.52 : 0.40;
+
+    for (let pass = 1; pass <= 3; pass++) {
+      const outDoc = await PDFLib.PDFDocument.create();
+      for (let p = 1; p <= numPages; p++) {
+        if (typeof onProgress === 'function') {
+          onProgress(`Compressing page ${p}/${numPages}${pass > 1 ? ` (tuning pass ${pass})` : ''}...`);
+        }
+        const page = await pdfJsDoc.getPage(p);
+        const origVp = page.getViewport({ scale: 1 });
+        const renderVp = page.getViewport({ scale });
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(renderVp.width));
+        canvas.height = Math.max(1, Math.round(renderVp.height));
+        const ctx = canvas.getContext('2d', { alpha: false });
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        await page.render({ canvasContext: ctx, viewport: renderVp }).promise;
+
+        const jpgDataUrl = canvas.toDataURL('image/jpeg', quality);
+        const jpgBytes = studioDataUrlToUint8Array(jpgDataUrl);
+        const jpgImg = await outDoc.embedJpg(jpgBytes);
+        const pdfPage = outDoc.addPage([origVp.width, origVp.height]);
+        pdfPage.drawImage(jpgImg, { x: 0, y: 0, width: origVp.width, height: origVp.height });
+        canvas.width = 0;
+        canvas.height = 0;
+      }
+
+      const candidate = await outDoc.save({ useObjectStreams: true });
+      if (candidate.length < bestBytes.length) bestBytes = candidate;
+      if (candidate.length <= targetBytes * 1.06) break;
+
+      // Adapt scale & quality for next pass to converge smoothly toward targetBytes
+      const ratio = Math.sqrt(targetBytes / Math.max(1, candidate.length));
+      scale = Math.max(0.55, Number((scale * Math.min(0.88, Math.max(0.62, ratio))).toFixed(2)));
+      quality = Math.max(0.24, Number((quality * Math.min(0.84, Math.max(0.58, ratio))).toFixed(2)));
+    }
+    try { await pdfJsDoc.destroy(); } catch (e) {}
+  } catch (compErr) {
+    console.warn('PDF compression fallback to lossless/original:', compErr);
+  }
+
+  return {
+    bytes: bestBytes,
+    pages: pageCount,
+    originalBytes: origSize,
+    compressedBytes: bestBytes.length,
+    wasCompressed: bestBytes.length < origSize
+  };
+}
 
 async function onDirectPdfFileSelected(e) {
   const file = e.target.files[0];
   if (!file) return;
-  pendingDirectPdfDataUrl = '';
+  pendingDirectPdfFile = file;
+  pendingDirectPdfBytes = null;
   pendingDirectPdfPages = 1;
   isReadingDirectPdf = true;
-  document.getElementById('directPdfFileName').textContent = file.name;
+  document.getElementById('directPdfFileName').textContent = `${file.name} (${formatByteSize(file.size)})`;
+  const statusEl = document.getElementById('directPdfCompressStatus');
+  if (statusEl) statusEl.textContent = `Reading ${file.name} (${formatByteSize(file.size)})...`;
+
   const titleInp = document.getElementById('directUploadTitle');
   if (titleInp && !titleInp.value.trim()) {
     titleInp.value = file.name.replace(/\.pdf$/i, '');
   }
 
-  const reader = new FileReader();
-  reader.onload = async function(ev) {
-    pendingDirectPdfDataUrl = ev.target.result;
+  try {
+    const ab = await file.arrayBuffer();
+    pendingDirectPdfBytes = new Uint8Array(ab);
     try {
-      const pdfDoc = await PDFLib.PDFDocument.load(pendingDirectPdfDataUrl);
-      pendingDirectPdfPages = pdfDoc.getPageCount();
-      showToast(`Loaded PDF (${pendingDirectPdfPages} pages)`);
+      const pdfDoc = await PDFLib.PDFDocument.load(pendingDirectPdfBytes, { ignoreEncryption: true });
+      pendingDirectPdfPages = pdfDoc.getPageCount() || 1;
     } catch (err) {
       pendingDirectPdfPages = 1;
-    } finally {
-      isReadingDirectPdf = false;
     }
-  };
-  reader.onerror = function() {
-    isReadingDirectPdf = false;
-    pendingDirectPdfDataUrl = '';
+    const targetKB = getDirectPdfTargetKB();
+    if (statusEl) {
+      const willCompress = targetKB > 0 && pendingDirectPdfBytes.length > targetKB * 1024;
+      statusEl.textContent = willCompress
+        ? `Ready: ${pendingDirectPdfPages} page(s), ${formatByteSize(pendingDirectPdfBytes.length)} — will compress to ~${targetKB} KB on upload.`
+        : `Ready: ${pendingDirectPdfPages} page(s), ${formatByteSize(pendingDirectPdfBytes.length)} (already compact).`;
+    }
+    showToast(`Loaded PDF (${pendingDirectPdfPages} pages, ${formatByteSize(pendingDirectPdfBytes.length)})`);
+  } catch (err) {
+    pendingDirectPdfBytes = null;
+    if (statusEl) statusEl.textContent = 'Failed to read selected PDF.';
     showToast('Failed to read selected PDF');
-  };
-  reader.readAsDataURL(file);
+  } finally {
+    isReadingDirectPdf = false;
+  }
 }
 
 async function handleDirectPdfVaultUpload(e) {
@@ -750,19 +931,36 @@ async function handleDirectPdfVaultUpload(e) {
     showToast('PDF is still loading, please wait a moment');
     return;
   }
-  if (!pendingDirectPdfDataUrl) {
+  if (!pendingDirectPdfBytes || !pendingDirectPdfBytes.length) {
     showToast('Please select a PDF file first');
     return;
   }
 
   const btn = document.getElementById('directUploadSubmitBtn');
-  if (btn) { btn.disabled = true; btn.textContent = 'Uploading...'; }
+  const statusEl = document.getElementById('directPdfCompressStatus');
+  if (btn) { btn.disabled = true; btn.textContent = 'Compressing...'; }
 
   try {
+    const targetKB = getDirectPdfTargetKB();
+    const comp = await compressPdfBytesToTargetKB(pendingDirectPdfBytes, targetKB, (msg) => {
+      if (statusEl) statusEl.textContent = msg;
+      if (btn) btn.textContent = 'Compressing...';
+    });
+
+    if (btn) btn.textContent = 'Syncing Cloud...';
+    if (statusEl) {
+      const savedPct = comp.originalBytes > 0 ? Math.max(0, Math.round((1 - comp.compressedBytes / comp.originalBytes) * 100)) : 0;
+      statusEl.textContent = comp.wasCompressed
+        ? `Compressed: ${formatByteSize(comp.originalBytes)} → ${formatByteSize(comp.compressedBytes)} (${savedPct}% smaller). Uploading...`
+        : `Uploading ${formatByteSize(comp.compressedBytes)} to cloud...`;
+    }
+
+    const finalDataUrl = await uint8ArrayToPdfDataUrl(comp.bytes);
     const vaultId = 'v_' + Date.now();
     const todayStr = formatLocalDate(new Date());
+    const finalSizeKB = Math.max(1, Math.round(comp.compressedBytes / 1024));
 
-    const blobRes = await tsmSaveBlob(vaultId, pendingDirectPdfDataUrl, { fileName: `${title}.pdf`, mimeType: 'application/pdf' });
+    const blobRes = await tsmSaveBlob(vaultId, finalDataUrl, { fileName: `${title}.pdf`, mimeType: 'application/pdf' });
 
     const newEntry = {
       id: vaultId,
@@ -771,10 +969,11 @@ async function handleDirectPdfVaultUpload(e) {
       targetCourse,
       category,
       grade: 'All Grades',
-      pages: pendingDirectPdfPages,
+      pages: comp.pages || pendingDirectPdfPages,
+      fileSizeKB: finalSizeKB,
       date: todayStr,
       sourceType: 'uploaded_pdf',
-      pdfDataUrl: pendingDirectPdfDataUrl.length < 150000 ? pendingDirectPdfDataUrl : '',
+      pdfDataUrl: finalDataUrl.length < 150000 ? finalDataUrl : '',
       hasCloudFile: blobRes.cloudOk
     };
 
@@ -786,12 +985,18 @@ async function handleDirectPdfVaultUpload(e) {
     document.getElementById('directUploadTitle').value = '';
     document.getElementById('directPdfFileName').textContent = 'Select PDF...';
     document.getElementById('directPdfFileInput').value = '';
-    pendingDirectPdfDataUrl = '';
+    pendingDirectPdfFile = null;
+    pendingDirectPdfBytes = null;
     pendingDirectPdfPages = 1;
+    if (statusEl) {
+      statusEl.textContent = comp.wasCompressed
+        ? `Done! Compressed ${formatByteSize(comp.originalBytes)} → ${formatByteSize(comp.compressedBytes)} and synced.`
+        : `Done! Uploaded ${formatByteSize(comp.compressedBytes)}.`;
+    }
     if (blobRes.cloudOk) {
-      showToast(`Uploaded & cloud-synced "${title}" for ${targetCourse}`);
+      showToast(`Uploaded "${title}" (${formatByteSize(comp.compressedBytes)}) for ${targetCourse}`);
     } else {
-      showToast(`Saved "${title}" locally, but cloud sync failed — check internet/Firestore rules`);
+      showToast(`Saved "${title}" locally (${formatByteSize(comp.compressedBytes)}), cloud sync failed — check internet/rules`);
     }
   } catch (err) {
     console.error('Vault upload error:', err);
@@ -823,6 +1028,7 @@ function renderVaultList() {
     const crs = v.targetCourse || v.course || 'All Courses';
     const cat = v.category || 'Study Material';
     const safeId = escapeHtml(v.id);
+    const sizeLabel = v.fileSizeKB ? ` &bull; ${v.fileSizeKB >= 1024 ? (v.fileSizeKB / 1024).toFixed(1) + ' MB' : v.fileSizeKB + ' KB'}` : '';
     return `
       <div class="px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 hover:bg-slate-50">
         <div class="min-w-0 flex-1">
@@ -831,7 +1037,7 @@ function renderVaultList() {
             <span class="px-2 py-0.5 text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 rounded">${escapeHtml(crs)}</span>
             <span class="px-2 py-0.5 text-[10px] font-semibold bg-slate-100 text-slate-700 rounded">${escapeHtml(cat)}</span>
           </div>
-          <div class="text-[10px] text-slate-500 mt-0.5">${Number(v.pages || 1)} Page(s) &bull; Added: ${escapeHtml(v.date || '-')}</div>
+          <div class="text-[10px] text-slate-500 mt-0.5">${Number(v.pages || 1)} Page(s)${sizeLabel} &bull; Added: ${escapeHtml(v.date || '-')}</div>
         </div>
         <div class="flex items-center gap-1.5 shrink-0">
           <button type="button" onclick="previewVaultItemAdmin('${safeId}')" class="px-2.5 py-1 bg-[#0F172A] text-white text-[11px] font-semibold rounded hover:bg-slate-800">Test Download</button>

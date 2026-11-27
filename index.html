@@ -17,6 +17,7 @@
   <link id="manifestLink" rel="manifest" href="./manifest.webmanifest" />
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/opentype.js@1.3.4/dist/opentype.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
@@ -349,15 +350,211 @@ function buildStudentDayCellContent(status, isBeforeAdmission, isHoliday, isAdmi
   return { bgCls, mainHtml, tagHtml };
 }
 
-function triggerBlobDownload(blob, fileName) {
+let activePdfDownloadBarUrl = '';
+let activePdfDownloadBarBlob = null;
+let activePdfDownloadBarFileName = '';
+let activePdfDownloadBarTimer = null;
+
+function formatByteSize(bytes) {
+  const b = Number(bytes || 0);
+  if (b >= 1024 * 1024) return `${(b / (1024 * 1024)).toFixed(2)} MB`;
+  return `${Math.max(1, Math.round(b / 1024))} KB`;
+}
+
+function isMobileOrStandalonePwa() {
+  try {
+    const ua = navigator.userAgent || '';
+    const isMob = /Android|iPhone|iPad|iPod|Mobile|SamsungBrowser|CriOS|FxiOS/i.test(ua);
+    const isStandalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || Boolean(window.navigator.standalone);
+    return isMob || isStandalone;
+  } catch (e) {
+    return false;
+  }
+}
+
+function closePdfDownloadReadyBar() {
+  const bar = document.getElementById('tsmPdfReadyBar');
+  if (bar) bar.remove();
+  if (activePdfDownloadBarTimer) { clearTimeout(activePdfDownloadBarTimer); activePdfDownloadBarTimer = null; }
+  if (activePdfDownloadBarUrl) {
+    const oldUrl = activePdfDownloadBarUrl;
+    activePdfDownloadBarUrl = '';
+    setTimeout(() => { try { URL.revokeObjectURL(oldUrl); } catch (e) {} }, 15000);
+  }
+  activePdfDownloadBarBlob = null;
+  activePdfDownloadBarFileName = '';
+}
+
+async function shareActiveReadyPdf() {
+  if (!activePdfDownloadBarBlob || !activePdfDownloadBarFileName) return;
+  try {
+    const file = new File([activePdfDownloadBarBlob], activePdfDownloadBarFileName, { type: activePdfDownloadBarBlob.type || 'application/pdf' });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({ files: [file], title: activePdfDownloadBarFileName });
+      return;
+    }
+  } catch (e) {
+    if (e && e.name === 'AbortError') return;
+  }
+  // Fallback: trigger direct link click with fresh gesture
+  const dl = document.getElementById('tsmPdfReadySaveLink');
+  if (dl) dl.click();
+}
+
+function showPdfDownloadReadyBar(blob, blobUrl, fileName) {
+  closePdfDownloadReadyBar();
+  activePdfDownloadBarUrl = blobUrl;
+  activePdfDownloadBarBlob = blob;
+  activePdfDownloadBarFileName = fileName;
+
+  let canNativeShareFile = false;
+  try {
+    if (typeof navigator.share === 'function' && typeof navigator.canShare === 'function' && typeof File === 'function') {
+      const testFile = new File([blob], fileName, { type: blob.type || 'application/pdf' });
+      canNativeShareFile = navigator.canShare({ files: [testFile] });
+    }
+  } catch (e) {}
+
+  const bar = document.createElement('div');
+  bar.id = 'tsmPdfReadyBar';
+  bar.className = 'fixed bottom-3 left-3 right-3 sm:left-auto sm:right-4 sm:w-[420px] z-[60] bg-[#0F172A] text-white border border-slate-700 rounded-2xl shadow-2xl p-3.5 space-y-2.5';
+  bar.innerHTML = `
+    <div class="flex items-start justify-between gap-2">
+      <div class="min-w-0">
+        <div class="text-[11px] font-bold text-emerald-400 uppercase tracking-wide">PDF Ready to Save</div>
+        <div class="text-xs font-semibold text-white truncate mt-0.5">${escapeHtml(fileName)}</div>
+        <div class="text-[10px] text-slate-400">${formatByteSize(blob.size)} &bull; Tap below if your phone didn't auto-save</div>
+      </div>
+      <button type="button" onclick="closePdfDownloadReadyBar()" class="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-bold flex items-center justify-center shrink-0" aria-label="Close">&times;</button>
+    </div>
+    <div class="grid ${canNativeShareFile ? 'grid-cols-3' : 'grid-cols-2'} gap-1.5 text-[11px]">
+      <a id="tsmPdfReadySaveLink" href="${blobUrl}" download="${escapeHtml(fileName)}" class="h-9 px-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl inline-flex items-center justify-center text-center whitespace-nowrap">Save PDF</a>
+      <a href="${blobUrl}" target="_blank" rel="noopener noreferrer" class="h-9 px-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl inline-flex items-center justify-center text-center whitespace-nowrap">Open / View</a>
+      ${canNativeShareFile ? `<button type="button" onclick="shareActiveReadyPdf()" class="h-9 px-2 bg-slate-700 hover:bg-slate-600 text-white font-bold rounded-xl inline-flex items-center justify-center text-center whitespace-nowrap">Share / Files</button>` : ''}
+    </div>
+  `;
+  document.body.appendChild(bar);
+  activePdfDownloadBarTimer = setTimeout(() => closePdfDownloadReadyBar(), 180000);
+}
+
+function triggerBlobDownload(blob, fileName, options = {}) {
   const blobUrl = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = blobUrl;
-  link.download = fileName;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
+  const isPdf = (blob && blob.type === 'application/pdf') || /\.pdf$/i.test(String(fileName || ''));
+  const showBar = Boolean(options.showSheet) || (isPdf && isMobileOrStandalonePwa());
+
+  try {
+    const link = document.createElement('a');
+    link.href = blobUrl;
+    link.download = fileName;
+    link.rel = 'noopener';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  } catch (e) {}
+
+  if (showBar && document.body) {
+    showPdfDownloadReadyBar(blob, blobUrl, fileName);
+  } else {
+    // Keep URL alive 2 minutes so slow mobile download managers never abort mid-flight
+    setTimeout(() => { try { URL.revokeObjectURL(blobUrl); } catch (e) {} }, 120000);
+  }
+}
+
+function uint8ArrayToPdfDataUrl(bytes) {
+  return new Promise((resolve, reject) => {
+    const blob = new Blob([bytes], { type: 'application/pdf' });
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error || new Error('Blob encode failed'));
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function compressPdfBytesToTargetKB(rawBytes, targetKB, onProgress) {
+  const origSize = rawBytes.byteLength || rawBytes.length;
+  const targetBytes = targetKB > 0 ? targetKB * 1024 : 0;
+
+  let pageCount = 1;
+  let bestBytes = rawBytes;
+  try {
+    const srcDoc = await PDFLib.PDFDocument.load(rawBytes, { ignoreEncryption: true });
+    pageCount = srcDoc.getPageCount() || 1;
+    const repacked = await srcDoc.save({ useObjectStreams: true });
+    if (repacked.length < bestBytes.length) bestBytes = repacked;
+  } catch (e) {}
+
+  if (!targetBytes || bestBytes.length <= targetBytes) {
+    return {
+      bytes: bestBytes,
+      pages: pageCount,
+      originalBytes: origSize,
+      compressedBytes: bestBytes.length,
+      wasCompressed: bestBytes.length < origSize
+    };
+  }
+
+  if (typeof pdfjsLib === 'undefined' || !pdfjsLib.getDocument) {
+    return { bytes: bestBytes, pages: pageCount, originalBytes: origSize, compressedBytes: bestBytes.length, wasCompressed: bestBytes.length < origSize };
+  }
+
+  try {
+    if (pdfjsLib.GlobalWorkerOptions) {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    }
+    const pdfJsDoc = await pdfjsLib.getDocument({ data: rawBytes.slice() }).promise;
+    const numPages = pdfJsDoc.numPages || pageCount || 1;
+    pageCount = numPages;
+
+    const budgetPerPage = Math.max(10000, Math.floor((targetBytes * 0.90) / numPages));
+    let scale = budgetPerPage > 130000 ? 1.5 : budgetPerPage > 65000 ? 1.25 : budgetPerPage > 32000 ? 1.0 : 0.82;
+    let quality = budgetPerPage > 130000 ? 0.78 : budgetPerPage > 65000 ? 0.65 : budgetPerPage > 32000 ? 0.52 : 0.40;
+
+    for (let pass = 1; pass <= 3; pass++) {
+      const outDoc = await PDFLib.PDFDocument.create();
+      for (let p = 1; p <= numPages; p++) {
+        if (typeof onProgress === 'function') {
+          onProgress(`Compressing PDF page ${p}/${numPages}${pass > 1 ? ` (pass ${pass})` : ''}...`);
+        }
+        const page = await pdfJsDoc.getPage(p);
+        const origVp = page.getViewport({ scale: 1 });
+        const renderVp = page.getViewport({ scale });
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(renderVp.width));
+        canvas.height = Math.max(1, Math.round(renderVp.height));
+        const ctx = canvas.getContext('2d', { alpha: false });
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        await page.render({ canvasContext: ctx, viewport: renderVp }).promise;
+
+        const jpgDataUrl = canvas.toDataURL('image/jpeg', quality);
+        const jpgBytes = dataUrlToUint8Array(jpgDataUrl);
+        const jpgImg = await outDoc.embedJpg(jpgBytes);
+        const pdfPage = outDoc.addPage([origVp.width, origVp.height]);
+        pdfPage.drawImage(jpgImg, { x: 0, y: 0, width: origVp.width, height: origVp.height });
+        canvas.width = 0;
+        canvas.height = 0;
+      }
+
+      const candidate = await outDoc.save({ useObjectStreams: true });
+      if (candidate.length < bestBytes.length) bestBytes = candidate;
+      if (candidate.length <= targetBytes * 1.06) break;
+
+      const ratio = Math.sqrt(targetBytes / Math.max(1, candidate.length));
+      scale = Math.max(0.55, Number((scale * Math.min(0.88, Math.max(0.62, ratio))).toFixed(2)));
+      quality = Math.max(0.24, Number((quality * Math.min(0.84, Math.max(0.58, ratio))).toFixed(2)));
+    }
+    try { await pdfJsDoc.destroy(); } catch (e) {}
+  } catch (compErr) {
+    console.warn('PDF compression fallback:', compErr);
+  }
+
+  return {
+    bytes: bestBytes,
+    pages: pageCount,
+    originalBytes: origSize,
+    compressedBytes: bestBytes.length,
+    wasCompressed: bestBytes.length < origSize
+  };
 }
 
 function formatWhatsAppPhone(raw) {
@@ -1468,13 +1665,36 @@ async function tsmLoadBlobWithMeta(key, options = {}) {
         let fullData = meta.data || '';
         const totalChunks = Number(meta.totalChunks || 1);
         let allChunksLoaded = Boolean(fullData);
-        for (let i = 1; i < totalChunks; i++) {
-          const partSnap = await fsDb.collection('tsm_blobs').doc(`${key}_part_${i}`).get();
-          if (partSnap.exists && partSnap.data().data) {
-            fullData += partSnap.data().data;
-          } else {
-            allChunksLoaded = false;
-            break;
+        if (allChunksLoaded && totalChunks > 1) {
+          const partIndices = [];
+          for (let i = 1; i < totalChunks; i++) partIndices.push(i);
+          const partMap = new Map();
+          const fetchPartWithRetry = async (idx) => {
+            try {
+              const s1 = await fsDb.collection('tsm_blobs').doc(`${key}_part_${idx}`).get();
+              if (s1.exists && s1.data().data) return s1.data().data;
+            } catch (e) {}
+            try {
+              const s2 = await fsDb.collection('tsm_blobs').doc(`${key}_part_${idx}`).get();
+              if (s2.exists && s2.data().data) return s2.data().data;
+            } catch (e) {}
+            return '';
+          };
+          for (let b = 0; b < partIndices.length; b += 6) {
+            const batch = partIndices.slice(b, b + 6);
+            const results = await Promise.all(batch.map(fetchPartWithRetry));
+            for (let k = 0; k < batch.length; k++) {
+              if (results[k]) {
+                partMap.set(batch[k], results[k]);
+              } else {
+                allChunksLoaded = false;
+                break;
+              }
+            }
+            if (!allChunksLoaded) break;
+          }
+          if (allChunksLoaded) {
+            for (let i = 1; i < totalChunks; i++) fullData += partMap.get(i) || '';
           }
         }
         if (allChunksLoaded && fullData) {
@@ -4894,26 +5114,58 @@ function renderFeesTab(el) {
   `;
 }
 
-function uploadCustomBrochure(e) {
+function onBrochureTargetSizeChange() {
+  const sel = document.getElementById('brochurePdfTargetSize');
+  const customInp = document.getElementById('brochurePdfCustomKB');
+  if (!sel || !customInp) return;
+  if (sel.value === 'custom') {
+    customInp.classList.remove('hidden');
+    customInp.focus();
+  } else {
+    customInp.classList.add('hidden');
+  }
+}
+
+function getBrochureTargetKB() {
+  const sel = document.getElementById('brochurePdfTargetSize');
+  if (!sel) return 500;
+  if (sel.value === 'custom') {
+    const val = parseInt(document.getElementById('brochurePdfCustomKB')?.value || '500', 10);
+    return Math.max(80, Math.min(15000, isNaN(val) ? 500 : val));
+  }
+  return Math.max(0, parseInt(sel.value || '500', 10) || 0);
+}
+
+async function uploadCustomBrochure(e) {
   const file = e.target.files[0];
   if (!file) return;
-  showToast('Uploading custom brochure to cloud...');
-  const reader = new FileReader();
-  reader.onload = async function(ev) {
-    const dataUrl = ev.target.result;
+  const targetKB = getBrochureTargetKB();
+  showToast(`Processing brochure (${formatByteSize(file.size)})...`);
+  try {
+    const ab = await file.arrayBuffer();
+    const rawBytes = new Uint8Array(ab);
+    const comp = await compressPdfBytesToTargetKB(rawBytes, targetKB, (msg) => showToast(msg));
+    const dataUrl = await uint8ArrayToPdfDataUrl(comp.bytes);
+
     appState.customBrochureDataUrl = dataUrl.length < 150000 ? dataUrl : '';
     appState.customBrochureName = file.name;
     appState.hasCustomBrochure = true;
-    const res = await tsmSaveBlob('custom_brochure', dataUrl, { fileName: file.name, mimeType: file.type || 'application/pdf' });
+    showToast(`Syncing brochure (${formatByteSize(comp.compressedBytes)}) to cloud...`);
+    const res = await tsmSaveBlob('custom_brochure', dataUrl, { fileName: file.name, mimeType: 'application/pdf' });
     saveState();
     renderCurrentTab();
+    const sizeNote = comp.wasCompressed
+      ? `${formatByteSize(comp.originalBytes)} → ${formatByteSize(comp.compressedBytes)}`
+      : formatByteSize(comp.compressedBytes);
     if (res.cloudOk) {
-      showToast(`Uploaded & cloud-synced brochure: ${file.name}`);
+      showToast(`Uploaded brochure: ${file.name} (${sizeNote})`);
     } else {
-      showToast(`Saved brochure locally (${file.name}), cloud sync failed — check internet/rules`);
+      showToast(`Saved brochure locally (${sizeNote}), cloud sync failed — check internet/rules`);
     }
-  };
-  reader.readAsDataURL(file);
+  } catch (err) {
+    console.error('Brochure upload error:', err);
+    showToast('Failed to process brochure PDF.');
+  }
 }
 
 async function downloadActiveBrochure() {
@@ -5865,6 +6117,15 @@ function renderSettingsTab(el) {
         <h2 class="text-sm font-bold text-[#0F172A]">Academy Brochure &amp; Student UPI Wallet Settings</h2>
         <p class="text-xs text-slate-600">Upload a custom academy brochure PDF here (available on Overview and the Sign-In screen), and set your UPI ID for student fee payments.</p>
         <div class="flex flex-wrap items-center gap-2 pt-1">
+          <select id="brochurePdfTargetSize" onchange="onBrochureTargetSizeChange()" class="px-2.5 py-2 border border-slate-300 rounded-lg text-xs font-semibold bg-white text-slate-800">
+            <option value="500" selected>Compress: 500 KB (Mobile)</option>
+            <option value="300">Compress: 300 KB (Ultra Light)</option>
+            <option value="1000">Compress: 1 MB</option>
+            <option value="2000">Compress: 2 MB</option>
+            <option value="custom">Custom KB...</option>
+            <option value="0">Original Size</option>
+          </select>
+          <input type="number" id="brochurePdfCustomKB" min="80" max="15000" step="50" value="400" placeholder="Target KB" class="hidden w-24 px-2.5 py-2 border border-indigo-300 rounded-lg text-xs font-mono font-bold text-indigo-900" />
           <label class="px-3.5 py-2 bg-indigo-50 text-indigo-800 border border-indigo-200 text-xs font-semibold rounded-lg cursor-pointer hover:bg-indigo-100">
             ${appState.customBrochureName ? `Custom Brochure: ${appState.customBrochureName}` : 'Upload Custom Brochure PDF'}
             <input type="file" accept="application/pdf" onchange="uploadCustomBrochure(event)" class="hidden" />
@@ -5990,105 +6251,118 @@ function resetDemoData() {
 // ==========================================
 // 17. STUDENT PORTAL (WITH UPI WALLET, COURSE-FILTERED VAULT & WATERMARK ON DOWNLOAD)
 // ==========================================
-async function downloadStudentWatermarkedVaultPdf(vaultId, stuId) {
+async function downloadStudentWatermarkedVaultPdf(vaultId, stuId, btnEl = null) {
   const s = appState.students.find(x => x.id === stuId) || appState.students[0];
   const v = (appState.vaultItems || []).find(x => x.id === vaultId);
   if (!v || !s) return;
 
-  const safeFileName = `TSM_${String(v.title || 'Material').replace(/[^a-zA-Z0-9_-]+/g, '_')}_${s.rollNo}.pdf`;
-  showToast('Fetching study material PDF...');
-
-  // 1. Load actual uploaded PDF from all available stores (inline -> IndexedDB/Firestore tsm_blobs -> localStorage -> tsm_vault_files)
-  let pdfDataUrl = v.pdfDataUrl || '';
-  if (!pdfDataUrl) {
-    pdfDataUrl = await tsmLoadBlob(vaultId);
-  }
-  if (!pdfDataUrl) {
-    try { pdfDataUrl = localStorage.getItem('tsm_pdf_' + vaultId) || ''; } catch (e) {}
-  }
-  if (!pdfDataUrl) {
-    const fsDb = await ensureFirestoreReady();
-    if (fsDb) {
-      try {
-        const doc = await fsDb.collection('tsm_vault_files').doc(vaultId).get();
-        if (doc.exists && doc.data().pdfDataUrl) pdfDataUrl = doc.data().pdfDataUrl;
-      } catch (e) {}
-    }
+  const origBtnText = btnEl ? btnEl.textContent : '';
+  if (btnEl) {
+    btnEl.disabled = true;
+    btnEl.textContent = 'Preparing...';
   }
 
-  if (!pdfDataUrl) {
-    showToast('PDF file not synced to cloud yet. Please ask your instructor to re-upload it in Studio.');
-    return;
-  }
-
-  let rawBytes = null;
   try {
-    rawBytes = dataUrlToUint8Array(pdfDataUrl);
-  } catch (e) {
-    console.warn('Base64 decode warning:', e);
-    await triggerSafeDownloadFromDataUrl(pdfDataUrl, safeFileName);
-    showToast('Downloaded study material PDF');
-    return;
-  }
+    const safeFileName = `TSM_${String(v.title || 'Material').replace(/[^a-zA-Z0-9_-]+/g, '_')}_${s.rollNo}.pdf`;
+    showToast('Fetching study material PDF...');
 
-  // 2. Try merging cover page + student watermark on every uploaded page; if PDF cannot be rewritten, download the real uploaded PDF directly
-  try {
-    showToast('Applying student watermark to study material...');
-    const { PDFDocument, StandardFonts, rgb, degrees } = PDFLib;
-    const srcDoc = await PDFDocument.load(rawBytes, { ignoreEncryption: true });
-    const pageIndices = srcDoc.getPageIndices();
-    if (!pageIndices.length) {
-      throw new Error('Source PDF has zero readable pages');
+    // 1. Load actual uploaded PDF from all available stores (inline -> IndexedDB/Firestore tsm_blobs -> localStorage -> tsm_vault_files)
+    let pdfDataUrl = v.pdfDataUrl || '';
+    if (!pdfDataUrl) {
+      pdfDataUrl = await tsmLoadBlob(vaultId);
     }
-
-    const outDoc = await PDFDocument.create();
-    const fontBold = await outDoc.embedFont(StandardFonts.HelveticaBold);
-    const fontReg = await outDoc.embedFont(StandardFonts.Helvetica);
-
-    // Official Personalized Cover Page
-    const cover = outDoc.addPage([595.28, 841.89]);
-    cover.drawRectangle({ x: 36, y: 36, width: 523.28, height: 769.89, borderColor: rgb(0.06, 0.09, 0.16), borderWidth: 1.5 });
-    cover.drawRectangle({ x: 36, y: 799.89, width: 523.28, height: 6, color: rgb(0.06, 0.09, 0.16) });
-    cover.drawText('B. S. TIKARIYA CULTURAL FOUNDATION', { x: 185, y: 755, size: 10, font: fontBold, color: rgb(0.28, 0.33, 0.41) });
-    cover.drawText('CIN: U88900MH2025NPL454435', { x: 225, y: 740, size: 8.5, font: fontReg, color: rgb(0.39, 0.45, 0.55) });
-    drawStyledAcademyTitlePdf(cover, 148, 710, 18, fontBold);
-    cover.drawText(sanitizePdfText((v.category || 'OFFICIAL STUDY MATERIAL').toUpperCase()), { x: 215, y: 675, size: 9.5, font: fontBold, color: rgb(0.26, 0.22, 0.79) });
-    cover.drawText(sanitizePdfText(v.title || 'Study Material'), { x: 64, y: 615, size: 18, font: fontBold, color: rgb(0.06, 0.09, 0.16) });
-    cover.drawText(sanitizePdfText(`Course: ${v.targetCourse || v.course || 'All Courses'}`), { x: 64, y: 585, size: 11, font: fontBold, color: rgb(0.26, 0.22, 0.79) });
-    cover.drawText(sanitizePdfText(`Issued To Student: ${s.name} (Roll No: ${s.rollNo})`), { x: 64, y: 550, size: 12, font: fontBold, color: rgb(0.06, 0.09, 0.16) });
-    cover.drawText(sanitizePdfText(`Grade: ${s.grade} - ${s.course} | Batch: ${s.batch}`), { x: 64, y: 530, size: 10, font: fontReg, color: rgb(0.28, 0.33, 0.41) });
-    cover.drawText(sanitizePdfText(`${s.name} (${s.rollNo}) - TIKARIYA'S SCHOOL OF MUSIC`), {
-      x: 95, y: 320, size: 15, font: fontBold, color: rgb(0.75, 0.78, 0.82), opacity: 0.32, rotate: degrees(35)
-    });
-
-    const copiedPages = await outDoc.copyPages(srcDoc, pageIndices);
-    const wmText = sanitizePdfText(`${s.name} (${s.rollNo}) - TIKARIYA'S SCHOOL OF MUSIC`);
-    copiedPages.forEach(cp => {
-      try {
-        const { width, height } = cp.getSize();
-        cp.drawText(wmText, {
-          x: Math.max(36, width * 0.14),
-          y: Math.max(120, height * 0.42),
-          size: Math.min(16, Math.max(11, width / 38)),
-          font: fontBold,
-          color: rgb(0.72, 0.75, 0.80),
-          opacity: 0.28,
-          rotate: degrees(35)
-        });
-      } catch (wmErr) {
-        console.warn('Watermark draw skipped on page:', wmErr);
+    if (!pdfDataUrl) {
+      try { pdfDataUrl = localStorage.getItem('tsm_pdf_' + vaultId) || ''; } catch (e) {}
+    }
+    if (!pdfDataUrl) {
+      const fsDb = await ensureFirestoreReady();
+      if (fsDb) {
+        try {
+          const doc = await fsDb.collection('tsm_vault_files').doc(vaultId).get();
+          if (doc.exists && doc.data().pdfDataUrl) pdfDataUrl = doc.data().pdfDataUrl;
+        } catch (e) {}
       }
-      outDoc.addPage(cp);
-    });
+    }
 
-    const bytes = await outDoc.save();
-    triggerBlobDownload(new Blob([bytes], { type: 'application/pdf' }), safeFileName);
-    showToast(`Downloaded ${v.title} (${copiedPages.length} pages + cover)`);
-  } catch (mergeErr) {
-    console.warn('PDF merge fallback to original uploaded PDF:', mergeErr);
-    // CRITICAL: Never hand the student only an empty wrapper — download the real uploaded PDF directly!
-    triggerBlobDownload(new Blob([rawBytes], { type: 'application/pdf' }), safeFileName);
-    showToast(`Downloaded ${v.title}`);
+    if (!pdfDataUrl) {
+      showToast('PDF file not synced to cloud yet. Please ask your instructor to re-upload it in Studio.');
+      return;
+    }
+
+    let rawBytes = null;
+    try {
+      rawBytes = dataUrlToUint8Array(pdfDataUrl);
+    } catch (e) {
+      console.warn('Base64 decode warning:', e);
+      await triggerSafeDownloadFromDataUrl(pdfDataUrl, safeFileName);
+      showToast('PDF ready to save');
+      return;
+    }
+
+    // 2. Try merging cover page + student watermark on every uploaded page; if PDF cannot be rewritten, download the real uploaded PDF directly
+    try {
+      showToast('Applying student watermark...');
+      const { PDFDocument, StandardFonts, rgb, degrees } = PDFLib;
+      const srcDoc = await PDFDocument.load(rawBytes, { ignoreEncryption: true });
+      const pageIndices = srcDoc.getPageIndices();
+      if (!pageIndices.length) {
+        throw new Error('Source PDF has zero readable pages');
+      }
+
+      const outDoc = await PDFDocument.create();
+      const fontBold = await outDoc.embedFont(StandardFonts.HelveticaBold);
+      const fontReg = await outDoc.embedFont(StandardFonts.Helvetica);
+
+      // Official Personalized Cover Page
+      const cover = outDoc.addPage([595.28, 841.89]);
+      cover.drawRectangle({ x: 36, y: 36, width: 523.28, height: 769.89, borderColor: rgb(0.06, 0.09, 0.16), borderWidth: 1.5 });
+      cover.drawRectangle({ x: 36, y: 799.89, width: 523.28, height: 6, color: rgb(0.06, 0.09, 0.16) });
+      cover.drawText('B. S. TIKARIYA CULTURAL FOUNDATION', { x: 185, y: 755, size: 10, font: fontBold, color: rgb(0.28, 0.33, 0.41) });
+      cover.drawText('CIN: U88900MH2025NPL454435', { x: 225, y: 740, size: 8.5, font: fontReg, color: rgb(0.39, 0.45, 0.55) });
+      drawStyledAcademyTitlePdf(cover, 148, 710, 18, fontBold);
+      cover.drawText(sanitizePdfText((v.category || 'OFFICIAL STUDY MATERIAL').toUpperCase()), { x: 215, y: 675, size: 9.5, font: fontBold, color: rgb(0.26, 0.22, 0.79) });
+      cover.drawText(sanitizePdfText(v.title || 'Study Material'), { x: 64, y: 615, size: 18, font: fontBold, color: rgb(0.06, 0.09, 0.16) });
+      cover.drawText(sanitizePdfText(`Course: ${v.targetCourse || v.course || 'All Courses'}`), { x: 64, y: 585, size: 11, font: fontBold, color: rgb(0.26, 0.22, 0.79) });
+      cover.drawText(sanitizePdfText(`Issued To Student: ${s.name} (Roll No: ${s.rollNo})`), { x: 64, y: 550, size: 12, font: fontBold, color: rgb(0.06, 0.09, 0.16) });
+      cover.drawText(sanitizePdfText(`Grade: ${s.grade} - ${s.course} | Batch: ${s.batch}`), { x: 64, y: 530, size: 10, font: fontReg, color: rgb(0.28, 0.33, 0.41) });
+      cover.drawText(sanitizePdfText(`${s.name} (${s.rollNo}) - TIKARIYA'S SCHOOL OF MUSIC`), {
+        x: 95, y: 320, size: 15, font: fontBold, color: rgb(0.75, 0.78, 0.82), opacity: 0.32, rotate: degrees(35)
+      });
+
+      const copiedPages = await outDoc.copyPages(srcDoc, pageIndices);
+      const wmText = sanitizePdfText(`${s.name} (${s.rollNo}) - TIKARIYA'S SCHOOL OF MUSIC`);
+      copiedPages.forEach(cp => {
+        try {
+          const { width, height } = cp.getSize();
+          cp.drawText(wmText, {
+            x: Math.max(36, width * 0.14),
+            y: Math.max(120, height * 0.42),
+            size: Math.min(16, Math.max(11, width / 38)),
+            font: fontBold,
+            color: rgb(0.72, 0.75, 0.80),
+            opacity: 0.28,
+            rotate: degrees(35)
+          });
+        } catch (wmErr) {
+          console.warn('Watermark draw skipped on page:', wmErr);
+        }
+        outDoc.addPage(cp);
+      });
+
+      const bytes = await outDoc.save({ useObjectStreams: true });
+      triggerBlobDownload(new Blob([bytes], { type: 'application/pdf' }), safeFileName, { showSheet: true });
+      showToast(`PDF ready: ${v.title} (${copiedPages.length} pages + cover)`);
+    } catch (mergeErr) {
+      console.warn('PDF merge fallback to original uploaded PDF:', mergeErr);
+      // CRITICAL: Never hand the student only an empty wrapper — download the real uploaded PDF directly!
+      triggerBlobDownload(new Blob([rawBytes], { type: 'application/pdf' }), safeFileName, { showSheet: true });
+      showToast(`PDF ready: ${v.title}`);
+    }
+  } finally {
+    if (btnEl) {
+      btnEl.disabled = false;
+      btnEl.textContent = origBtnText || 'Download PDF';
+    }
   }
 }
 
@@ -6588,15 +6862,18 @@ function renderStudentPortal(el, tab) {
             <p class="text-[11px] text-slate-500">Use this study material when instructor tell you to do — students app - study material</p>
           </div>
         </div>
-        ${visibleVault.length ? visibleVault.map(v => `
+        ${visibleVault.length ? visibleVault.map(v => {
+          const sizeTxt = v.fileSizeKB ? ` &bull; ${v.fileSizeKB >= 1024 ? (v.fileSizeKB / 1024).toFixed(1) + ' MB' : v.fileSizeKB + ' KB'}` : '';
+          return `
           <div class="p-3 border border-slate-200 rounded-lg flex items-center justify-between gap-2 hover:bg-slate-50">
-            <div>
-              <div class="font-bold text-[#0F172A]">${v.title}</div>
-              <div class="text-[11px] text-indigo-700 font-semibold">${v.targetCourse || v.course || 'All Courses'} &bull; <span class="text-slate-500">${v.category || 'Study Material'} &bull; ${v.pages || 1} Page(s)</span></div>
+            <div class="min-w-0">
+              <div class="font-bold text-[#0F172A] truncate">${escapeHtml(v.title)}</div>
+              <div class="text-[11px] text-indigo-700 font-semibold">${escapeHtml(v.targetCourse || v.course || 'All Courses')} &bull; <span class="text-slate-500">${escapeHtml(v.category || 'Study Material')} &bull; ${Number(v.pages || 1)} Page(s)${sizeTxt}</span></div>
             </div>
-            <button onclick="downloadStudentWatermarkedVaultPdf('${v.id}', '${s.id}')" class="px-3 py-1.5 bg-[#0F172A] text-white font-semibold rounded-lg shrink-0">Download PDF</button>
+            <button type="button" onclick="downloadStudentWatermarkedVaultPdf('${escapeHtml(v.id)}', '${escapeHtml(s.id)}', this)" class="h-8 px-3 bg-[#0F172A] hover:bg-slate-800 disabled:opacity-60 text-white font-semibold rounded-lg shrink-0 whitespace-nowrap">Download PDF</button>
           </div>
-        `).join('') : '<p class="text-slate-400 text-center py-6">No study materials uploaded for your course yet.</p>'}
+        `;
+        }).join('') : '<p class="text-slate-400 text-center py-6">No study materials uploaded for your course yet.</p>'}
       </div>
     `;
   } else if (tab === 'student_messages') {
