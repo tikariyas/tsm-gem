@@ -7,7 +7,7 @@
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-title" content="TSM Video Class" />
-  <title>Video Class (Trial) — TIKARIYA'S SCHOOL OF MUSIC</title>
+  <title>Video Class — TIKARIYA'S SCHOOL OF MUSIC</title>
   <link rel="icon" type="image/png" href="./favicon.png" />
   <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png" />
   <script src="https://cdn.tailwindcss.com"></script>
@@ -25,16 +25,11 @@
 </head>
 <body class="min-h-screen flex flex-col">
 
-  <!-- TOP HEADER (MATCHING MAIN APP AESTHETIC) -->
+  <!-- CLEAN TOP HEADER -->
   <header class="bg-white border-b border-slate-200 sticky top-0 z-30">
     <div class="max-w-7xl mx-auto px-3 sm:px-6 py-2.5 flex items-center justify-between gap-2">
-      <div class="min-w-0">
-        <div class="font-extrabold text-sm sm:text-base text-[#0F172A] uppercase tracking-tight truncate">
-          TIKARIYA'S SCHOOL OF <span class="text-[#B91C1C]">M</span>USIC
-        </div>
-        <div class="text-[11px] text-slate-500 font-medium truncate">
-          Live Music Video Class &bull; Guitar / Instrument Raw Audio Mode (Trial)
-        </div>
+      <div class="font-extrabold text-sm sm:text-base text-[#0F172A] uppercase tracking-tight truncate">
+        TIKARIYA'S SCHOOL OF <span class="text-[#B91C1C]">M</span>USIC
       </div>
       <div class="flex items-center gap-2 shrink-0">
         <span id="liveRoomTimer" class="hidden px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-bold tabular-nums">LIVE 00:00</span>
@@ -48,190 +43,114 @@
   <!-- MAIN WORKSPACE -->
   <main class="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 py-4 space-y-4">
 
-    <!-- 1. TRIAL LOBBY / SETUP VIEW -->
-    <section id="lobbyView" class="space-y-4">
+    <!-- 1A. TEACHER LAUNCH LOBBY (CUSTOM CLASS + SELECTABLE STUDENTS) -->
+    <section id="teacherLobbyView" class="max-w-3xl mx-auto space-y-3">
       <div class="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 space-y-4">
-        <div class="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 pb-3">
-          <div>
-            <h1 class="text-base font-extrabold text-[#0F172A]">Batch Video Class Trial Room (4&ndash;6 Students)</h1>
-            <p class="text-xs text-slate-600 mt-0.5">
-              Test acoustic/electric guitar clarity and multi-student phones here before adding the Video Class button to the main app.
-            </p>
+        <div class="flex items-center justify-between gap-2 border-b border-slate-100 pb-3">
+          <h1 class="text-sm sm:text-base font-extrabold text-[#0F172A]">Video Class</h1>
+          <div class="flex items-center gap-2">
+            <button type="button" id="btnToggleMicTest" onclick="toggleLocalGuitarMicTest()" class="h-7 px-2.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-[11px] font-semibold text-slate-700">
+              Mic Test
+            </button>
+            <span id="firebaseBadge" class="px-2 py-1 rounded-lg text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
+              Connecting...
+            </span>
           </div>
-          <span id="firebaseBadge" class="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
-            Connecting Cloud...
-          </span>
         </div>
 
-        <!-- INLINE ERROR ALERT (VISIBLE ON PERMISSION OR MEDIA ERRORS) -->
+        <!-- COMPACT MIC METER (ONLY VISIBLE WHEN TESTING MIC) -->
+        <div id="micTestWrap" class="hidden flex items-center gap-2.5 px-3 py-2 rounded-lg bg-slate-50 border border-slate-200">
+          <span id="micTestStatus" class="text-[11px] font-semibold text-slate-700 shrink-0">Mic Live</span>
+          <div class="flex-1 h-2 bg-slate-200 rounded-full overflow-hidden">
+            <div id="micTestMeterBar" class="h-full bg-emerald-500 transition-all duration-75" style="width: 0%"></div>
+          </div>
+        </div>
+
+        <!-- INLINE ERROR ALERT (HIDDEN UNLESS ERROR OCCURS) -->
         <div id="vcLobbyError" class="hidden p-3 rounded-xl bg-red-50 border border-red-200 text-red-800 text-xs font-medium space-y-1"></div>
 
-        <!-- BATCH / ROOM SELECTION -->
-        <div class="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
-          <div class="md:col-span-5">
-            <label for="roomBatchSelect" class="block text-xs font-bold text-slate-700 mb-1">Select Batch / Trial Room</label>
-            <select id="roomBatchSelect" onchange="onLobbyRoomChanged()" class="w-full h-10 px-3 text-xs font-semibold bg-white border border-slate-300 rounded-lg text-[#0F172A]">
-              <option value="Guitar Trial Batch">Guitar Trial Batch</option>
+        <!-- CLASS SELECTION: EXISTING BATCH OR CUSTOM CLASS -->
+        <div class="grid grid-cols-1 sm:grid-cols-12 gap-3">
+          <div class="sm:col-span-5">
+            <label for="roomBatchSelect" class="block text-xs font-bold text-slate-700 mb-1">Batch / Class</label>
+            <select id="roomBatchSelect" onchange="onTeacherClassModeChanged()" class="w-full h-10 px-3 text-xs font-semibold bg-white border border-slate-300 rounded-lg text-[#0F172A]">
+              <option value="__custom__">Custom Class</option>
             </select>
           </div>
-          <div class="md:col-span-4">
-            <label for="customRoomInput" class="block text-xs font-bold text-slate-700 mb-1">Or Custom Room Name (Optional)</label>
-            <input id="customRoomInput" oninput="onLobbyRoomChanged()" placeholder="e.g. Evening Guitar Batch 1" class="w-full h-10 px-3 text-xs bg-white border border-slate-300 rounded-lg" />
+          <div id="customClassNameWrap" class="sm:col-span-4">
+            <label for="customRoomInput" class="block text-xs font-bold text-slate-700 mb-1">Class Name</label>
+            <input id="customRoomInput" placeholder="e.g. Guitar Practice" class="w-full h-10 px-3 text-xs font-medium bg-white border border-slate-300 rounded-lg" />
           </div>
-          <div class="md:col-span-3">
-            <div id="roomLiveStatusPill" class="h-10 px-3 rounded-lg border border-slate-200 bg-slate-50 flex items-center justify-between text-xs font-semibold text-slate-600">
-              <span>Room Status</span>
-              <span id="roomLiveStatusText" class="font-bold text-slate-500">Checking...</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- TWO CLEAN LAUNCH CARDS: TEACHER VS STUDENT -->
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 pt-1">
-
-          <!-- TEACHER CARD -->
-          <div id="teacherLaunchCard" class="p-4 rounded-xl border-2 border-[#0F172A]/15 bg-slate-50/70 space-y-3">
-            <div class="flex items-center justify-between gap-2">
-              <div>
-                <h2 class="text-sm font-extrabold text-[#0F172A]">Teacher Console (Host)</h2>
-                <p class="text-[11px] text-slate-600">See &amp; hear up to 6 students simultaneously. Solo any guitar student cleanly.</p>
-              </div>
-              <span class="px-2 py-0.5 rounded bg-[#0F172A] text-white text-[10px] font-bold uppercase">Host</span>
-            </div>
-
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
-              <div>
-                <label for="teacherNameInput" class="block text-[11px] font-semibold text-slate-600 mb-1">Teacher Display Name</label>
-                <input id="teacherNameInput" value="Instructor (TSM)" class="w-full h-9 px-2.5 bg-white border border-slate-300 rounded-lg font-medium" />
-              </div>
-              <div>
-                <label for="defaultAudioProfile" class="block text-[11px] font-semibold text-slate-600 mb-1">Default Student Audio Mode</label>
-                <select id="defaultAudioProfile" class="w-full h-9 px-2.5 bg-white border border-slate-300 rounded-lg font-semibold text-emerald-900">
-                  <option value="music_raw" selected>Guitar / Instrument Raw (Best Sound)</option>
-                  <option value="music_ec">Music + Echo Cancel (No Headphones)</option>
-                </select>
-              </div>
-            </div>
-
-            <div class="text-[11px] text-slate-600 bg-white border border-slate-200 rounded-lg p-2.5 space-y-1">
-              <div><b class="text-[#0F172A]">Music Audio Tuning:</b> Noise Suppression <b class="text-emerald-700">OFF</b> &bull; Auto-Gain <b class="text-emerald-700">OFF</b> &bull; Silence Cut (DTX) <b class="text-emerald-700">OFF</b> &bull; 128 kbps Opus</div>
-              <div><b class="text-[#0F172A]">Controls:</b> Solo 1 Student, Pin/Zoom Fretboard, Local Mute, Per-Student Echo Cancel, End Class.</div>
-            </div>
-
-            <button type="button" id="btnStartTeacherClass" onclick="startTeacherClass()" class="w-full h-10 bg-[#0F172A] hover:bg-slate-800 text-white text-xs font-bold rounded-lg transition">
-              Start Video Class
-            </button>
-          </div>
-
-          <!-- STUDENT CARD -->
-          <div id="studentLaunchCard" class="p-4 rounded-xl border border-slate-200 bg-white space-y-3">
-            <div class="flex items-center justify-between gap-2">
-              <div>
-                <h2 class="text-sm font-extrabold text-[#0F172A]">Student Join (Always-On Cam &amp; Mic)</h2>
-                <p class="text-[11px] text-slate-600">Students cannot start calls. Button activates only when Teacher starts the batch.</p>
-              </div>
-              <span class="px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 text-[10px] font-bold uppercase">Student</span>
-            </div>
-
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
-              <div>
-                <label for="studentNameInput" class="block text-[11px] font-semibold text-slate-600 mb-1">Student Name (For Trial)</label>
-                <input id="studentNameInput" placeholder="e.g. Aarav (Guitar)" class="w-full h-9 px-2.5 bg-white border border-slate-300 rounded-lg font-medium" />
-              </div>
-              <div>
-                <label for="studentRosterSelect" class="block text-[11px] font-semibold text-slate-600 mb-1">Or Pick From Academy Roster</label>
-                <select id="studentRosterSelect" onchange="onRosterStudentPicked()" class="w-full h-9 px-2.5 bg-white border border-slate-300 rounded-lg font-medium">
-                  <option value="">-- Type name manually --</option>
-                </select>
-              </div>
-            </div>
-
-            <div class="text-[11px] text-slate-600 bg-amber-50/70 border border-amber-200 rounded-lg p-2.5 space-y-1">
-              <div><b class="text-amber-900">Student Rules:</b> Camera &amp; Microphone remain <b>always ON</b> during class (no mute/cam-off buttons).</div>
-              <div><b class="text-amber-900">Tip for Guitar:</b> Wear earphones or keep phone volume moderate so your guitar sounds loud &amp; clean to the teacher.</div>
-            </div>
-
-            <button type="button" id="btnJoinStudentClass" onclick="joinStudentClass()" disabled class="w-full h-10 bg-slate-200 text-slate-500 text-xs font-bold rounded-lg transition disabled:cursor-not-allowed">
-              Waiting for Teacher to Start Video Class...
-            </button>
+          <div class="sm:col-span-3">
+            <label for="defaultAudioProfile" class="block text-xs font-bold text-slate-700 mb-1">Audio</label>
+            <select id="defaultAudioProfile" class="w-full h-10 px-2.5 text-xs font-semibold bg-white border border-slate-300 rounded-lg text-[#0F172A]">
+              <option value="music_raw" selected>Guitar Raw</option>
+              <option value="music_ec">Echo Cancel</option>
+            </select>
           </div>
         </div>
 
-        <!-- GUITAR MIC SELF-CHECK + OPTIONAL TURN CONFIG -->
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 pt-2 border-t border-slate-100">
-          <!-- Local Guitar Mic Test -->
-          <div class="p-3 rounded-xl border border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-2 text-xs">
-            <div class="min-w-0 flex-1">
-              <div class="font-bold text-[#0F172A]">Quick Guitar Mic Check (Local)</div>
-              <div id="micTestStatus" class="text-[11px] text-slate-500 truncate">Test raw instrument pickup before starting class</div>
-              <div class="mt-1.5 h-2 bg-slate-200 rounded-full overflow-hidden">
-                <div id="micTestMeterBar" class="h-full bg-emerald-500 transition-all duration-75" style="width: 0%"></div>
-              </div>
+        <!-- SELECTABLE STUDENTS PICKER (MAX 6) -->
+        <div class="border border-slate-200 rounded-xl overflow-hidden">
+          <div class="px-3 py-2 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2">
+            <div class="flex items-center gap-2">
+              <span class="text-xs font-bold text-[#0F172A]">Select Students</span>
+              <span id="selectedStudentsCount" class="px-2 py-0.5 rounded bg-indigo-50 border border-indigo-200 text-indigo-800 text-[10px] font-bold tabular-nums">0 / 6</span>
             </div>
-            <button type="button" id="btnToggleMicTest" onclick="toggleLocalGuitarMicTest()" class="h-8 px-3 bg-white border border-slate-300 hover:bg-slate-100 text-slate-800 text-[11px] font-bold rounded-lg shrink-0">
-              Test Mic
-            </button>
+            <div class="flex flex-wrap items-center gap-1.5">
+              <input id="studentSearchInput" oninput="renderSelectableStudentsList()" placeholder="Search..." class="h-7 w-28 sm:w-36 px-2 text-[11px] bg-white border border-slate-300 rounded-md" />
+              <select id="studentBatchFilter" onchange="renderSelectableStudentsList()" class="h-7 px-2 text-[11px] font-medium bg-white border border-slate-300 rounded-md text-slate-700">
+                <option value="">All Batches</option>
+              </select>
+              <button type="button" onclick="selectVisibleBatchStudents()" class="h-7 px-2 rounded-md border border-slate-300 bg-white hover:bg-slate-100 text-[10px] font-bold text-slate-700">Select 6</button>
+              <button type="button" onclick="clearSelectedStudents()" class="h-7 px-2 rounded-md border border-slate-300 bg-white hover:bg-slate-100 text-[10px] font-semibold text-slate-600">Clear</button>
+            </div>
           </div>
-
-          <!-- Optional TURN Relay (For Strict Mobile 4G Networks) -->
-          <div class="p-3 rounded-xl border border-slate-200 bg-slate-50 text-xs">
-            <div class="flex items-center justify-between gap-2">
-              <div>
-                <div class="font-bold text-[#0F172A]">Network / Mobile 4G Relay (Optional TURN)</div>
-                <div id="turnStatusText" class="text-[11px] text-slate-500">Using free Google STUN servers (works on most Wi-Fi &amp; 4G/5G)</div>
-              </div>
-              <button type="button" onclick="toggleTurnConfigPanel()" class="h-8 px-3 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 text-[11px] font-semibold rounded-lg shrink-0">
-                Configure
-              </button>
-            </div>
-            <div id="turnConfigPanel" class="hidden mt-2.5 pt-2.5 border-t border-slate-200 space-y-2">
-              <input id="turnUrlInput" placeholder="turn:global.relay.metered.ca:80" class="w-full h-8 px-2.5 bg-white border border-slate-300 rounded text-[11px] font-mono" />
-              <div class="grid grid-cols-2 gap-2">
-                <input id="turnUserInput" placeholder="TURN Username" class="h-8 px-2.5 bg-white border border-slate-300 rounded text-[11px] font-mono" />
-                <input id="turnPassInput" placeholder="TURN Credential" class="h-8 px-2.5 bg-white border border-slate-300 rounded text-[11px] font-mono" />
-              </div>
-              <div class="flex justify-end gap-1.5">
-                <button type="button" onclick="clearTurnConfig()" class="h-7 px-2.5 border border-slate-300 bg-white text-slate-600 rounded text-[11px] font-semibold">Reset Default</button>
-                <button type="button" onclick="saveTurnConfig()" class="h-7 px-3 bg-[#0F172A] text-white rounded text-[11px] font-semibold">Save TURN</button>
-              </div>
-            </div>
+          <div id="selectableStudentsList" class="max-h-56 overflow-y-auto p-2 grid grid-cols-1 sm:grid-cols-2 gap-1.5 bg-white">
+            <div class="col-span-full py-4 text-center text-xs text-slate-400">Loading students...</div>
           </div>
         </div>
+
+        <button type="button" id="btnStartTeacherClass" onclick="startTeacherClass()" class="w-full h-11 bg-[#0F172A] hover:bg-slate-800 text-white text-sm font-bold rounded-xl transition">
+          Start Video Class
+        </button>
+      </div>
+    </section>
+
+    <!-- 1B. STUDENT LOBBY (ONLY ONE BUTTON) -->
+    <section id="studentLobbyView" class="hidden max-w-md mx-auto mt-10">
+      <div class="bg-white border border-slate-200 rounded-xl p-6 space-y-3">
+        <div id="vcStudentError" class="hidden p-3 rounded-lg bg-red-50 border border-red-200 text-red-800 text-xs font-medium"></div>
+        <button type="button" id="btnJoinStudentClass" onclick="joinStudentClass()" disabled class="w-full h-12 bg-slate-200 text-slate-500 text-sm font-bold rounded-xl transition disabled:cursor-not-allowed">
+          Waiting for Teacher...
+        </button>
       </div>
     </section>
 
     <!-- 2. TEACHER ACTIVE CLASSROOM VIEW -->
     <section id="teacherStageView" class="hidden space-y-3">
-      <!-- Teacher Top Action Bar -->
       <div class="bg-white border border-slate-200 rounded-xl p-3 flex flex-wrap items-center justify-between gap-2.5">
-        <div class="flex flex-wrap items-center gap-2 min-w-0">
+        <div class="flex items-center gap-2 min-w-0">
           <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shrink-0"></span>
-          <div class="min-w-0">
-            <div class="text-xs sm:text-sm font-extrabold text-[#0F172A] truncate">
-              <span id="teacherRoomTitle">Guitar Trial Batch</span>
-              <span class="ml-1.5 px-2 py-0.5 rounded bg-indigo-50 text-indigo-800 border border-indigo-200 text-[10px] font-bold tabular-nums" id="teacherStudentCountBadge">0 / 6 Students</span>
-            </div>
-            <div id="teacherAudioProfileLabel" class="text-[10px] text-emerald-700 font-semibold">
-              Guitar Music Mode: Raw 48kHz / 128kbps Opus (Noise Suppression OFF)
-            </div>
-          </div>
+          <span id="teacherRoomTitle" class="text-xs sm:text-sm font-extrabold text-[#0F172A] truncate">Video Class</span>
+          <span class="px-2 py-0.5 rounded bg-indigo-50 text-indigo-800 border border-indigo-200 text-[10px] font-bold tabular-nums shrink-0" id="teacherStudentCountBadge">0 / 6</span>
         </div>
 
         <div class="flex flex-wrap items-center gap-1.5 text-[11px]">
           <button type="button" onclick="openInviteTrialModal()" class="h-8 px-3 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 font-bold rounded-lg">
-            Invite / QR Link
+            Invite QR
           </button>
           <button type="button" id="btnTeacherMicToggle" onclick="toggleTeacherMic()" class="h-8 px-3 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 font-bold rounded-lg">
-            My Mic: ON
+            Mic: ON
           </button>
           <button type="button" id="btnTeacherCamToggle" onclick="toggleTeacherCam()" class="h-8 px-3 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 font-bold rounded-lg">
-            My Cam: ON
+            Cam: ON
           </button>
           <button type="button" onclick="flipLocalCamera()" class="h-8 px-3 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 font-bold rounded-lg">
-            Flip Cam
+            Flip
           </button>
           <button type="button" id="btnClearSolo" onclick="clearSoloStudent()" class="hidden h-8 px-3 bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 font-bold rounded-lg">
-            Hear All Students
+            Hear All
           </button>
           <button type="button" onclick="endTeacherClass()" class="h-8 px-3 bg-[#B91C1C] hover:bg-red-800 text-white font-bold rounded-lg">
             End Class
@@ -239,110 +158,69 @@
         </div>
       </div>
 
-      <!-- Teacher Main Grid: Student Tiles (Left/Main) + Teacher Self Preview Strip -->
       <div class="grid grid-cols-1 lg:grid-cols-12 gap-3 items-start">
-        <!-- Students Video Grid (9 cols on desktop) -->
         <div class="lg:col-span-9 space-y-3">
-          <!-- Pinned Student Spotlight (hidden until teacher clicks Pin on a student) -->
           <div id="pinnedStudentContainer" class="hidden"></div>
-
-          <!-- 4-6 Student Tiles Grid -->
-          <div id="teacherStudentsGrid" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-            <!-- Empty state rendered dynamically -->
-          </div>
+          <div id="teacherStudentsGrid" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3"></div>
         </div>
 
-        <!-- Teacher Self Preview & Quick Audio Mix Panel (3 cols on desktop) -->
         <div class="lg:col-span-3 space-y-3">
           <div class="bg-[#050810] border border-slate-800 rounded-xl overflow-hidden shadow-sm">
             <div class="relative aspect-video bg-[#050810]">
               <video id="teacherLocalVideo" autoplay playsinline muted class="w-full h-full object-cover mirror-video"></video>
               <div class="absolute bottom-2 left-2 px-2 py-0.5 rounded bg-black/70 text-white text-[10px] font-bold">
-                You (Teacher)
+                Teacher
               </div>
               <div class="absolute bottom-2 right-2 w-16 h-1.5 bg-slate-800 rounded-full overflow-hidden">
                 <div id="teacherSelfAudioBar" class="h-full bg-emerald-400 transition-all duration-75" style="width: 0%"></div>
               </div>
             </div>
-            <div class="p-2.5 bg-slate-900 text-[11px] text-slate-300 space-y-1.5">
-              <div class="flex items-center justify-between">
-                <span class="text-slate-400">Your Mic Mode</span>
-                <button type="button" id="btnTeacherAudioMode" onclick="toggleTeacherOwnEchoCancel()" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-emerald-300 font-bold text-[10px]">
-                  Raw Guitar
-                </button>
-              </div>
-              <div class="text-[10px] text-slate-400 leading-snug">
-                Tip: Click <b>Solo</b> on any student tile to listen only to their guitar while checking hand posture.
-              </div>
+            <div class="p-2 bg-slate-900 flex items-center justify-between text-[11px]">
+              <span class="text-slate-400 font-medium">Audio Mode</span>
+              <button type="button" id="btnTeacherAudioMode" onclick="toggleTeacherOwnEchoCancel()" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-emerald-300 font-bold text-[10px]">
+                Guitar Raw
+              </button>
             </div>
           </div>
 
-          <!-- Connected Students Quick Roster -->
           <div class="bg-white border border-slate-200 rounded-xl p-3 space-y-2">
             <div class="flex items-center justify-between">
-              <h3 class="text-[11px] font-bold uppercase text-slate-600">Batch Audio Mixer</h3>
+              <h3 class="text-[11px] font-bold uppercase text-slate-600">Students</h3>
               <button type="button" onclick="unmuteAllStudentsLocally()" class="text-[10px] font-bold text-indigo-700 hover:underline">Hear All</button>
             </div>
             <div id="teacherAudioMixerList" class="space-y-1.5 text-xs text-slate-500">
-              No students joined yet.
+              Waiting...
             </div>
           </div>
         </div>
       </div>
     </section>
 
-    <!-- 3. STUDENT ACTIVE CLASSROOM VIEW (NO MUTE / NO CAM-OFF / NO CALLING) -->
+    <!-- 3. STUDENT ACTIVE CLASSROOM VIEW (ALWAYS-ON CAM & MIC, NO MUTE / NO CAM-OFF) -->
     <section id="studentStageView" class="hidden space-y-3">
-      <!-- Track Interrupted Warning Banner -->
       <div id="studentAvWarningBanner" class="hidden bg-red-600 text-white rounded-xl p-3 flex flex-wrap items-center justify-between gap-2 text-xs font-bold shadow">
-        <span id="studentAvWarningText">Camera or Microphone was interrupted by your device! Video &amp; Audio must stay ON during class.</span>
+        <span>Camera &amp; Mic interrupted</span>
         <button type="button" onclick="restoreStudentCameraAndMic()" class="h-8 px-3 bg-white text-red-700 font-extrabold rounded-lg shrink-0">
-          Restore Camera &amp; Mic
+          Restore
         </button>
       </div>
 
-      <!-- Student Top Status Strip -->
-      <div class="bg-white border border-slate-200 rounded-xl p-3 flex flex-wrap items-center justify-between gap-2">
-        <div class="flex items-center gap-2 min-w-0">
-          <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shrink-0"></span>
-          <div class="min-w-0">
-            <div class="text-xs sm:text-sm font-extrabold text-[#0F172A] truncate" id="studentRoomHeaderTitle">Video Class</div>
-            <div class="text-[10px] text-slate-500 font-semibold flex flex-wrap items-center gap-2">
-              <span id="studentConnBadge" class="text-indigo-700">Connecting to Teacher...</span>
-              <span>&bull;</span>
-              <span id="studentAudioModeBadge" class="text-emerald-700">Guitar Raw Audio ON</span>
-            </div>
-          </div>
-        </div>
-        <div class="flex items-center gap-1.5">
-          <span class="px-2 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-[10px] font-bold">
-            CAM &amp; MIC ALWAYS ON
-          </span>
-        </div>
-      </div>
-
-      <!-- Main Teacher Video Stage + Student Self PiP -->
-      <div class="relative bg-[#050810] border border-slate-800 rounded-2xl overflow-hidden shadow-lg aspect-[4/3] sm:aspect-video max-h-[72vh] w-full flex items-center justify-center">
+      <div class="relative bg-[#050810] border border-slate-800 rounded-2xl overflow-hidden shadow-lg aspect-[4/3] sm:aspect-video max-h-[76vh] w-full flex items-center justify-center">
         <video id="studentRemoteTeacherVideo" autoplay playsinline class="w-full h-full object-contain"></video>
 
-        <!-- Waiting / Connecting Overlay -->
         <div id="studentTeacherVideoOverlay" class="absolute inset-0 bg-[#050810]/85 flex flex-col items-center justify-center text-center p-4 text-white space-y-2">
           <div class="w-8 h-8 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin"></div>
-          <div id="studentOverlayText" class="text-sm font-bold">Connecting to your Teacher's live stream...</div>
-          <div class="text-[11px] text-slate-300 max-w-sm">Keep your camera angled so your teacher can see both hands on your instrument clearly.</div>
+          <div id="studentOverlayText" class="text-xs font-bold">Connecting...</div>
         </div>
 
-        <!-- Tap to Unmute Teacher Audio Helper (iOS/Android autoplay policy safety) -->
         <button type="button" id="btnStudentUnblockAudio" onclick="unblockStudentTeacherAudio()" class="hidden absolute top-3 left-1/2 -translate-x-1/2 z-20 px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-extrabold rounded-xl shadow-lg">
-          Tap Here to Hear Teacher Audio
+          Tap for Audio
         </button>
 
-        <!-- Teacher Name Badge -->
         <div class="absolute top-3 left-3 px-2.5 py-1 rounded-lg bg-black/70 text-white text-[11px] font-bold backdrop-blur-sm">
           <span id="studentTeacherNameTag">Teacher</span>
         </div>
 
-        <!-- Student Self-Preview PiP (Bottom-Right) -->
         <div class="absolute bottom-3 right-3 w-28 sm:w-44 aspect-video rounded-xl overflow-hidden border-2 border-emerald-500/80 bg-[#050810] shadow-xl">
           <video id="studentLocalSelfVideo" autoplay playsinline muted class="w-full h-full object-cover mirror-video"></video>
           <div class="absolute bottom-1 left-1 right-1 flex items-center justify-between gap-1 px-1.5 py-0.5 rounded bg-black/70">
@@ -354,25 +232,19 @@
         </div>
       </div>
 
-      <!-- Minimal Student Bottom Controls: ONLY Flip Camera & Leave Class (NO Mute, NO Cam-Off) -->
-      <div class="bg-white border border-slate-200 rounded-xl p-3 flex flex-wrap items-center justify-between gap-2">
-        <div class="text-[11px] text-slate-600">
-          <b>Instrument Tip:</b> Position your phone 1&ndash;1.5m away facing your guitar/instrument.
-        </div>
-        <div class="flex items-center gap-2">
-          <button type="button" onclick="flipLocalCamera()" class="h-9 px-3.5 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 text-xs font-bold rounded-lg">
-            Flip Camera
-          </button>
-          <button type="button" onclick="leaveStudentClass()" class="h-9 px-4 bg-[#B91C1C] hover:bg-red-800 text-white text-xs font-bold rounded-lg">
-            Leave Class
-          </button>
-        </div>
+      <div class="flex items-center justify-end gap-2">
+        <button type="button" onclick="flipLocalCamera()" class="h-10 px-4 bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 text-xs font-bold rounded-xl">
+          Flip Camera
+        </button>
+        <button type="button" onclick="leaveStudentClass()" class="h-10 px-5 bg-[#B91C1C] hover:bg-red-800 text-white text-xs font-bold rounded-xl">
+          Leave Class
+        </button>
       </div>
     </section>
 
   </main>
 
-  <!-- MODAL FOR INVITE LINK & QR (TRIAL TESTING ON PHONES) -->
+  <!-- MODAL FOR INVITE QR -->
   <div id="trialModalBackdrop" onclick="if(event.target===this) closeTrialModal()" class="hidden fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4">
     <div id="trialModalBox" class="bg-white border border-slate-200 rounded-2xl shadow-xl max-w-md w-full p-5 space-y-4 text-xs"></div>
   </div>
@@ -382,44 +254,15 @@
 
   <script>
     // =========================================================================
-    // 1. SHARED CONFIG & FIREBASE INITIALIZATION (EXACT MATCH WITH MAIN APP)
+    // 1. SHARED CONFIG & FIREBASE SIGNALING (ISOLATED IN master_state)
     // =========================================================================
     const STORAGE_KEY = 'tsm_pwa_state_v8';
+    const SESSION_KEY = 'tsm_active_session_v8';
     const CONFIG_KEY = 'tsm_firebase_config_v1';
     const TURN_KEY = 'tsm_video_turn_v1';
-    // Signal through an isolated videoClassRooms map inside the academy's proven tsm_system/master_state doc
-    // (strictly uses dotted update() paths so student/fee/attendance fields are NEVER overwritten)
     const SIGNAL_COLLECTION = 'tsm_system';
     const MASTER_DOC_ID = 'master_state';
     const MAX_BATCH_STUDENTS = 6;
-
-    function masterDocRef() {
-      return db.collection(SIGNAL_COLLECTION).doc(MASTER_DOC_ID);
-    }
-
-    async function updateMasterField(patchObj) {
-      try {
-        await masterDocRef().update(patchObj);
-      } catch (err) {
-        if (err && (err.code === 'not-found' || /No document to update/i.test(err.message || ''))) {
-          // Only if master_state does not exist yet
-          const nested = {};
-          for (const [dotPath, val] of Object.entries(patchObj)) {
-            if (val && typeof val === 'object' && val.constructor && val.constructor.name === 'DeleteFieldValueImpl') continue;
-            const parts = dotPath.split('.');
-            let cur = nested;
-            for (let i = 0; i < parts.length - 1; i++) {
-              if (!cur[parts[i]] || typeof cur[parts[i]] !== 'object') cur[parts[i]] = {};
-              cur = cur[parts[i]];
-            }
-            cur[parts[parts.length - 1]] = val;
-          }
-          await masterDocRef().set(nested, { merge: true });
-        } else {
-          throw err;
-        }
-      }
-    }
 
     const DEFAULT_FIREBASE_CONFIG = {
       apiKey: "AIzaSyD6UUHQL7hcWxvnOIFIzVxOPPU0wrSojFQ",
@@ -440,6 +283,16 @@
 
     let db = null;
     let localAppState = { batches: [], students: [] };
+    const selectedStudentIds = new Set();
+
+    // URL context
+    const urlParams = new URLSearchParams(window.location.search);
+    const isStudentMode = (urlParams.get('role') || '').toLowerCase() === 'student';
+    let urlRoomSlug = (urlParams.get('room') || '').trim();
+    let urlStudentId = (urlParams.get('sid') || '').trim();
+    let urlStudentRoll = (urlParams.get('roll') || '').trim();
+    let urlBatchParam = (urlParams.get('batch') || '').trim();
+    let urlNameParam = (urlParams.get('name') || '').trim();
 
     // Active role & room state
     let currentRole = null; // 'teacher' | 'student' | null
@@ -452,7 +305,7 @@
     let teacherMicEnabled = true;
     let teacherCamEnabled = true;
 
-    // Teacher peers map: peerId -> { pc, meta, remoteStream, pendingIce, unsubIce, localMuted, solo, pinned, analyserRaf, audioCtx }
+    // Teacher peers map
     const teacherPeers = new Map();
     let soloPeerId = null;
     let pinnedPeerId = null;
@@ -463,28 +316,48 @@
 
     // Student connection state
     let studentPeerId = '';
-    let studentPeerRef = null;
     let studentPc = null;
     let studentPendingIce = [];
     let studentCurrentAudioMode = 'music_raw';
-    let unsubStudentRoom = null;
     let unsubStudentPeerDoc = null;
-    let unsubStudentTeacherIce = null;
     let studentWatchdogInterval = null;
     let studentLastCmdAt = 0;
-    let studentReconnecting = false;
 
-    // Lobby room status watcher
+    // Lobby watcher
     let unsubLobbyRoom = null;
-    let lobbyRoomLive = false;
-    let lobbyRoomData = null;
+    let matchedStudentRoom = null;
 
-    // Audio level meters
+    // Audio meters
     let micTestStream = null;
     let micTestCtx = null;
-    let micTestRaf = null;
     let localSelfAudioCtx = null;
-    let localSelfMeterRaf = null;
+
+    function masterDocRef() {
+      return db.collection(SIGNAL_COLLECTION).doc(MASTER_DOC_ID);
+    }
+
+    async function updateMasterField(patchObj) {
+      try {
+        await masterDocRef().update(patchObj);
+      } catch (err) {
+        if (err && (err.code === 'not-found' || /No document to update/i.test(err.message || ''))) {
+          const nested = {};
+          for (const [dotPath, val] of Object.entries(patchObj)) {
+            if (val && typeof val === 'object' && val.constructor && val.constructor.name === 'DeleteFieldValueImpl') continue;
+            const parts = dotPath.split('.');
+            let cur = nested;
+            for (let i = 0; i < parts.length - 1; i++) {
+              if (!cur[parts[i]] || typeof cur[parts[i]] !== 'object') cur[parts[i]] = {};
+              cur = cur[parts[i]];
+            }
+            cur[parts[parts.length - 1]] = val;
+          }
+          await masterDocRef().set(nested, { merge: true });
+        } else {
+          throw err;
+        }
+      }
+    }
 
     // =========================================================================
     // 2. UTILITIES
@@ -502,48 +375,41 @@
       el.textContent = msg;
       el.classList.remove('hidden');
       if (toastTimer) clearTimeout(toastTimer);
-      toastTimer = setTimeout(() => el.classList.add('hidden'), 3600);
+      toastTimer = setTimeout(() => el.classList.add('hidden'), 3200);
     }
 
-    function showLobbyError(msg, isPermissionErr = false) {
-      const box = document.getElementById('vcLobbyError');
+    function showLobbyError(msg) {
+      const box = document.getElementById(isStudentMode ? 'vcStudentError' : 'vcLobbyError');
       if (!box) return;
       if (!msg) {
         box.classList.add('hidden');
-        box.innerHTML = '';
+        box.textContent = '';
         return;
       }
-      const permHelp = isPermissionErr ? `
-        <div class="mt-2 pt-2 border-t border-red-200 text-[11px] text-red-900 space-y-1.5">
-          <div><b>How to fix in Firebase Console (1 minute):</b> Open <b>Firebase Console &rarr; tikariya-music---foundation &rarr; Firestore Database &rarr; Rules</b>, paste the rules below, and click <b>Publish</b>:</div>
-          <pre class="p-2 rounded bg-white border border-red-200 text-[10px] font-mono text-slate-800 overflow-x-auto select-all">rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    match /tsm_system/{docId} { allow read, write: if true; }
-    match /tsm_blobs/{docId} { allow read, write: if true; }
-    match /tsm_vault_files/{docId} { allow read, write: if true; }
-  }
-}</pre>
-        </div>
-      ` : '';
-      box.innerHTML = `<div class="font-bold text-red-900">Video Class Error</div><div>${escapeHtml(msg)}</div>${permHelp}`;
+      box.textContent = msg;
       box.classList.remove('hidden');
     }
 
     function slugifyRoom(name) {
-      const clean = String(name || 'guitar_trial_batch')
+      const clean = String(name || 'custom_class')
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, '_')
         .replace(/^_+|_+$/g, '')
         .slice(0, 48);
-      return clean || 'guitar_trial_batch';
+      return clean || 'custom_class';
     }
 
-    function getSelectedRoomInfo() {
-      const custom = (document.getElementById('customRoomInput')?.value || '').trim();
-      const sel = (document.getElementById('roomBatchSelect')?.value || 'Guitar Trial Batch').trim();
-      const displayName = custom || sel || 'Guitar Trial Batch';
-      return { displayName, slug: slugifyRoom(displayName) };
+    function getTeacherRoomSelection() {
+      const selVal = (document.getElementById('roomBatchSelect')?.value || '__custom__').trim();
+      const customVal = (document.getElementById('customRoomInput')?.value || '').trim();
+      const isCustom = (selVal === '__custom__');
+      const displayName = isCustom
+        ? (customVal || 'Custom Video Class')
+        : (customVal || selVal);
+      const slug = isCustom
+        ? slugifyRoom(displayName) + '_' + String(Date.now()).slice(-4)
+        : slugifyRoom(displayName);
+      return { displayName, slug, isCustom, batchName: isCustom ? '' : selVal };
     }
 
     function getIceConfiguration() {
@@ -561,48 +427,6 @@ service cloud.firestore {
         }
       } catch (e) {}
       return { iceServers: servers, iceCandidatePoolSize: 6 };
-    }
-
-    function loadTurnConfigUi() {
-      try {
-        const raw = localStorage.getItem(TURN_KEY);
-        if (!raw) return;
-        const t = JSON.parse(raw);
-        if (t && t.url) {
-          document.getElementById('turnUrlInput').value = t.url || '';
-          document.getElementById('turnUserInput').value = t.username || '';
-          document.getElementById('turnPassInput').value = t.credential || '';
-          document.getElementById('turnStatusText').textContent = `Custom TURN relay active (${t.url})`;
-        }
-      } catch (e) {}
-    }
-
-    function toggleTurnConfigPanel() {
-      document.getElementById('turnConfigPanel')?.classList.toggle('hidden');
-    }
-
-    function saveTurnConfig() {
-      const url = (document.getElementById('turnUrlInput')?.value || '').trim();
-      const username = (document.getElementById('turnUserInput')?.value || '').trim();
-      const credential = (document.getElementById('turnPassInput')?.value || '').trim();
-      if (!url) {
-        clearTurnConfig();
-        return;
-      }
-      localStorage.setItem(TURN_KEY, JSON.stringify({ url, username, credential }));
-      document.getElementById('turnStatusText').textContent = `Custom TURN relay active (${url})`;
-      document.getElementById('turnConfigPanel')?.classList.add('hidden');
-      showToast('Saved custom TURN server for strict mobile networks');
-    }
-
-    function clearTurnConfig() {
-      localStorage.removeItem(TURN_KEY);
-      document.getElementById('turnUrlInput').value = '';
-      document.getElementById('turnUserInput').value = '';
-      document.getElementById('turnPassInput').value = '';
-      document.getElementById('turnStatusText').textContent = 'Using free Google STUN servers (works on most Wi-Fi & 4G/5G)';
-      document.getElementById('turnConfigPanel')?.classList.add('hidden');
-      showToast('Reset to default STUN servers');
     }
 
     function startLiveClock() {
@@ -653,7 +477,7 @@ service cloud.firestore {
 
     async function acquireMusicMediaStream({ audioMode = 'music_raw', facingMode = 'user', isTeacher = false } = {}) {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        throw new Error('Camera & Microphone API unavailable. Open over HTTPS.');
+        throw new Error('Camera & Microphone unavailable (HTTPS required).');
       }
       const attempts = [
         { audio: buildMusicAudioConstraints(audioMode), video: buildVideoConstraints(facingMode, isTeacher) },
@@ -668,23 +492,21 @@ service cloud.firestore {
           const aTrack = stream.getAudioTracks()[0];
           if (!vTrack || !aTrack) {
             stream.getTracks().forEach(t => t.stop());
-            throw new Error('Both Camera and Microphone are required for Video Class.');
+            throw new Error('Camera and Microphone are both required.');
           }
-          // Hint browser that audio is music (supported in Chromium)
           try { if ('contentHint' in aTrack) aTrack.contentHint = 'music'; } catch (e) {}
           try { if ('contentHint' in vTrack) vTrack.contentHint = 'motion'; } catch (e) {}
           return stream;
         } catch (err) {
           lastErr = err;
           if (err && (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError')) {
-            throw new Error('Camera or Microphone permission was denied. Please allow both to join the Video Class.');
+            throw new Error('Allow Camera & Microphone permission to continue.');
           }
         }
       }
       throw lastErr || new Error('Could not access Camera and Microphone.');
     }
 
-    // Tunes WebRTC SDP so Opus runs in high-clarity music mode with DTX OFF (sustained guitar notes never cut out!)
     function tuneSdpForMusicAudio(sdp, bitrateBps = 128000) {
       if (!sdp) return sdp;
       const lines = sdp.split('\r\n');
@@ -725,7 +547,6 @@ service cloud.firestore {
             params.encodings[0].maxBitrate = 128000;
             try { params.encodings[0].priority = 'high'; } catch (e) {}
           } else if (sender.track.kind === 'video') {
-            // Keep student video smooth & light (420 kbps) so 4-6 guitar audio streams stay crystal clear
             params.encodings[0].maxBitrate = isTeacher ? 900000 : 420000;
           }
           await sender.setParameters(params).catch(() => {});
@@ -775,12 +596,9 @@ service cloud.firestore {
       }
     }
 
-    // Local lobby guitar mic test
     async function toggleLocalGuitarMicTest() {
       const btn = document.getElementById('btnToggleMicTest');
-      const status = document.getElementById('micTestStatus');
-      const bar = document.getElementById('micTestMeterBar');
-
+      const wrap = document.getElementById('micTestWrap');
       if (micTestStream) {
         stopLocalGuitarMicTest();
         return;
@@ -791,18 +609,12 @@ service cloud.firestore {
           audio: buildMusicAudioConstraints('music_raw'),
           video: false
         });
-        const track = micTestStream.getAudioTracks()[0];
-        const settings = track.getSettings ? track.getSettings() : {};
-        const nsOff = settings.noiseSuppression === false ? 'OFF' : String(settings.noiseSuppression ?? 'raw');
-        const agcOff = settings.autoGainControl === false ? 'OFF' : String(settings.autoGainControl ?? 'raw');
-        if (status) status.textContent = `Live! Strum guitar now — NoiseSupp: ${nsOff} | AGC: ${agcOff} | ${settings.sampleRate || 48000}Hz`;
-        if (btn) btn.textContent = 'Stop Test';
-        const meter = attachAudioMeter(micTestStream, 'micTestMeterBar');
-        micTestCtx = meter;
+        if (wrap) wrap.classList.remove('hidden');
+        if (btn) btn.textContent = 'Stop Mic';
+        micTestCtx = attachAudioMeter(micTestStream, 'micTestMeterBar');
       } catch (err) {
-        if (status) status.textContent = 'Mic blocked or unavailable. Allow microphone permission.';
-        if (btn) btn.textContent = 'Test Mic';
-        if (bar) bar.style.width = '0%';
+        showToast('Microphone unavailable');
+        if (btn) btn.textContent = 'Mic Test';
       }
     }
 
@@ -810,15 +622,15 @@ service cloud.firestore {
       if (micTestCtx) { micTestCtx.stop(); micTestCtx = null; }
       if (micTestStream) { micTestStream.getTracks().forEach(t => t.stop()); micTestStream = null; }
       const btn = document.getElementById('btnToggleMicTest');
+      const wrap = document.getElementById('micTestWrap');
       const bar = document.getElementById('micTestMeterBar');
-      const status = document.getElementById('micTestStatus');
-      if (btn) btn.textContent = 'Test Mic';
+      if (btn) btn.textContent = 'Mic Test';
+      if (wrap) wrap.classList.add('hidden');
       if (bar) bar.style.width = '0%';
-      if (status) status.textContent = 'Test raw instrument pickup before starting class';
     }
 
     // =========================================================================
-    // 4. FIREBASE BOOT + LOBBY ROSTER & LIVE ROOM WATCHER
+    // 4. FIREBASE BOOT, ROSTER HYDRATION & SELECTABLE STUDENTS PICKER
     // =========================================================================
     async function initFirebase() {
       const badge = document.getElementById('firebaseBadge');
@@ -838,14 +650,13 @@ service cloud.firestore {
         }
         db = firebase.firestore();
         if (badge) {
-          badge.textContent = 'Cloud Signaling Ready';
-          badge.className = 'px-2.5 py-1 rounded-lg text-[11px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200';
+          badge.textContent = 'Ready';
+          badge.className = 'px-2 py-1 rounded-lg text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200';
         }
       } catch (e) {
-        console.warn('Video Class Firebase init error:', e);
         if (badge) {
-          badge.textContent = 'Cloud Offline';
-          badge.className = 'px-2.5 py-1 rounded-lg text-[11px] font-bold bg-red-50 text-red-700 border border-red-200';
+          badge.textContent = 'Offline';
+          badge.className = 'px-2 py-1 rounded-lg text-[10px] font-bold bg-red-50 text-red-700 border border-red-200';
         }
       }
     }
@@ -862,143 +673,261 @@ service cloud.firestore {
         }
       } catch (e) {}
 
-      const batchSel = document.getElementById('roomBatchSelect');
-      if (batchSel) {
-        const batchSet = new Set(['Guitar Trial Batch', ...(localAppState.batches || [])]);
-        batchSel.innerHTML = [...batchSet].map(b => `<option value="${escapeHtml(b)}">${escapeHtml(b)}</option>`).join('');
+      // Recover student identity from local session if student opened link without params
+      if (isStudentMode && (!urlStudentId || !urlNameParam || !urlBatchParam)) {
+        try {
+          const sessRaw = localStorage.getItem(SESSION_KEY);
+          if (sessRaw) {
+            const sess = JSON.parse(sessRaw);
+            if (sess && sess.role === 'student' && sess.studentId) {
+              const stu = localAppState.students.find(x => x.id === sess.studentId);
+              if (stu) {
+                if (!urlStudentId) urlStudentId = stu.id || '';
+                if (!urlStudentRoll) urlStudentRoll = stu.rollNo || '';
+                if (!urlBatchParam) urlBatchParam = stu.batch || '';
+                if (!urlNameParam) urlNameParam = stu.name || '';
+              }
+            }
+          }
+        } catch (e) {}
       }
 
-      const stuSel = document.getElementById('studentRosterSelect');
-      if (stuSel && localAppState.students.length) {
-        stuSel.innerHTML = `<option value="">-- Type name manually --</option>` +
-          localAppState.students.map(s => `<option value="${escapeHtml(s.id)}">${escapeHtml(s.name)} (${escapeHtml(s.rollNo || '')} &bull; ${escapeHtml(s.batch || '')})</option>`).join('');
-      }
-    }
-
-    function onRosterStudentPicked() {
-      const id = document.getElementById('studentRosterSelect')?.value;
-      if (!id) return;
-      const stu = localAppState.students.find(s => s.id === id);
-      if (!stu) return;
-      document.getElementById('studentNameInput').value = stu.name || '';
-      if (stu.batch) {
-        const batchSel = document.getElementById('roomBatchSelect');
-        if (batchSel && [...batchSel.options].some(o => o.value === stu.batch)) {
-          batchSel.value = stu.batch;
-          document.getElementById('customRoomInput').value = '';
-          onLobbyRoomChanged();
-        }
-      }
-    }
-
-    function onLobbyRoomChanged() {
-      if (currentRole) return;
-      watchLobbyRoomStatus();
+      populateTeacherRosterControls();
     }
 
     function hydrateRosterFromMasterData(masterData) {
       if (!masterData || typeof masterData !== 'object') return;
       let changed = false;
-      if (Array.isArray(masterData.batches) && masterData.batches.length && !localAppState.batches.length) {
-        localAppState.batches = masterData.batches;
-        changed = true;
-      }
-      if (Array.isArray(masterData.students) && masterData.students.length && !localAppState.students.length) {
-        localAppState.students = masterData.students;
-        changed = true;
-      }
-      if (changed) {
-        const batchSel = document.getElementById('roomBatchSelect');
-        const prevVal = batchSel ? batchSel.value : '';
-        if (batchSel) {
-          const batchSet = new Set(['Guitar Trial Batch', ...(localAppState.batches || [])]);
-          batchSel.innerHTML = [...batchSet].map(b => `<option value="${escapeHtml(b)}">${escapeHtml(b)}</option>`).join('');
-          if (prevVal && [...batchSel.options].some(o => o.value === prevVal)) batchSel.value = prevVal;
-        }
-        const stuSel = document.getElementById('studentRosterSelect');
-        if (stuSel && localAppState.students.length) {
-          stuSel.innerHTML = `<option value="">-- Type name manually --</option>` +
-            localAppState.students.map(s => `<option value="${escapeHtml(s.id)}">${escapeHtml(s.name)} (${escapeHtml(s.rollNo || '')} &bull; ${escapeHtml(s.batch || '')})</option>`).join('');
+      if (Array.isArray(masterData.batches) && masterData.batches.length) {
+        if (JSON.stringify(masterData.batches) !== JSON.stringify(localAppState.batches)) {
+          localAppState.batches = masterData.batches;
+          changed = true;
         }
       }
+      if (Array.isArray(masterData.students) && masterData.students.length) {
+        if (masterData.students.length !== localAppState.students.length) {
+          localAppState.students = masterData.students;
+          changed = true;
+        }
+      }
+      if (changed && !isStudentMode) {
+        populateTeacherRosterControls();
+      }
+    }
+
+    function populateTeacherRosterControls() {
+      if (isStudentMode) return;
+      const batchSel = document.getElementById('roomBatchSelect');
+      const filterSel = document.getElementById('studentBatchFilter');
+      const prevBatch = batchSel ? batchSel.value : '__custom__';
+      const prevFilter = filterSel ? filterSel.value : '';
+
+      const batches = [...new Set((localAppState.batches || []).filter(Boolean))];
+      if (batchSel) {
+        batchSel.innerHTML = `<option value="__custom__">Custom Class</option>` +
+          batches.map(b => `<option value="${escapeHtml(b)}">${escapeHtml(b)}</option>`).join('');
+        if ([...batchSel.options].some(o => o.value === prevBatch)) batchSel.value = prevBatch;
+      }
+      if (filterSel) {
+        filterSel.innerHTML = `<option value="">All Batches</option>` +
+          batches.map(b => `<option value="${escapeHtml(b)}">${escapeHtml(b)}</option>`).join('');
+        if ([...filterSel.options].some(o => o.value === prevFilter)) filterSel.value = prevFilter;
+      }
+      onTeacherClassModeChanged();
+      renderSelectableStudentsList();
+    }
+
+    function onTeacherClassModeChanged() {
+      const selVal = document.getElementById('roomBatchSelect')?.value || '__custom__';
+      const customInp = document.getElementById('customRoomInput');
+      const filterSel = document.getElementById('studentBatchFilter');
+      if (selVal !== '__custom__') {
+        if (customInp) customInp.placeholder = selVal;
+        if (filterSel && [...filterSel.options].some(o => o.value === selVal)) {
+          filterSel.value = selVal;
+          renderSelectableStudentsList();
+        }
+      } else {
+        if (customInp) customInp.placeholder = 'e.g. Guitar Practice';
+      }
+    }
+
+    function getFilteredRosterStudents() {
+      const q = (document.getElementById('studentSearchInput')?.value || '').trim().toLowerCase();
+      const batchFilter = (document.getElementById('studentBatchFilter')?.value || '').trim();
+      return (localAppState.students || []).filter(s => {
+        if (!s || !s.id) return false;
+        if (batchFilter && s.batch !== batchFilter) return false;
+        if (q) {
+          const hay = `${s.name || ''} ${s.rollNo || ''} ${s.batch || ''}`.toLowerCase();
+          if (!hay.includes(q)) return false;
+        }
+        return true;
+      });
+    }
+
+    function renderSelectableStudentsList() {
+      const box = document.getElementById('selectableStudentsList');
+      const countEl = document.getElementById('selectedStudentsCount');
+      if (countEl) countEl.textContent = `${selectedStudentIds.size} / ${MAX_BATCH_STUDENTS}`;
+      if (!box) return;
+
+      const list = getFilteredRosterStudents();
+      if (!list.length) {
+        box.innerHTML = `<div class="col-span-full py-4 text-center text-xs text-slate-400">No students found</div>`;
+        return;
+      }
+
+      box.innerHTML = list.map(s => {
+        const checked = selectedStudentIds.has(s.id);
+        const safeId = escapeHtml(s.id);
+        return `
+          <label class="flex items-center gap-2 px-2.5 py-2 rounded-lg border cursor-pointer transition ${checked ? 'bg-indigo-50/70 border-indigo-300' : 'bg-white border-slate-200 hover:bg-slate-50'}">
+            <input type="checkbox" ${checked ? 'checked' : ''} onchange="toggleSelectStudent('${safeId}')" class="w-4 h-4 rounded accent-[#0F172A] shrink-0" />
+            <div class="min-w-0 flex-1">
+              <div class="text-xs font-bold text-[#0F172A] truncate">${escapeHtml(s.name || 'Student')}</div>
+              <div class="text-[10px] text-slate-500 truncate">${escapeHtml(s.batch || '')}${s.rollNo ? ' &bull; ' + escapeHtml(s.rollNo) : ''}</div>
+            </div>
+          </label>
+        `;
+      }).join('');
+    }
+
+    function toggleSelectStudent(studentId) {
+      if (selectedStudentIds.has(studentId)) {
+        selectedStudentIds.delete(studentId);
+      } else {
+        if (selectedStudentIds.size >= MAX_BATCH_STUDENTS) {
+          showToast(`Maximum ${MAX_BATCH_STUDENTS} students per class`);
+          renderSelectableStudentsList();
+          return;
+        }
+        selectedStudentIds.add(studentId);
+      }
+      renderSelectableStudentsList();
+    }
+
+    function selectVisibleBatchStudents() {
+      const list = getFilteredRosterStudents();
+      for (const s of list) {
+        if (selectedStudentIds.size >= MAX_BATCH_STUDENTS) break;
+        selectedStudentIds.add(s.id);
+      }
+      renderSelectableStudentsList();
+    }
+
+    function clearSelectedStudents() {
+      selectedStudentIds.clear();
+      renderSelectableStudentsList();
+    }
+
+    // =========================================================================
+    // 5. LIVE ROOM MATCHING FOR STUDENTS (CUSTOM SELECTED OR BATCH)
+    // =========================================================================
+    function findMatchingLiveRoomForStudent(roomsMap) {
+      const now = Date.now();
+      const liveRooms = Object.values(roomsMap || {}).filter(r =>
+        r && r.status === 'live' && r.teacherHeartbeat && (now - Number(r.teacherHeartbeat) < 120000)
+      );
+      if (!liveRooms.length) return null;
+      liveRooms.sort((a, b) => Number(b.startedAt || 0) - Number(a.startedAt || 0));
+
+      // 1. Direct invite link (?room=slug)
+      if (urlRoomSlug) {
+        const direct = liveRooms.find(r => r.roomId === urlRoomSlug);
+        if (direct) return direct;
+      }
+
+      // 2. Teacher explicitly selected this student (works for ANY custom class at any time)
+      if (urlStudentId || urlStudentRoll) {
+        const bySelected = liveRooms.find(r => {
+          const ids = Array.isArray(r.allowedStudentIds) ? r.allowedStudentIds : [];
+          const rolls = Array.isArray(r.allowedRollNos) ? r.allowedRollNos : [];
+          if (!ids.length && !rolls.length) return false;
+          if (urlStudentId && ids.includes(urlStudentId)) return true;
+          if (urlStudentRoll && rolls.some(x => String(x).toUpperCase() === urlStudentRoll.toUpperCase())) return true;
+          return false;
+        });
+        if (bySelected) return bySelected;
+      }
+
+      // 3. Whole-batch class (when teacher started a batch without restricting to specific students)
+      if (urlBatchParam) {
+        const stuBatchSlug = slugifyRoom(urlBatchParam);
+        const byBatch = liveRooms.find(r => {
+          const hasRestrict = (Array.isArray(r.allowedStudentIds) && r.allowedStudentIds.length > 0) ||
+                              (Array.isArray(r.allowedRollNos) && r.allowedRollNos.length > 0);
+          if (hasRestrict) return false;
+          return r.roomId === stuBatchSlug || slugifyRoom(r.batchName) === stuBatchSlug;
+        });
+        if (byBatch) return byBatch;
+      }
+
+      // 4. Open custom class with no student restriction and no batch restriction
+      const openCustom = liveRooms.find(r => {
+        const hasRestrict = (Array.isArray(r.allowedStudentIds) && r.allowedStudentIds.length > 0) ||
+                            (Array.isArray(r.allowedRollNos) && r.allowedRollNos.length > 0);
+        return r.isCustom && !hasRestrict;
+      });
+      return openCustom || null;
     }
 
     function watchLobbyRoomStatus() {
       if (unsubLobbyRoom) { unsubLobbyRoom(); unsubLobbyRoom = null; }
-      const { slug, displayName } = getSelectedRoomInfo();
-      const statusText = document.getElementById('roomLiveStatusText');
-      const joinBtn = document.getElementById('btnJoinStudentClass');
-
-      if (!db) {
-        if (statusText) statusText.textContent = 'Offline';
-        return;
-      }
-      if (statusText) {
-        statusText.textContent = 'Checking...';
-        statusText.className = 'font-bold text-slate-500';
-      }
+      if (!db) return;
 
       unsubLobbyRoom = masterDocRef().onSnapshot((snap) => {
         showLobbyError('');
         const master = snap.exists ? (snap.data() || {}) : {};
         hydrateRosterFromMasterData(master);
-        const rooms = (master.videoClassRooms && typeof master.videoClassRooms === 'object') ? master.videoClassRooms : {};
-        const d = rooms[slug] || null;
-        const freshHeartbeat = d && d.teacherHeartbeat && (Date.now() - Number(d.teacherHeartbeat) < 120000);
-        const isLive = Boolean(d && d.status === 'live' && freshHeartbeat);
-        lobbyRoomLive = isLive;
-        lobbyRoomData = d;
 
-        if (isLive) {
-          if (statusText) {
-            statusText.textContent = 'LIVE NOW';
-            statusText.className = 'font-extrabold text-emerald-700';
-          }
+        if (isStudentMode) {
+          const rooms = (master.videoClassRooms && typeof master.videoClassRooms === 'object') ? master.videoClassRooms : {};
+          const match = findMatchingLiveRoomForStudent(rooms);
+          matchedStudentRoom = match;
+          const joinBtn = document.getElementById('btnJoinStudentClass');
           if (joinBtn) {
-            joinBtn.disabled = false;
-            joinBtn.className = 'w-full h-10 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg transition shadow-sm';
-            joinBtn.textContent = `Join Video Class — ${d.batchName || displayName} (Live)`;
-          }
-        } else {
-          if (statusText) {
-            statusText.textContent = 'Not Started';
-            statusText.className = 'font-bold text-slate-500';
-          }
-          if (joinBtn) {
-            joinBtn.disabled = true;
-            joinBtn.className = 'w-full h-10 bg-slate-200 text-slate-500 text-xs font-bold rounded-lg transition disabled:cursor-not-allowed';
-            joinBtn.textContent = `Waiting for Teacher to Start (${displayName})...`;
+            if (match) {
+              joinBtn.disabled = false;
+              joinBtn.className = 'w-full h-12 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold rounded-xl transition shadow-sm';
+              joinBtn.textContent = 'Join Video Class';
+            } else {
+              joinBtn.disabled = true;
+              joinBtn.className = 'w-full h-12 bg-slate-200 text-slate-500 text-sm font-bold rounded-xl transition disabled:cursor-not-allowed';
+              joinBtn.textContent = 'Waiting for Teacher...';
+            }
           }
         }
       }, (err) => {
-        console.warn('Lobby room watch error:', err);
-        const isPerm = Boolean(err && (err.code === 'permission-denied' || /permission/i.test(err.message || '')));
-        if (isPerm) {
-          showLobbyError(`Firebase Firestore blocked read/write on ${SIGNAL_COLLECTION}/${MASTER_DOC_ID} (${err.message}).`, true);
+        if (err && (err.code === 'permission-denied' || /permission/i.test(err.message || ''))) {
+          showLobbyError(err.message);
         }
       });
     }
 
     // =========================================================================
-    // 5. TEACHER CONSOLE (HUB FOR 4-6 STUDENTS)
+    // 6. TEACHER CONSOLE (HUB FOR UP TO 6 STUDENTS)
     // =========================================================================
     async function startTeacherClass() {
       showLobbyError('');
       if (!db) {
-        showLobbyError('Firebase cloud signaling is not connected.');
-        showToast('Firebase cloud signaling is not connected.');
+        showLobbyError('Cloud connection unavailable.');
         return;
       }
       stopLocalGuitarMicTest();
 
       const btn = document.getElementById('btnStartTeacherClass');
-      if (btn) { btn.disabled = true; btn.textContent = 'Starting Camera & Mic...'; }
+      if (btn) { btn.disabled = true; btn.textContent = 'Starting...'; }
 
       try {
-        const { displayName, slug } = getSelectedRoomInfo();
-        const teacherName = (document.getElementById('teacherNameInput')?.value || 'Instructor (TSM)').trim();
+        const { displayName, slug, isCustom } = getTeacherRoomSelection();
         const defaultAudioMode = document.getElementById('defaultAudioProfile')?.value || 'music_raw';
         teacherOwnEchoCancel = (defaultAudioMode === 'music_ec');
+
+        const selectedIds = [...selectedStudentIds];
+        const selectedRolls = selectedIds
+          .map(id => (localAppState.students || []).find(s => s.id === id)?.rollNo || '')
+          .filter(Boolean);
 
         localStream = await acquireMusicMediaStream({
           audioMode: defaultAudioMode,
@@ -1019,9 +948,12 @@ service cloud.firestore {
           [`videoClassRooms.${slug}`]: {
             roomId: slug,
             batchName: displayName,
+            isCustom: Boolean(isCustom),
+            allowedStudentIds: selectedIds,
+            allowedRollNos: selectedRolls,
             status: 'live',
             teacherSessionId,
-            teacherName,
+            teacherName: 'Teacher',
             defaultAudioMode,
             maxStudents: MAX_BATCH_STUDENTS,
             startedAt: Date.now(),
@@ -1030,7 +962,6 @@ service cloud.firestore {
           }
         });
 
-        // Heartbeat every 15s so students always know room is genuinely alive
         teacherHeartbeatTimer = setInterval(() => {
           if (currentRole === 'teacher' && db && activeRoomSlug) {
             updateMasterField({
@@ -1039,8 +970,7 @@ service cloud.firestore {
           }
         }, 15000);
 
-        // Switch UI to Teacher Stage
-        document.getElementById('lobbyView').classList.add('hidden');
+        document.getElementById('teacherLobbyView').classList.add('hidden');
         document.getElementById('teacherStageView').classList.remove('hidden');
         document.getElementById('teacherRoomTitle').textContent = displayName;
         updateTeacherAudioModeBadge();
@@ -1052,7 +982,6 @@ service cloud.firestore {
         startLiveClock();
         renderTeacherStudentsGrid();
 
-        // Single-doc listener on master_state.videoClassRooms.{slug} for all 4-6 student peers
         unsubTeacherPeers = masterDocRef().onSnapshot((snap) => {
           const master = snap.exists ? (snap.data() || {}) : {};
           const rd = (master.videoClassRooms && master.videoClassRooms[activeRoomSlug]) || null;
@@ -1073,7 +1002,7 @@ service cloud.firestore {
                 updateMasterField({
                   [`videoClassRooms.${activeRoomSlug}.peers.${peerId}.remoteCmd`]: {
                     kicked: true,
-                    reason: 'Batch room full (max 6 students)',
+                    reason: 'Class full (max 6 students)',
                     cmdAt: Date.now()
                   }
                 }).catch(() => {});
@@ -1084,20 +1013,14 @@ service cloud.firestore {
             syncTeacherPeerFromSnapshot(peerId, peerData);
           });
 
-          // Clean up any peer removed from peersMap
           [...teacherPeers.keys()].forEach((pid) => {
             if (!peersMap[pid]) cleanupTeacherPeer(pid);
           });
-        }, (err) => {
-          console.warn('Teacher room watch error:', err);
-        });
-
-        showToast(`Video Class LIVE for ${displayName}! Share QR/Link to test on student phones.`);
+        }, () => {});
       } catch (err) {
         console.error('Start teacher class error:', err);
         const msg = err && err.message ? err.message : 'Could not start Video Class';
-        const isPerm = Boolean(err && (err.code === 'permission-denied' || /permission/i.test(msg)));
-        showLobbyError(msg, isPerm);
+        showLobbyError(msg);
         showToast(msg);
         await teardownTeacherResources();
       } finally {
@@ -1162,9 +1085,7 @@ service cloud.firestore {
       pc.onconnectionstatechange = () => {
         peerEntry.connState = pc.connectionState || pc.iceConnectionState || 'connecting';
         updateStudentTileStatusBadges(peerId);
-        if (pc.connectionState === 'closed') {
-          cleanupTeacherPeer(peerId);
-        }
+        if (pc.connectionState === 'closed') cleanupTeacherPeer(peerId);
       };
 
       pc.oniceconnectionstatechange = () => {
@@ -1188,7 +1109,6 @@ service cloud.firestore {
       peerEntry.meta = { ...peerEntry.meta, ...data };
       updateStudentTileStatusBadges(peerId);
 
-      // Answer Student SDP Offer once
       if (data.offer && !peerEntry.answered) {
         peerEntry.answered = true;
         try {
@@ -1207,13 +1127,11 @@ service cloud.firestore {
           }
           peerEntry.pendingIce = [];
         } catch (err) {
-          console.error('Accept student offer error:', err);
           cleanupTeacherPeer(peerId);
           return;
         }
       }
 
-      // Consume any newly added student ICE candidates
       if (Array.isArray(data.iceStudent)) {
         for (const candStr of data.iceStudent) {
           if (!candStr || peerEntry.seenStudentIce.has(candStr)) continue;
@@ -1259,7 +1177,7 @@ service cloud.firestore {
         const pinVid = document.getElementById(`pinStuVid_${pid}`);
         if (pinVid) {
           pinVid.muted = shouldMute;
-          if (vid) vid.muted = true; // Avoid double audio when pinned
+          if (vid) vid.muted = true;
         } else if (vid) {
           vid.muted = shouldMute;
         }
@@ -1271,19 +1189,12 @@ service cloud.firestore {
       soloPeerId = (soloPeerId === peerId) ? null : peerId;
       renderTeacherStudentsGrid();
       applyTeacherAudioMixing();
-      if (soloPeerId) {
-        const p = teacherPeers.get(soloPeerId);
-        showToast(`Solo listening: ${p?.meta?.studentName || 'Student'}`);
-      } else {
-        showToast('Listening to all students');
-      }
     }
 
     function clearSoloStudent() {
       soloPeerId = null;
       renderTeacherStudentsGrid();
       applyTeacherAudioMixing();
-      showToast('Listening to all students');
     }
 
     function toggleLocalMuteStudent(peerId) {
@@ -1300,7 +1211,6 @@ service cloud.firestore {
       teacherPeers.forEach(p => { p.localMuted = false; });
       renderTeacherStudentsGrid();
       applyTeacherAudioMixing();
-      showToast('All students audible');
     }
 
     function togglePinStudent(peerId) {
@@ -1316,10 +1226,7 @@ service cloud.firestore {
         await updateMasterField({
           [`videoClassRooms.${activeRoomSlug}.peers.${peerId}.remoteCmd`]: { forceEchoCancel: nextEc, kicked: false, cmdAt: Date.now() }
         });
-        showToast(`${p.meta.studentName}: Switching mic to ${nextEc ? 'Music + Echo Cancel' : 'Raw Guitar Mode'}...`);
-      } catch (e) {
-        showToast('Could not send audio mode command');
-      }
+      } catch (e) {}
     }
 
     async function kickStudentFromClass(peerId) {
@@ -1331,7 +1238,6 @@ service cloud.firestore {
         });
       } catch (e) {}
       cleanupTeacherPeer(peerId);
-      showToast(`Removed ${p.meta.studentName || 'student'} from class`);
     }
 
     function cleanupTeacherPeer(peerId) {
@@ -1363,9 +1269,8 @@ service cloud.firestore {
               <span class="px-2 py-0.5 rounded bg-black/75 text-white text-[11px] font-bold backdrop-blur-sm">${name}</span>
               ${isSolo ? `<span class="px-1.5 py-0.5 rounded bg-amber-400 text-slate-950 text-[9px] font-extrabold uppercase">SOLO</span>` : ''}
               <span id="stuConn_${pid}" class="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${p.connState === 'connected' ? 'bg-emerald-600/90 text-white' : 'bg-slate-700/90 text-slate-200'}">${escapeHtml(p.connState)}</span>
-              ${avAlert ? `<span class="px-1.5 py-0.5 rounded bg-red-600 text-white text-[9px] font-extrabold uppercase">AV INTERRUPTED</span>` : ''}
+              ${avAlert ? `<span class="px-1.5 py-0.5 rounded bg-red-600 text-white text-[9px] font-extrabold uppercase">AV OFF</span>` : ''}
             </div>
-            <!-- Live Guitar / Mic Audio Level Bar -->
             <div class="absolute bottom-2 left-2 right-2 flex items-center gap-2">
               <div class="flex-1 h-1.5 bg-black/60 rounded-full overflow-hidden">
                 <div id="stuMeter_${pid}" class="h-full ${isMutedOnTeacher ? 'bg-slate-500' : 'bg-emerald-400'} transition-all duration-75" style="width: 0%"></div>
@@ -1373,12 +1278,11 @@ service cloud.firestore {
               <span class="px-1.5 py-0.5 rounded bg-black/70 text-[9px] font-bold ${isEc ? 'text-sky-300' : 'text-emerald-300'}">${isEc ? 'EC' : 'RAW'}</span>
             </div>
           </div>
-          <!-- Uniform Teacher Control Row Per Student -->
           <div class="p-1.5 bg-slate-900 grid grid-cols-4 gap-1 text-[10px]">
             <button type="button" onclick="toggleSoloStudent('${pid}')" class="h-7 rounded font-bold inline-flex items-center justify-center ${isSolo ? 'bg-amber-400 text-slate-950' : 'bg-slate-800 hover:bg-slate-700 text-amber-300'}">${isSolo ? 'Unsolo' : 'Solo'}</button>
             <button type="button" onclick="toggleLocalMuteStudent('${pid}')" class="h-7 rounded font-bold inline-flex items-center justify-center ${isMutedOnTeacher ? 'bg-red-700 text-white' : 'bg-slate-800 hover:bg-slate-700 text-slate-200'}">${isMutedOnTeacher ? 'Muted' : 'Silence'}</button>
             <button type="button" onclick="togglePinStudent('${pid}')" class="h-7 rounded font-bold inline-flex items-center justify-center ${pinnedPeerId === pid ? 'bg-indigo-600 text-white' : 'bg-slate-800 hover:bg-slate-700 text-indigo-300'}">${pinnedPeerId === pid ? 'Unpin' : 'Zoom'}</button>
-            <button type="button" onclick="toggleRemoteStudentEchoCancel('${pid}')" class="h-7 rounded font-bold inline-flex items-center justify-center ${isEc ? 'bg-sky-700 text-white' : 'bg-slate-800 hover:bg-slate-700 text-emerald-300'}" title="Toggle Echo Cancel on student mic">${isEc ? 'Raw' : 'EchoFix'}</button>
+            <button type="button" onclick="toggleRemoteStudentEchoCancel('${pid}')" class="h-7 rounded font-bold inline-flex items-center justify-center ${isEc ? 'bg-sky-700 text-white' : 'bg-slate-800 hover:bg-slate-700 text-emerald-300'}">${isEc ? 'Raw' : 'EchoFix'}</button>
           </div>
         </div>
       `;
@@ -1388,7 +1292,7 @@ service cloud.firestore {
       const grid = document.getElementById('teacherStudentsGrid');
       const pinBox = document.getElementById('pinnedStudentContainer');
       const countBadge = document.getElementById('teacherStudentCountBadge');
-      if (countBadge) countBadge.textContent = `${teacherPeers.size} / ${MAX_BATCH_STUDENTS} Students`;
+      if (countBadge) countBadge.textContent = `${teacherPeers.size} / ${MAX_BATCH_STUDENTS}`;
 
       const peersArr = [...teacherPeers.values()];
 
@@ -1402,13 +1306,10 @@ service cloud.firestore {
 
       if (!peersArr.length) {
         grid.innerHTML = `
-          <div class="col-span-full bg-white border-2 border-dashed border-slate-300 rounded-2xl p-8 text-center space-y-3">
-            <div class="text-sm font-extrabold text-[#0F172A]">Batch Room "${escapeHtml(activeRoomDisplayName)}" is LIVE</div>
-            <p class="text-xs text-slate-500 max-w-md mx-auto">
-              Waiting for students (up to 6) to tap <b>Join Video Class</b>. For this trial, tap <b>Invite / QR Link</b> to open on your test phones.
-            </p>
+          <div class="col-span-full bg-white border border-slate-200 rounded-xl p-8 text-center space-y-3">
+            <div class="text-sm font-bold text-[#0F172A]">Waiting for students...</div>
             <button type="button" onclick="openInviteTrialModal()" class="h-9 px-4 bg-[#0F172A] hover:bg-slate-800 text-white text-xs font-bold rounded-lg">
-              Show Student Trial QR &amp; Link
+              Invite QR / Link
             </button>
           </div>
         `;
@@ -1417,7 +1318,6 @@ service cloud.firestore {
         grid.innerHTML = gridPeers.map(p => buildStudentTileHtml(p, false)).join('');
       }
 
-      // Re-bind live MediaStreams to freshly rendered video tags
       peersArr.forEach(p => bindPeerVideoElement(p.peerId));
       applyTeacherAudioMixing();
     }
@@ -1427,7 +1327,7 @@ service cloud.firestore {
       if (!box) return;
       const peersArr = [...teacherPeers.values()];
       if (!peersArr.length) {
-        box.innerHTML = '<div class="text-[11px] text-slate-400">No students connected yet.</div>';
+        box.innerHTML = '<div class="text-[11px] text-slate-400">Waiting...</div>';
         return;
       }
       box.innerHTML = peersArr.map(p => {
@@ -1438,7 +1338,7 @@ service cloud.firestore {
             <div class="min-w-0">
               <div class="font-bold text-[#0F172A] text-[11px] truncate">${escapeHtml(p.meta.studentName || 'Student')}</div>
               <div class="text-[10px] ${isSolo ? 'text-amber-700 font-bold' : isMuted ? 'text-red-600' : 'text-emerald-700'}">
-                ${isSolo ? 'Solo Focus' : isMuted ? 'Silenced on speaker' : 'Audible'}
+                ${isSolo ? 'Solo' : isMuted ? 'Muted' : 'Live'}
               </div>
             </div>
             <button type="button" onclick="kickStudentFromClass('${p.peerId}')" class="px-2 py-1 text-[10px] font-bold text-red-700 bg-red-50 border border-red-200 rounded hover:bg-red-100 shrink-0">Remove</button>
@@ -1470,7 +1370,7 @@ service cloud.firestore {
       localStream.getAudioTracks().forEach(t => { t.enabled = teacherMicEnabled; });
       const btn = document.getElementById('btnTeacherMicToggle');
       if (btn) {
-        btn.textContent = teacherMicEnabled ? 'My Mic: ON' : 'My Mic: MUTED';
+        btn.textContent = teacherMicEnabled ? 'Mic: ON' : 'Mic: OFF';
         btn.className = teacherMicEnabled
           ? 'h-8 px-3 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 font-bold rounded-lg'
           : 'h-8 px-3 bg-red-100 hover:bg-red-200 text-red-800 border border-red-300 font-bold rounded-lg';
@@ -1483,7 +1383,7 @@ service cloud.firestore {
       localStream.getVideoTracks().forEach(t => { t.enabled = teacherCamEnabled; });
       const btn = document.getElementById('btnTeacherCamToggle');
       if (btn) {
-        btn.textContent = teacherCamEnabled ? 'My Cam: ON' : 'My Cam: OFF';
+        btn.textContent = teacherCamEnabled ? 'Cam: ON' : 'Cam: OFF';
         btn.className = teacherCamEnabled
           ? 'h-8 px-3 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 font-bold rounded-lg'
           : 'h-8 px-3 bg-red-100 hover:bg-red-200 text-red-800 border border-red-300 font-bold rounded-lg';
@@ -1494,12 +1394,11 @@ service cloud.firestore {
       teacherOwnEchoCancel = !teacherOwnEchoCancel;
       await swapLocalAudioTrack(teacherOwnEchoCancel ? 'music_ec' : 'music_raw');
       updateTeacherAudioModeBadge();
-      showToast(`Teacher Mic: ${teacherOwnEchoCancel ? 'Music + Echo Cancel' : 'Raw Guitar Mode'}`);
     }
 
     function updateTeacherAudioModeBadge() {
       const btn = document.getElementById('btnTeacherAudioMode');
-      if (btn) btn.textContent = teacherOwnEchoCancel ? 'Music + EC' : 'Raw Guitar';
+      if (btn) btn.textContent = teacherOwnEchoCancel ? 'Echo Cancel' : 'Guitar Raw';
     }
 
     async function endTeacherClass() {
@@ -1511,7 +1410,7 @@ service cloud.firestore {
         }
       } catch (e) {}
       await teardownTeacherResources();
-      showToast('Video Class ended');
+      showToast('Class ended');
     }
 
     async function teardownTeacherResources() {
@@ -1525,38 +1424,26 @@ service cloud.firestore {
       soloPeerId = null;
       pinnedPeerId = null;
       document.getElementById('teacherStageView').classList.add('hidden');
-      document.getElementById('lobbyView').classList.remove('hidden');
+      document.getElementById('teacherLobbyView').classList.remove('hidden');
       watchLobbyRoomStatus();
     }
 
     // =========================================================================
-    // 6. STUDENT CLASSROOM (ALWAYS-ON CAM & MIC, TEACHER-ONLY VIEW)
+    // 7. STUDENT CLASSROOM (ONE-BUTTON JOIN, ALWAYS-ON CAM & MIC)
     // =========================================================================
     async function joinStudentClass() {
-      if (!db) {
-        showToast('Cloud signaling not connected.');
-        return;
-      }
-      if (!lobbyRoomLive || !lobbyRoomData) {
-        showToast('Teacher has not started this Video Class yet.');
-        return;
-      }
-      stopLocalGuitarMicTest();
-
-      const studentName = (document.getElementById('studentNameInput')?.value || '').trim();
-      if (!studentName) {
-        showToast('Please enter your name (or pick from roster) before joining.');
-        document.getElementById('studentNameInput')?.focus();
-        return;
-      }
+      showLobbyError('');
+      if (!db || !matchedStudentRoom) return;
 
       const btn = document.getElementById('btnJoinStudentClass');
-      if (btn) { btn.disabled = true; btn.textContent = 'Requesting Camera & Mic...'; }
+      if (btn) { btn.disabled = true; btn.textContent = 'Connecting...'; }
 
       try {
-        const { displayName, slug } = getSelectedRoomInfo();
-        const targetTeacherSession = lobbyRoomData.teacherSessionId;
-        studentCurrentAudioMode = lobbyRoomData.defaultAudioMode || 'music_raw';
+        const room = matchedStudentRoom;
+        const slug = room.roomId;
+        const targetTeacherSession = room.teacherSessionId;
+        const studentName = urlNameParam || 'Student';
+        studentCurrentAudioMode = room.defaultAudioMode || 'music_raw';
 
         localStream = await acquireMusicMediaStream({
           audioMode: studentCurrentAudioMode,
@@ -1565,39 +1452,28 @@ service cloud.firestore {
         });
 
         activeRoomSlug = slug;
-        activeRoomDisplayName = lobbyRoomData.batchName || displayName;
+        activeRoomDisplayName = room.batchName || 'Video Class';
         studentPeerId = 'stu_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
         currentRole = 'student';
         studentLastCmdAt = 0;
 
         if (unsubLobbyRoom) { unsubLobbyRoom(); unsubLobbyRoom = null; }
 
-        // Switch UI to Student Classroom
-        document.getElementById('lobbyView').classList.add('hidden');
+        document.getElementById('studentLobbyView').classList.add('hidden');
         document.getElementById('studentStageView').classList.remove('hidden');
-        document.getElementById('studentRoomHeaderTitle').textContent = `Video Class — ${activeRoomDisplayName}`;
-        document.getElementById('studentTeacherNameTag').textContent = lobbyRoomData.teacherName || 'Teacher';
+        document.getElementById('studentTeacherNameTag').textContent = room.teacherName || 'Teacher';
         document.getElementById('studentSelfNameTag').textContent = studentName;
-        updateStudentAudioModeLabel();
 
         const selfVid = document.getElementById('studentLocalSelfVideo');
         if (selfVid) selfVid.srcObject = localStream;
         localSelfAudioCtx = attachAudioMeter(localStream, 'studentSelfMicBar');
 
         startLiveClock();
-
-        // Create WebRTC Offer to Teacher Hub & watch master_state.videoClassRooms.{slug}
         await connectStudentPeerConnection(slug, targetTeacherSession, studentName);
-
-        // Start Always-On Camera/Mic Track Watchdog
         attachStudentTrackWatchdog(slug);
-
       } catch (err) {
-        console.error('Student join error:', err);
         const msg = err && err.message ? err.message : 'Could not join Video Class';
-        const isPerm = Boolean(err && (err.code === 'permission-denied' || /permission/i.test(msg)));
-        showLobbyError(msg, isPerm);
-        showToast(msg);
+        showLobbyError(msg);
         await leaveStudentClass(true);
       }
     }
@@ -1649,26 +1525,7 @@ service cloud.firestore {
       pc.onicecandidate = (evt) => {
         if (evt.candidate) {
           iceOutQueue.push(JSON.stringify(evt.candidate.toJSON()));
-          if (!iceOutTimer) {
-            iceOutTimer = setTimeout(flushStudentIce, 120);
-          }
-        }
-      };
-
-      pc.oniceconnectionstatechange = () => {
-        const st = pc.iceConnectionState;
-        const badge = document.getElementById('studentConnBadge');
-        if (badge) {
-          if (st === 'connected' || st === 'completed') {
-            badge.textContent = 'Connected Live';
-            badge.className = 'text-emerald-700 font-bold';
-          } else if (st === 'disconnected' || st === 'failed') {
-            badge.textContent = 'Reconnecting...';
-            badge.className = 'text-amber-700 font-bold';
-          } else {
-            badge.textContent = 'Connecting...';
-            badge.className = 'text-indigo-700';
-          }
+          if (!iceOutTimer) iceOutTimer = setTimeout(flushStudentIce, 120);
         }
       };
 
@@ -1677,7 +1534,6 @@ service cloud.firestore {
       await pc.setLocalDescription(offer);
       await applyTrackBitratePriorities(pc, false);
 
-      // Atomically register this student's peer entry inside videoClassRooms.{slug}.peers.{studentPeerId}
       await updateMasterField({
         [`videoClassRooms.${slug}.peers.${studentPeerId}`]: {
           peerId: studentPeerId,
@@ -1695,13 +1551,11 @@ service cloud.firestore {
         }
       });
 
-      // Watch master_state.videoClassRooms.{slug} for Room End, Teacher Answer, ICE array, and Remote Commands
       if (unsubStudentPeerDoc) unsubStudentPeerDoc();
       unsubStudentPeerDoc = masterDocRef().onSnapshot(async (snap) => {
         const master = snap.exists ? (snap.data() || {}) : {};
         const rd = (master.videoClassRooms && master.videoClassRooms[slug]) || null;
         if (!rd || rd.status !== 'live' || rd.teacherSessionId !== targetTeacherSession) {
-          showToast('Teacher ended the Video Class.');
           leaveStudentClass(true);
           return;
         }
@@ -1715,9 +1569,7 @@ service cloud.firestore {
               await pc.addIceCandidate(new RTCIceCandidate(c)).catch(() => {});
             }
             studentPendingIce = [];
-          } catch (e) {
-            console.warn('Student setRemoteDescription warning:', e);
-          }
+          } catch (e) {}
         }
 
         if (Array.isArray(d.iceTeacher)) {
@@ -1738,7 +1590,6 @@ service cloud.firestore {
         if (d.remoteCmd && Number(d.remoteCmd.cmdAt || 0) > studentLastCmdAt) {
           studentLastCmdAt = Number(d.remoteCmd.cmdAt);
           if (d.remoteCmd.kicked) {
-            showToast(d.remoteCmd.reason || 'Disconnected by Teacher');
             leaveStudentClass(true);
             return;
           }
@@ -1747,11 +1598,9 @@ service cloud.firestore {
             if (desiredMode !== studentCurrentAudioMode) {
               studentCurrentAudioMode = desiredMode;
               await swapLocalAudioTrack(desiredMode);
-              updateStudentAudioModeLabel();
               updateMasterField({
                 [`videoClassRooms.${slug}.peers.${studentPeerId}.audioMode`]: desiredMode
               }).catch(() => {});
-              showToast(`Teacher set your mic to ${desiredMode === 'music_ec' ? 'Music + Echo Cancel' : 'Guitar Raw Mode'}`);
             }
           }
         }
@@ -1767,21 +1616,12 @@ service cloud.firestore {
       document.getElementById('btnStudentUnblockAudio')?.classList.add('hidden');
     }
 
-    function updateStudentAudioModeLabel() {
-      const el = document.getElementById('studentAudioModeBadge');
-      if (!el) return;
-      el.textContent = studentCurrentAudioMode === 'music_ec'
-        ? 'Music + Echo Cancel ON'
-        : 'Guitar Raw Audio ON (128kbps)';
-    }
-
     function attachStudentTrackWatchdog(slug) {
       if (studentWatchdogInterval) clearInterval(studentWatchdogInterval);
       const checkHealth = () => {
         if (currentRole !== 'student' || !localStream || !studentPeerId) return;
         const vTrack = localStream.getVideoTracks()[0];
         const aTrack = localStream.getAudioTracks()[0];
-        // Enforce enabled=true continuously on student tracks
         if (vTrack && !vTrack.enabled) vTrack.enabled = true;
         if (aTrack && !aTrack.enabled) aTrack.enabled = true;
 
@@ -1844,17 +1684,14 @@ service cloud.firestore {
           }).catch(() => {});
           attachStudentTrackWatchdog(activeRoomSlug);
         }
-        showToast('Camera & Microphone restored!');
       } catch (e) {
-        showToast(e.message || 'Please allow Camera and Microphone permissions.');
+        showToast('Allow Camera & Microphone');
       }
     }
 
     async function leaveStudentClass(silent = false) {
       if (studentWatchdogInterval) { clearInterval(studentWatchdogInterval); studentWatchdogInterval = null; }
-      if (unsubStudentRoom) { unsubStudentRoom(); unsubStudentRoom = null; }
       if (unsubStudentPeerDoc) { unsubStudentPeerDoc(); unsubStudentPeerDoc = null; }
-      if (unsubStudentTeacherIce) { unsubStudentTeacherIce(); unsubStudentTeacherIce = null; }
       stopLiveClock();
 
       if (db && activeRoomSlug && studentPeerId) {
@@ -1875,15 +1712,14 @@ service cloud.firestore {
 
       currentRole = null;
       studentPeerId = '';
-      studentPeerRef = null;
       document.getElementById('studentStageView').classList.add('hidden');
-      document.getElementById('lobbyView').classList.remove('hidden');
+      document.getElementById('studentLobbyView').classList.remove('hidden');
       watchLobbyRoomStatus();
-      if (!silent) showToast('Left Video Class');
+      if (!silent) showToast('Left class');
     }
 
     // =========================================================================
-    // 7. SHARED TRACK SWAPPERS (FLIP CAMERA & LIVE AUDIO MODE SWITCH)
+    // 8. SHARED CAMERA FLIP & AUDIO MODE SWAP
     // =========================================================================
     async function flipLocalCamera() {
       if (!localStream) return;
@@ -1917,9 +1753,8 @@ service cloud.firestore {
           vidEl.srcObject = localStream;
           vidEl.classList.toggle('mirror-video', currentFacingMode === 'user');
         }
-        showToast(`Switched to ${currentFacingMode === 'environment' ? 'Rear' : 'Front'} Camera`);
       } catch (e) {
-        showToast('Second camera unavailable on this device.');
+        showToast('Second camera unavailable');
       }
     }
 
@@ -1954,28 +1789,28 @@ service cloud.firestore {
         if (currentRole === 'student' && activeRoomSlug) {
           attachStudentTrackWatchdog(activeRoomSlug);
         }
-      } catch (e) {
-        console.warn('Swap audio track warning:', e);
-      }
+      } catch (e) {}
     }
 
     // =========================================================================
-    // 8. INVITE QR / LINK MODAL FOR FAST MULTI-PHONE TRIALS
+    // 9. INVITE QR / LINK MODAL
     // =========================================================================
-    function getStudentTrialInviteUrl() {
-      const base = `${window.location.origin}${window.location.pathname}`;
-      return `${base}?role=student&batch=${encodeURIComponent(activeRoomDisplayName || 'Guitar Trial Batch')}`;
+    function getStudentInviteUrl() {
+      const isAisPreview = /\.run\.app$/i.test(window.location.hostname || '');
+      const base = isAisPreview
+        ? 'https://tikariyas.github.io/tsm_gem/video-class.html'
+        : `${window.location.origin}${window.location.pathname}`;
+      return `${base}?role=student&room=${encodeURIComponent(activeRoomSlug || '')}`;
     }
 
     function openInviteTrialModal() {
-      const inviteUrl = getStudentTrialInviteUrl();
+      const inviteUrl = getStudentInviteUrl();
       const box = document.getElementById('trialModalBox');
       box.innerHTML = `
         <div class="flex items-center justify-between border-b border-slate-200 pb-2.5">
-          <h3 class="text-sm font-extrabold text-[#0F172A]">Student Join QR &amp; Trial Link</h3>
+          <h3 class="text-sm font-extrabold text-[#0F172A]">${escapeHtml(activeRoomDisplayName || 'Video Class')}</h3>
           <button type="button" onclick="closeTrialModal()" class="text-xs font-bold text-slate-500 hover:text-slate-900">Close</button>
         </div>
-        <p class="text-xs text-slate-600">Scan this QR code or share the link on 1&ndash;6 test phones to join <b>${escapeHtml(activeRoomDisplayName)}</b> as students and test guitar audio live.</p>
         <div class="flex justify-center py-2">
           <div id="inviteQrContainer" class="p-3 bg-white border border-slate-200 rounded-xl"></div>
         </div>
@@ -1994,12 +1829,12 @@ service cloud.firestore {
     }
 
     function copyInviteTrialUrl() {
-      const url = getStudentTrialInviteUrl();
+      const url = getStudentInviteUrl();
       if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(url).then(() => showToast('Student trial link copied!')).catch(() => {});
+        navigator.clipboard.writeText(url).then(() => showToast('Link copied')).catch(() => {});
       } else {
         const inp = document.getElementById('inviteUrlReadonly');
-        if (inp) { inp.select(); document.execCommand('copy'); showToast('Student trial link copied!'); }
+        if (inp) { inp.select(); document.execCommand('copy'); showToast('Link copied'); }
       }
     }
 
@@ -2008,36 +1843,8 @@ service cloud.firestore {
     }
 
     // =========================================================================
-    // 9. URL PARAM PREFILL & CLEANUP ON PAGE UNLOAD
+    // 10. BOOT & CLEANUP
     // =========================================================================
-    function applyUrlParams() {
-      const params = new URLSearchParams(window.location.search);
-      const roleParam = (params.get('role') || '').toLowerCase();
-      const batchParam = (params.get('batch') || '').trim();
-      const nameParam = (params.get('name') || '').trim();
-
-      if (batchParam) {
-        const sel = document.getElementById('roomBatchSelect');
-        if (sel && [...sel.options].some(o => o.value === batchParam)) {
-          sel.value = batchParam;
-        } else {
-          document.getElementById('customRoomInput').value = batchParam;
-        }
-      }
-      if (nameParam) {
-        document.getElementById('studentNameInput').value = nameParam;
-      }
-      if (roleParam === 'student') {
-        document.getElementById('teacherLaunchCard')?.classList.add('hidden');
-        const gridWrap = document.getElementById('studentLaunchCard')?.parentElement;
-        if (gridWrap) gridWrap.classList.remove('lg:grid-cols-2');
-      } else if (roleParam === 'teacher') {
-        document.getElementById('studentLaunchCard')?.classList.add('hidden');
-        const gridWrap = document.getElementById('teacherLaunchCard')?.parentElement;
-        if (gridWrap) gridWrap.classList.remove('lg:grid-cols-2');
-      }
-    }
-
     window.addEventListener('beforeunload', () => {
       if (currentRole === 'teacher' && db && activeRoomSlug) {
         updateMasterField({ [`videoClassRooms.${activeRoomSlug}`]: firebase.firestore.FieldValue.delete() }).catch(() => {});
@@ -2049,10 +1856,15 @@ service cloud.firestore {
       }
     });
 
-    (async function bootVideoClassTrial() {
+    (async function bootVideoClass() {
+      if (isStudentMode) {
+        document.getElementById('teacherLobbyView')?.classList.add('hidden');
+        document.getElementById('studentLobbyView')?.classList.remove('hidden');
+      } else {
+        document.getElementById('teacherLobbyView')?.classList.remove('hidden');
+        document.getElementById('studentLobbyView')?.classList.add('hidden');
+      }
       loadLocalAcademyRoster();
-      loadTurnConfigUi();
-      applyUrlParams();
       await initFirebase();
       watchLobbyRoomStatus();
     })();

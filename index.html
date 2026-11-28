@@ -2627,6 +2627,7 @@ function renderNavTabs() {
     { id: 'student_home', label: 'Profile & ID' },
     { id: 'student_attendance', label: 'Attendance' },
     { id: 'student_audio', label: 'Audio' },
+    { id: 'student_video_class', label: 'Video Class' },
     { id: 'student_fees', label: 'Fees' },
     { id: 'student_vault', label: 'Study Material' },
     { id: 'student_messages', label: 'Messages' }
@@ -2657,6 +2658,17 @@ function switchTab(id) {
   }
   if (id === 'video_class' && currentUser && currentUser.role === 'admin') {
     window.location.href = 'video-class.html';
+    return;
+  }
+  if (id === 'student_video_class' && currentUser && currentUser.role === 'student') {
+    const s = (appState.students || []).find(x => x.id === currentUser.studentId);
+    const params = new URLSearchParams();
+    params.set('role', 'student');
+    if (s && s.id) params.set('sid', s.id);
+    if (s && s.rollNo) params.set('roll', s.rollNo);
+    if (s && s.batch) params.set('batch', s.batch);
+    if (s && s.name) params.set('name', s.name);
+    window.location.href = `video-class.html?${params.toString()}`;
     return;
   }
   activeTab = id;
