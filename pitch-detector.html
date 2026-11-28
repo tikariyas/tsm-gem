@@ -853,6 +853,64 @@
       return audioCtx;
     }
 
+    // =========================================================================
+    // 4B. SCREEN WAKE LOCK (KEEP SCREEN ON WHILE DETECTOR OR DRONE IS ACTIVE)
+    // =========================================================================
+    let screenWakeLock = null;
+
+    function updateDetectorStatusLabel() {
+      const el = document.getElementById('detectorStateLabel');
+      if (!el) return;
+      if (state.isListening) {
+        el.textContent = screenWakeLock ? 'Listening · Screen Awake' : 'Listening · Raw Musical Input';
+        el.className = 'font-semibold text-emerald-400 whitespace-nowrap';
+      } else {
+        el.textContent = 'Stopped — Tap Start';
+        el.className = 'font-semibold text-slate-400 whitespace-nowrap';
+      }
+    }
+
+    async function acquireScreenWakeLock() {
+      if (!('wakeLock' in navigator) || !navigator.wakeLock || typeof navigator.wakeLock.request !== 'function') {
+        return;
+      }
+      if (document.visibilityState && document.visibilityState !== 'visible') {
+        return;
+      }
+      if (screenWakeLock && !screenWakeLock.released) {
+        updateDetectorStatusLabel();
+        return;
+      }
+      try {
+        const sentinel = await navigator.wakeLock.request('screen');
+        screenWakeLock = sentinel;
+        sentinel.addEventListener('release', () => {
+          if (screenWakeLock === sentinel) {
+            screenWakeLock = null;
+          }
+          updateDetectorStatusLabel();
+        });
+        updateDetectorStatusLabel();
+      } catch (_) {
+        screenWakeLock = null;
+        updateDetectorStatusLabel();
+      }
+    }
+
+    async function releaseScreenWakeLock(force = false) {
+      if (!force && (state.isListening || state.isDronePlaying)) {
+        return;
+      }
+      if (screenWakeLock) {
+        const sentinel = screenWakeLock;
+        screenWakeLock = null;
+        try {
+          await sentinel.release();
+        } catch (_) {}
+      }
+      updateDetectorStatusLabel();
+    }
+
     async function toggleMic() {
       if (state.isListening) {
         stopMic();
@@ -896,8 +954,8 @@
         state.medianBuf = [];
         updateMicButtonUI();
         document.getElementById('graphIdleOverlay').classList.add('hidden');
-        document.getElementById('detectorStateLabel').textContent = 'Listening · Raw Musical Input';
-        document.getElementById('detectorStateLabel').className = 'font-semibold text-emerald-400 whitespace-nowrap';
+        updateDetectorStatusLabel();
+        acquireScreenWakeLock();
 
         if (!rafId) {
           rafId = requestAnimationFrame(audioLoop);
@@ -928,9 +986,9 @@
       state.medianBuf = [];
       updateMicButtonUI();
       document.getElementById('inputLevelBar').style.width = '0%';
-      document.getElementById('detectorStateLabel').textContent = 'Stopped — Tap Start';
-      document.getElementById('detectorStateLabel').className = 'font-semibold text-slate-400 whitespace-nowrap';
+      updateDetectorStatusLabel();
       highlightActiveSwaraInStrip(-1);
+      releaseScreenWakeLock();
     }
 
     function updateMicButtonUI() {
@@ -1563,6 +1621,7 @@
       droneNodes = { oscs, masterGain, filter };
       state.isDronePlaying = true;
       updateDroneUI();
+      acquireScreenWakeLock();
     }
 
     function stopDrone() {
@@ -1580,6 +1639,7 @@
       droneNodes = null;
       state.isDronePlaying = false;
       updateDroneUI();
+      releaseScreenWakeLock();
     }
 
     function toggleDrone() {
@@ -1950,9 +2010,21 @@
       }
     });
 
+    // Re-acquire Screen Wake Lock when returning to tab while detector/drone is active
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && (state.isListening || state.isDronePlaying)) {
+        acquireScreenWakeLock();
+      }
+    });
+
+    window.addEventListener('pagehide', () => {
+      releaseScreenWakeLock(true);
+    });
+
     window.addEventListener('beforeunload', () => {
       stopMic();
       stopDrone();
+      releaseScreenWakeLock(true);
     });
 
     // =========================================================================
