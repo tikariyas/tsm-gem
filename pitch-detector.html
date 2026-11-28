@@ -1,0 +1,1990 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#0F172A" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="TSM Pitch Detector" />
+  <title>Pitch Detector (सा रे ग म) — TIKARIYA'S SCHOOL OF MUSIC</title>
+  <meta name="description" content="Real-time vocal and instrument pitch detector with movable Sa Indian Sargam notation (सा रे ग म), Western notes, live scrolling pitch graph, and Sa-Pa reference drone." />
+  <link rel="icon" type="image/png" href="./favicon.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600;700&family=Noto+Sans+Devanagari:wght@500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --font-sans: 'Plus Jakarta Sans', 'Noto Sans Devanagari', system-ui, -apple-system, sans-serif;
+      --font-devanagari: 'Noto Sans Devanagari', 'Plus Jakarta Sans', sans-serif;
+      --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+    }
+    body {
+      font-family: var(--font-sans);
+      background-color: #F8FAFC;
+      color: #0F172A;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .font-deva { font-family: var(--font-devanagari); }
+    .font-mono-num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+    .tabular-nums { font-variant-numeric: tabular-nums; }
+
+    /* Crisp Bhatkhande Indian Notation Marks (cross-platform consistent) */
+    .swara-glyph {
+      position: relative;
+      display: inline-flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      line-height: 1.05;
+      vertical-align: middle;
+    }
+    .swara-marks-top {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 3px;
+      height: 0.24em;
+      margin-bottom: 0.04em;
+    }
+    .swara-marks-bottom {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      gap: 2px;
+      min-height: 0.24em;
+      margin-top: 0.04em;
+    }
+    .swara-dot {
+      width: 0.13em;
+      height: 0.13em;
+      min-width: 4px;
+      min-height: 4px;
+      border-radius: 9999px;
+      background-color: currentColor;
+      display: inline-block;
+    }
+    .swara-teevra-bar {
+      width: 0.08em;
+      min-width: 2px;
+      height: 0.24em;
+      min-height: 6px;
+      border-radius: 1px;
+      background-color: currentColor;
+      display: inline-block;
+    }
+    .swara-komal-bar {
+      width: 0.72em;
+      height: 0.075em;
+      min-height: 2px;
+      border-radius: 2px;
+      background-color: currentColor;
+      display: block;
+    }
+    .swara-dots-row {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 3px;
+    }
+
+    /* Compact inline glyph for buttons & strips */
+    .swara-compact .swara-marks-top { height: 6px; margin-bottom: 1px; }
+    .swara-compact .swara-marks-bottom { min-height: 6px; margin-top: 1px; }
+    .swara-compact .swara-dot { width: 3.5px; height: 3.5px; min-width: 3.5px; min-height: 3.5px; }
+    .swara-compact .swara-teevra-bar { width: 2px; height: 6px; min-width: 2px; min-height: 6px; }
+    .swara-compact .swara-komal-bar { width: 14px; height: 2px; min-height: 2px; }
+
+    /* Range sliders */
+    .tsm-range {
+      -webkit-appearance: none;
+      appearance: none;
+      height: 6px;
+      border-radius: 9999px;
+      background: #E2E8F0;
+      outline: none;
+    }
+    .tsm-range::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 18px;
+      height: 18px;
+      border-radius: 9999px;
+      background: #0F172A;
+      border: 2px solid #FFFFFF;
+      box-shadow: 0 1px 3px rgba(15, 23, 42, 0.3);
+      cursor: pointer;
+    }
+    .tsm-range::-moz-range-thumb {
+      width: 18px;
+      height: 18px;
+      border-radius: 9999px;
+      background: #0F172A;
+      border: 2px solid #FFFFFF;
+      box-shadow: 0 1px 3px rgba(15, 23, 42, 0.3);
+      cursor: pointer;
+    }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+    @media (prefers-reduced-motion: reduce) {
+      * { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+  <!-- TOP HEADER (3-Zone Contract Matching TSM Branding) -->
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-30">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-4">
+      <a href="./index.html" class="font-extrabold text-sm sm:text-base text-[#0F172A] uppercase tracking-tight whitespace-nowrap truncate">
+        TIKARIYA'S SCHOOL OF <span class="text-[#B91C1C]">M</span>USIC
+      </a>
+      <div class="hidden md:flex items-center gap-4 text-xs text-slate-500 font-medium whitespace-nowrap">
+        <span>Pitch Detector</span>
+        <span aria-hidden="true">·</span>
+        <span id="headerSummaryMeta" class="font-mono-num text-slate-700 font-semibold">Sa = C4 · A4 = 440 Hz</span>
+      </div>
+      <div class="flex items-center gap-2 shrink-0">
+        <a href="./index.html" class="min-h-[38px] px-3.5 inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700 transition whitespace-nowrap">
+          Back to App
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <!-- MAIN WORKSPACE -->
+  <main class="flex-1 max-w-6xl w-full mx-auto px-3 sm:px-6 py-4 sm:py-5 space-y-4">
+
+    <!-- ERROR BANNER (HIDDEN UNLESS MIC ERROR OCCURS) -->
+    <div id="micErrorBanner" class="hidden p-3.5 rounded-xl bg-red-50 border border-red-200 text-red-800 text-xs font-medium flex items-start justify-between gap-3">
+      <div id="micErrorText" class="leading-relaxed"></div>
+      <button type="button" onclick="hideMicError()" class="px-2.5 py-1 rounded-md border border-red-200 bg-white text-red-700 font-semibold hover:bg-red-50 shrink-0">Dismiss</button>
+    </div>
+
+    <!-- PRIMARY INSTRUMENT STAGE (DARK ACOUSTIC SCOPE — FOCAL ANCHOR) -->
+    <section class="bg-[#090E1A] text-white rounded-2xl border border-slate-800 overflow-hidden">
+
+      <!-- TOP INSTRUMENT BAR: NOTATION MODE + PRIMARY START/STOP ACTION -->
+      <div class="px-4 sm:px-6 py-3.5 border-b border-slate-800/90 flex flex-wrap items-center justify-between gap-3">
+        <!-- Notation Mode Segmented Control -->
+        <div class="flex items-center gap-1 p-1 bg-[#111827] border border-slate-800 rounded-xl overflow-x-auto no-scrollbar" role="tablist" aria-label="Notation system">
+          <button type="button" data-mode="indian" onclick="setNotationMode('indian')" class="notation-mode-btn min-h-[36px] px-3 rounded-lg text-xs font-bold whitespace-nowrap transition font-deva">
+            सा रे ग म
+          </button>
+          <button type="button" data-mode="both" onclick="setNotationMode('both')" class="notation-mode-btn min-h-[36px] px-3 rounded-lg text-xs font-bold whitespace-nowrap transition font-deva">
+            सा · C#
+          </button>
+          <button type="button" data-mode="sargam_en" onclick="setNotationMode('sargam_en')" class="notation-mode-btn min-h-[36px] px-3 rounded-lg text-xs font-bold whitespace-nowrap transition">
+            S r R g
+          </button>
+          <button type="button" data-mode="western" onclick="setNotationMode('western')" class="notation-mode-btn min-h-[36px] px-3 rounded-lg text-xs font-bold whitespace-nowrap transition">
+            C C# D
+          </button>
+        </div>
+
+        <!-- Primary Action Controls -->
+        <div class="flex items-center gap-2 ml-auto">
+          <button type="button" id="btnFreezeGraph" onclick="toggleFreezeGraph()" class="min-h-[40px] px-3.5 rounded-xl border border-slate-700 bg-[#111827] hover:bg-slate-800 text-slate-200 text-xs font-semibold transition whitespace-nowrap">
+            Freeze
+          </button>
+          <button type="button" id="btnToggleMic" onclick="toggleMic()" class="min-h-[40px] px-5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs sm:text-sm font-bold transition whitespace-nowrap inline-flex items-center gap-2 cursor-pointer">
+            <svg id="micBtnIcon" class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/>
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+              <line x1="12" x2="12" y1="19" y2="22"/>
+            </svg>
+            <span id="micBtnLabel">Start Pitch Detector</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- LIVE READOUT + CENT METER + SCROLLING PITCH GRAPH -->
+      <div class="grid grid-cols-1 lg:grid-cols-12">
+
+        <!-- LEFT: HUGE NOTE READOUT + PRECISION CENT GAUGE -->
+        <div class="lg:col-span-4 p-4 sm:p-6 border-b lg:border-b-0 lg:border-r border-slate-800/90 flex flex-col justify-between gap-4">
+
+          <!-- Live Status & Signal Meter -->
+          <div class="flex items-center justify-between gap-2 text-xs">
+            <div id="detectorStateLabel" class="font-semibold text-slate-400 whitespace-nowrap">
+              Ready — Tap Start
+            </div>
+            <div class="flex items-center gap-2 shrink-0">
+              <span class="text-[11px] text-slate-400">Input</span>
+              <div class="w-20 h-1.5 rounded-full bg-slate-800 overflow-hidden">
+                <div id="inputLevelBar" class="h-full bg-emerald-500 transition-all duration-75" style="width:0%"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Primary Detected Note Hero -->
+          <div class="py-2 text-center flex flex-col items-center justify-center min-h-[146px]">
+            <div id="primaryNoteDisplay" class="text-6xl sm:text-7xl font-extrabold tracking-tight text-slate-500 leading-none select-none font-deva">
+              —
+            </div>
+            <div id="secondaryNoteDisplay" class="mt-2.5 text-sm sm:text-base font-semibold text-slate-300 font-mono-num min-h-[22px]">
+              Sing or play a note
+            </div>
+            <div id="swaraMetaDisplay" class="mt-1 text-xs text-slate-400 min-h-[18px]">
+              Sa = C4 (Safed 1)
+            </div>
+          </div>
+
+          <!-- Calibrated Cent Gauge (-50 to +50) -->
+          <div class="space-y-2">
+            <div class="flex items-center justify-between text-xs font-mono-num">
+              <span class="text-slate-400">-50¢ ♭</span>
+              <span id="tuningVerdictText" class="font-sans font-bold text-slate-400">Waiting for pitch</span>
+              <span class="text-slate-400">+50¢ ♯</span>
+            </div>
+
+            <!-- Gauge Track -->
+            <div class="relative h-9 rounded-xl bg-[#050810] border border-slate-800 overflow-hidden">
+              <!-- Center Green In-Tune Zone (±5 cents = 10% width centered at 50%) -->
+              <div class="absolute top-0 bottom-0 left-[45%] w-[10%] bg-emerald-500/15 border-x border-emerald-500/30"></div>
+              <!-- Center Zero Line -->
+              <div class="absolute top-0 bottom-0 left-1/2 -translate-x-1/2 w-[2px] bg-emerald-400/80"></div>
+              <!-- Tick Marks at -25¢ and +25¢ -->
+              <div class="absolute top-2 bottom-2 left-1/4 w-[1px] bg-slate-700/80"></div>
+              <div class="absolute top-2 bottom-2 left-3/4 w-[1px] bg-slate-700/80"></div>
+              <!-- Dynamic Deviation Fill -->
+              <div id="centFillBar" class="absolute top-1.5 bottom-1.5 rounded-sm bg-emerald-500/40 transition-transform duration-75" style="left:50%; width:0%; opacity:0;"></div>
+              <!-- Moving Precision Needle -->
+              <div id="centNeedle" class="absolute top-0.5 bottom-0.5 w-1.5 -ml-[3px] rounded-full bg-slate-500 shadow transition-all duration-75" style="left:50%;"></div>
+            </div>
+          </div>
+
+          <!-- Exact Numeric Telemetry (Tabular Monospace) -->
+          <div class="grid grid-cols-3 gap-2 pt-2 border-t border-slate-800/80 text-center">
+            <div>
+              <div class="text-[11px] text-slate-400">Frequency</div>
+              <div class="mt-0.5 font-mono-num text-sm sm:text-base font-bold text-white">
+                <span id="freqValue">—</span><span class="text-[10px] text-slate-400 ml-0.5">Hz</span>
+              </div>
+            </div>
+            <div class="border-x border-slate-800/80">
+              <div class="text-[11px] text-slate-400">Deviation</div>
+              <div id="centsValue" class="mt-0.5 font-mono-num text-sm sm:text-base font-bold text-slate-300">
+                —
+              </div>
+            </div>
+            <div>
+              <div class="text-[11px] text-slate-400">Target</div>
+              <div class="mt-0.5 font-mono-num text-sm sm:text-base font-bold text-slate-200">
+                <span id="targetFreqValue">—</span><span class="text-[10px] text-slate-400 ml-0.5">Hz</span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- RIGHT: REAL-TIME SCROLLING PITCH GRAPH (ONLINEMICTEST STYLE, ENHANCED) -->
+        <div class="lg:col-span-8 flex flex-col">
+          <div class="px-4 py-2.5 border-b border-slate-800/80 flex flex-wrap items-center justify-between gap-2 text-xs">
+            <div class="flex items-center gap-2 text-slate-300 font-semibold">
+              <span>Live Pitch Graph</span>
+              <span aria-hidden="true" class="text-slate-600">·</span>
+              <span id="graphScaleBadge" class="text-slate-400 font-normal">Chromatic (12 Swaras)</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <div class="flex items-center gap-1 text-[11px] text-slate-400 mr-1">
+                <button type="button" onclick="adjustGraphZoom(-2)" class="min-w-[28px] h-7 px-2 rounded-md border border-slate-700 bg-[#111827] hover:bg-slate-800 text-slate-200 font-bold" title="Zoom in (fewer semitones)">+</button>
+                <button type="button" onclick="adjustGraphZoom(2)" class="min-w-[28px] h-7 px-2 rounded-md border border-slate-700 bg-[#111827] hover:bg-slate-800 text-slate-200 font-bold" title="Zoom out (more semitones)">−</button>
+              </div>
+              <button type="button" id="btnLockRange" onclick="toggleGraphAutoFollow()" class="h-7 px-2.5 rounded-md border border-slate-700 bg-[#111827] hover:bg-slate-800 text-[11px] font-semibold text-slate-200 whitespace-nowrap">
+                Auto-Track: ON
+              </button>
+              <button type="button" onclick="clearPitchHistory()" class="h-7 px-2.5 rounded-md border border-slate-700 bg-[#111827] hover:bg-slate-800 text-[11px] font-semibold text-slate-300 whitespace-nowrap">
+                Clear
+              </button>
+            </div>
+          </div>
+
+          <div class="relative flex-1 min-h-[260px] sm:min-h-[320px] bg-[#060A14]">
+            <canvas id="pitchGraphCanvas" class="w-full h-full block cursor-crosshair"></canvas>
+            <!-- Subtle Idle Prompt Overlay (Hidden Once Mic Starts) -->
+            <div id="graphIdleOverlay" class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none px-4 text-center">
+              <div class="text-sm font-semibold text-slate-300">Real-time pitch curve appears here</div>
+              <div class="text-xs text-slate-500 mt-1">Click Start Pitch Detector and sing or play your instrument</div>
+            </div>
+          </div>
+
+          <!-- Session Range Footer Strip -->
+          <div class="px-4 py-2 border-t border-slate-800/80 bg-[#080C17] flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-400">
+            <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <span>Range: <strong id="sessionRangeText" class="text-slate-200 font-mono-num font-semibold">—</strong></span>
+              <span aria-hidden="true">·</span>
+              <span class="text-emerald-400">Green ≤ ±8¢</span>
+              <span class="text-amber-400">Amber ≤ ±22¢</span>
+              <span class="text-rose-400">Red &gt; ±22¢</span>
+            </div>
+            <button type="button" onclick="resetSessionRange()" class="text-slate-400 hover:text-white font-semibold transition">Reset Range</button>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- MOVABLE SA (सा) SELECTOR — ANY NOTE CAN BE SA -->
+    <section class="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 space-y-4">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 class="text-sm sm:text-base font-extrabold text-[#0F172A]">
+            Select Sa (<span class="font-deva">सा</span>) — Movable Tonic Scale
+          </h1>
+          <div class="text-xs text-slate-500 mt-0.5 flex flex-wrap items-center gap-1.5">
+            <span>Tap any note to make it Sa</span>
+            <span aria-hidden="true">·</span>
+            <span id="activeSaInfo" class="font-semibold text-slate-700 font-mono-num">Madhya Sa = C4 (261.63 Hz · Safed 1)</span>
+          </div>
+        </div>
+
+        <!-- Madhya Sa Octave Control -->
+        <div class="flex items-center gap-2">
+          <span class="text-xs font-semibold text-slate-600">Madhya Sa Octave</span>
+          <div class="inline-flex items-center rounded-lg border border-slate-300 bg-slate-50 p-0.5">
+            <button type="button" onclick="setSaOctave(2)" data-oct="2" class="sa-oct-btn min-w-[36px] h-8 px-2 rounded-md text-xs font-bold transition">2</button>
+            <button type="button" onclick="setSaOctave(3)" data-oct="3" class="sa-oct-btn min-w-[36px] h-8 px-2 rounded-md text-xs font-bold transition">3</button>
+            <button type="button" onclick="setSaOctave(4)" data-oct="4" class="sa-oct-btn min-w-[36px] h-8 px-2 rounded-md text-xs font-bold transition">4</button>
+            <button type="button" onclick="setSaOctave(5)" data-oct="5" class="sa-oct-btn min-w-[36px] h-8 px-2 rounded-md text-xs font-bold transition">5</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 12 Chromatic Root Buttons (C through B with Indian Harmonium Names) -->
+      <div id="saSelectorGrid" class="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-12 gap-1.5"></div>
+
+      <!-- LIVE 12-SWARA INTERACTIVE MAP (LIGHTS UP AS YOU SING/PLAY + TAP TO HEAR REFERENCE TONE) -->
+      <div class="pt-3 border-t border-slate-100 space-y-2">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div class="text-xs font-bold text-slate-700">
+            12 Swara Reference Strip <span class="font-normal text-slate-500">· Tap any swara to hear its exact pitch</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <label for="scaleFilterSelect" class="text-xs font-semibold text-slate-600 whitespace-nowrap">Scale / Thaat</label>
+            <select id="scaleFilterSelect" onchange="setScalePreset(this.value)" class="h-8 px-2.5 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-[#0F172A]">
+              <option value="chromatic">Chromatic (All 12)</option>
+              <option value="bilawal">Bilawal / Major (S R G m P D N)</option>
+              <option value="kalyan">Kalyan / Yaman (S R G M P D N)</option>
+              <option value="khamaj">Khamaj (S R G m P D n)</option>
+              <option value="bhairav">Bhairav (S r G m P d N)</option>
+              <option value="kafi">Kafi (S R g m P D n)</option>
+              <option value="asavari">Asavari / Minor (S R g m P d n)</option>
+              <option value="bhairavi">Bhairavi (S r g m P d n)</option>
+              <option value="purvi">Purvi (S r G M P d N)</option>
+              <option value="marwa">Marwa (S r G M P D N)</option>
+              <option value="todi">Todi (S r g M P d N)</option>
+              <option value="bhupali">Bhupali (S R G P D)</option>
+              <option value="guitar_std">Guitar Standard (E A D G B E)</option>
+            </select>
+          </div>
+        </div>
+        <div id="swaraStripGrid" class="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-12 gap-1.5"></div>
+      </div>
+    </section>
+
+    <!-- POWER TOOLS: TANPURA DRONE + PRECISION CALIBRATION (2-COLUMN BALANCED ROW) -->
+    <section class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch">
+
+      <!-- REFERENCE DRONE (TANPURA SA-PA / SA-MA) -->
+      <div class="lg:col-span-5 bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 flex flex-col justify-between gap-4">
+        <div class="flex items-center justify-between gap-2">
+          <div>
+            <h2 class="text-sm font-extrabold text-[#0F172A]">Reference Drone (Tanpura)</h2>
+            <p class="text-xs text-slate-500 mt-0.5">Play a steady Sa drone while practicing pitch</p>
+          </div>
+          <button type="button" id="btnToggleDrone" onclick="toggleDrone()" class="min-h-[40px] px-4 rounded-xl bg-[#0F172A] hover:bg-slate-800 text-white text-xs font-bold transition whitespace-nowrap">
+            Play Drone
+          </button>
+        </div>
+
+        <div class="grid grid-cols-3 gap-1.5" role="group" aria-label="Drone harmonic">
+          <button type="button" data-drone="sa_pa" onclick="setDroneMode('sa_pa')" class="drone-mode-btn min-h-[38px] px-2 rounded-lg border text-xs font-bold transition font-deva">सा + प (Sa-Pa)</button>
+          <button type="button" data-drone="sa_ma" onclick="setDroneMode('sa_ma')" class="drone-mode-btn min-h-[38px] px-2 rounded-lg border text-xs font-bold transition font-deva">सा + म (Sa-Ma)</button>
+          <button type="button" data-drone="sa_only" onclick="setDroneMode('sa_only')" class="drone-mode-btn min-h-[38px] px-2 rounded-lg border text-xs font-bold transition font-deva">सा (Sa Only)</button>
+        </div>
+
+        <div class="flex items-center gap-3">
+          <label for="droneVolumeSlider" class="text-xs font-semibold text-slate-600 shrink-0">Volume</label>
+          <input id="droneVolumeSlider" type="range" min="5" max="100" value="35" oninput="setDroneVolume(this.value)" class="tsm-range flex-1" />
+          <span id="droneVolumeValue" class="text-xs font-mono-num font-bold text-slate-700 w-9 text-right">35%</span>
+        </div>
+      </div>
+
+      <!-- CALIBRATION & ENGINE SETTINGS -->
+      <div class="lg:col-span-7 bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 space-y-4">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <h2 class="text-sm font-extrabold text-[#0F172A]">Tuning &amp; Mic Calibration</h2>
+          <button type="button" onclick="resetSettings()" class="text-xs font-semibold text-slate-500 hover:text-slate-900 transition">Reset Defaults</button>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <!-- Tuning System -->
+          <div>
+            <label for="temperamentSelect" class="block text-xs font-semibold text-slate-700 mb-1">Intonation System</label>
+            <select id="temperamentSelect" onchange="setTemperament(this.value)" class="w-full h-10 px-3 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-[#0F172A]">
+              <option value="equal">Equal (12-TET · Guitar / Keys)</option>
+              <option value="just">Indian Just (Shruti · Vocal)</option>
+            </select>
+          </div>
+
+          <!-- A4 Concert Pitch -->
+          <div>
+            <div class="flex items-center justify-between mb-1">
+              <label for="a4Input" class="text-xs font-semibold text-slate-700">A4 Reference</label>
+              <div class="flex items-center gap-1">
+                <button type="button" onclick="setA4Hz(432)" class="text-[10px] font-mono-num font-bold text-slate-500 hover:text-[#0F172A]">432</button>
+                <span class="text-slate-300">/</span>
+                <button type="button" onclick="setA4Hz(440)" class="text-[10px] font-mono-num font-bold text-slate-500 hover:text-[#0F172A]">440</button>
+              </div>
+            </div>
+            <div class="flex items-center gap-1">
+              <button type="button" onclick="stepA4Hz(-1)" class="w-9 h-10 rounded-lg border border-slate-300 bg-slate-50 hover:bg-slate-100 text-sm font-bold text-slate-700">−</button>
+              <input id="a4Input" type="number" min="415" max="465" step="0.5" value="440" onchange="setA4Hz(this.value)" class="w-full h-10 px-2 text-center font-mono-num text-xs font-bold border border-slate-300 rounded-lg text-[#0F172A]" />
+              <button type="button" onclick="stepA4Hz(1)" class="w-9 h-10 rounded-lg border border-slate-300 bg-slate-50 hover:bg-slate-100 text-sm font-bold text-slate-700">+</button>
+            </div>
+          </div>
+
+          <!-- Response / Smoothing -->
+          <div>
+            <label for="responseSelect" class="block text-xs font-semibold text-slate-700 mb-1">Response Speed</label>
+            <select id="responseSelect" onchange="setResponseMode(this.value)" class="w-full h-10 px-3 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-[#0F172A]">
+              <option value="fast">Fast (Guitar / Taan)</option>
+              <option value="balanced" selected>Balanced (Vocal)</option>
+              <option value="smooth">Smooth (Steady Hold)</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Noise Gate Slider -->
+        <div class="flex flex-wrap items-center gap-3 pt-1">
+          <label for="noiseGateSlider" class="text-xs font-semibold text-slate-700 shrink-0">Noise Gate</label>
+          <input id="noiseGateSlider" type="range" min="1" max="15" step="1" value="3" oninput="setNoiseGate(this.value)" class="tsm-range flex-1 min-w-[140px]" />
+          <span id="noiseGateLabel" class="text-xs font-mono-num font-semibold text-slate-600 whitespace-nowrap">Low (Sensitive)</span>
+        </div>
+      </div>
+
+    </section>
+
+  </main>
+
+  <script>
+    // =========================================================================
+    // 1. MUSIC THEORY CONSTANTS (WESTERN + HINDUSTANI BHATKHANDE + SHRUTI JUST)
+    // =========================================================================
+    const WESTERN_NOTES = [
+      { idx: 0,  name: 'C',  alt: 'C',  harmonium: 'Safed 1', isBlack: false },
+      { idx: 1,  name: 'C#', alt: 'D♭', harmonium: 'Kali 1',  isBlack: true  },
+      { idx: 2,  name: 'D',  alt: 'D',  harmonium: 'Safed 2', isBlack: false },
+      { idx: 3,  name: 'D#', alt: 'E♭', harmonium: 'Kali 2',  isBlack: true  },
+      { idx: 4,  name: 'E',  alt: 'E',  harmonium: 'Safed 3', isBlack: false },
+      { idx: 5,  name: 'F',  alt: 'F',  harmonium: 'Safed 4', isBlack: false },
+      { idx: 6,  name: 'F#', alt: 'G♭', harmonium: 'Kali 3',  isBlack: true  },
+      { idx: 7,  name: 'G',  alt: 'G',  harmonium: 'Safed 5', isBlack: false },
+      { idx: 8,  name: 'G#', alt: 'A♭', harmonium: 'Kali 4',  isBlack: true  },
+      { idx: 9,  name: 'A',  alt: 'A',  harmonium: 'Safed 6', isBlack: false },
+      { idx: 10, name: 'A#', alt: 'B♭', harmonium: 'Kali 5',  isBlack: true  },
+      { idx: 11, name: 'B',  alt: 'B',  harmonium: 'Safed 7', isBlack: false }
+    ];
+
+    const INDIAN_SWARAS = [
+      { idx: 0,  deva: 'सा', roman: 'S', full: 'Shadj (Sa)',          kind: 'achal',   justRatio: 1 / 1   },
+      { idx: 1,  deva: 'रे', roman: 'r', full: 'Komal Rishabh',       kind: 'komal',   justRatio: 16 / 15 },
+      { idx: 2,  deva: 'रे', roman: 'R', full: 'Shuddha Rishabh',     kind: 'shuddha', justRatio: 9 / 8   },
+      { idx: 3,  deva: 'ग',  roman: 'g', full: 'Komal Gandhar',       kind: 'komal',   justRatio: 6 / 5   },
+      { idx: 4,  deva: 'ग',  roman: 'G', full: 'Shuddha Gandhar',     kind: 'shuddha', justRatio: 5 / 4   },
+      { idx: 5,  deva: 'म',  roman: 'm', full: 'Shuddha Madhyam',     kind: 'shuddha', justRatio: 4 / 3   },
+      { idx: 6,  deva: 'म',  roman: 'M', full: 'Teevra Madhyam',      kind: 'teevra',  justRatio: 45 / 32 },
+      { idx: 7,  deva: 'प',  roman: 'P', full: 'Pancham (Pa)',        kind: 'achal',   justRatio: 3 / 2   },
+      { idx: 8,  deva: 'ध',  roman: 'd', full: 'Komal Dhaivat',       kind: 'komal',   justRatio: 8 / 5   },
+      { idx: 9,  deva: 'ध',  roman: 'D', full: 'Shuddha Dhaivat',     kind: 'shuddha', justRatio: 5 / 3   },
+      { idx: 10, deva: 'नि', roman: 'n', full: 'Komal Nishad',        kind: 'komal',   justRatio: 9 / 5   },
+      { idx: 11, deva: 'नि', roman: 'N', full: 'Shuddha Nishad',      kind: 'shuddha', justRatio: 15 / 8  }
+    ];
+
+    const SCALE_PRESETS = {
+      chromatic:  { label: 'Chromatic (12 Swaras)', swaras: [0,1,2,3,4,5,6,7,8,9,10,11] },
+      bilawal:    { label: 'Bilawal / Major',       swaras: [0,2,4,5,7,9,11] },
+      kalyan:     { label: 'Kalyan / Yaman',        swaras: [0,2,4,6,7,9,11] },
+      khamaj:     { label: 'Khamaj',                swaras: [0,2,4,5,7,9,10] },
+      bhairav:    { label: 'Bhairav',               swaras: [0,1,4,5,7,8,11] },
+      kafi:       { label: 'Kafi',                  swaras: [0,2,3,5,7,9,10] },
+      asavari:    { label: 'Asavari / Minor',       swaras: [0,2,3,5,7,8,10] },
+      bhairavi:   { label: 'Bhairavi',              swaras: [0,1,3,5,7,8,10] },
+      purvi:      { label: 'Purvi',                 swaras: [0,1,4,6,7,8,11] },
+      marwa:      { label: 'Marwa',                 swaras: [0,1,4,6,7,9,11] },
+      todi:       { label: 'Todi',                  swaras: [0,1,3,6,7,8,11] },
+      bhupali:    { label: 'Bhupali',               swaras: [0,2,4,7,9] },
+      guitar_std: { label: 'Guitar EADGBE',         guitarMidi: [40, 45, 50, 55, 59, 64] }
+    };
+
+    const SAPTAK_NAMES = {
+      '-2': 'Ati-Mandra',
+      '-1': 'Mandra Saptak',
+       '0': 'Madhya Saptak',
+       '1': 'Taar Saptak',
+       '2': 'Ati-Taar'
+    };
+
+    // =========================================================================
+    // 2. PERSISTENT USER SETTINGS & RUNTIME STATE
+    // =========================================================================
+    const STORAGE_KEY = 'tsm_pitch_detector_prefs_v1';
+
+    const state = {
+      notationMode: 'indian',   // 'indian' | 'both' | 'sargam_en' | 'western'
+      saPitchClass: 0,          // 0=C .. 11=B (any note can be Sa)
+      saOctave: 4,              // 2..5 (Madhya Sa octave)
+      a4Hz: 440,
+      temperament: 'equal',     // 'equal' | 'just'
+      scalePreset: 'chromatic',
+      responseMode: 'balanced', // 'fast' | 'balanced' | 'smooth'
+      noiseGateLevel: 3,        // 1..15 (maps to RMS threshold)
+      droneMode: 'sa_pa',       // 'sa_pa' | 'sa_ma' | 'sa_only'
+      droneVolume: 0.35,
+
+      // Live engine state
+      isListening: false,
+      isFrozen: false,
+      autoFollowGraph: true,
+      graphSpanSemis: 18,       // vertical window height in semitones
+      graphCenterMidi: 64,      // smoothly tracks current pitch
+      isDronePlaying: false,
+
+      // Latest detected values
+      activeNote: null,
+      smoothedCents: 0,
+      smoothedHz: 0,
+      lastVoiceTime: 0,
+      medianBuf: [],
+      history: [],              // { t, midi, cents, hz, inTune }
+      sessionMinMidi: null,
+      sessionMaxMidi: null,
+      hoverPos: null
+    };
+
+    function loadPrefs() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return;
+        const p = JSON.parse(raw);
+        if (['indian', 'both', 'sargam_en', 'western'].includes(p.notationMode)) state.notationMode = p.notationMode;
+        if (Number.isInteger(p.saPitchClass) && p.saPitchClass >= 0 && p.saPitchClass <= 11) state.saPitchClass = p.saPitchClass;
+        if (Number.isInteger(p.saOctave) && p.saOctave >= 2 && p.saOctave <= 5) state.saOctave = p.saOctave;
+        if (typeof p.a4Hz === 'number' && p.a4Hz >= 415 && p.a4Hz <= 465) state.a4Hz = p.a4Hz;
+        if (['equal', 'just'].includes(p.temperament)) state.temperament = p.temperament;
+        if (SCALE_PRESETS[p.scalePreset]) state.scalePreset = p.scalePreset;
+        if (['fast', 'balanced', 'smooth'].includes(p.responseMode)) state.responseMode = p.responseMode;
+        if (typeof p.noiseGateLevel === 'number' && p.noiseGateLevel >= 1 && p.noiseGateLevel <= 15) state.noiseGateLevel = p.noiseGateLevel;
+        if (['sa_pa', 'sa_ma', 'sa_only'].includes(p.droneMode)) state.droneMode = p.droneMode;
+        if (typeof p.droneVolume === 'number' && p.droneVolume >= 0.05 && p.droneVolume <= 1) state.droneVolume = p.droneVolume;
+      } catch (_) {}
+    }
+
+    function savePrefs() {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({
+          notationMode: state.notationMode,
+          saPitchClass: state.saPitchClass,
+          saOctave: state.saOctave,
+          a4Hz: state.a4Hz,
+          temperament: state.temperament,
+          scalePreset: state.scalePreset,
+          responseMode: state.responseMode,
+          noiseGateLevel: state.noiseGateLevel,
+          droneMode: state.droneMode,
+          droneVolume: state.droneVolume
+        }));
+      } catch (_) {}
+    }
+
+    // =========================================================================
+    // 3. PITCH MATH & INDIAN SWARA CONVERSION
+    // =========================================================================
+    function getSaMidi() {
+      return (state.saOctave + 1) * 12 + state.saPitchClass;
+    }
+
+    function midiToFreqEqual(midi) {
+      return state.a4Hz * Math.pow(2, (midi - 69) / 12);
+    }
+
+    function getSaFreq() {
+      return midiToFreqEqual(getSaMidi());
+    }
+
+    function getSwaraTargetFreq(swaraIdx, saptakOffset) {
+      const saMidi = getSaMidi();
+      if (state.temperament === 'just') {
+        return getSaFreq() * Math.pow(2, saptakOffset) * INDIAN_SWARAS[swaraIdx].justRatio;
+      }
+      return midiToFreqEqual(saMidi + saptakOffset * 12 + swaraIdx);
+    }
+
+    function freqToNoteInfo(hz) {
+      if (!hz || !isFinite(hz) || hz < 45 || hz > 2200) return null;
+
+      const saMidi = getSaMidi();
+      const saFreq = getSaFreq();
+      const exactMidi = 69 + 12 * Math.log2(hz / state.a4Hz);
+
+      let swaraIdx = 0;
+      let saptakOffset = 0;
+      let targetFreq = saFreq;
+      let cents = 0;
+      let nearestMidi = Math.round(exactMidi);
+
+      if (state.temperament === 'just' && state.notationMode !== 'western') {
+        // Find nearest Shruti/Just pitch across saptaks
+        const approxSemiFromSa = 12 * Math.log2(hz / saFreq);
+        const baseSaptak = Math.floor(approxSemiFromSa / 12);
+        let bestAbsCents = Infinity;
+        for (let sap = baseSaptak - 1; sap <= baseSaptak + 1; sap++) {
+          for (let s = 0; s < 12; s++) {
+            const tf = saFreq * Math.pow(2, sap) * INDIAN_SWARAS[s].justRatio;
+            const c = 1200 * Math.log2(hz / tf);
+            if (Math.abs(c) < bestAbsCents) {
+              bestAbsCents = Math.abs(c);
+              swaraIdx = s;
+              saptakOffset = sap;
+              targetFreq = tf;
+              cents = c;
+            }
+          }
+        }
+        nearestMidi = saMidi + saptakOffset * 12 + swaraIdx;
+      } else {
+        const semiFromSa = exactMidi - saMidi;
+        const nearestSemiFromSa = Math.round(semiFromSa);
+        swaraIdx = ((nearestSemiFromSa % 12) + 12) % 12;
+        saptakOffset = Math.floor(nearestSemiFromSa / 12) || 0;
+        nearestMidi = saMidi + nearestSemiFromSa;
+        targetFreq = midiToFreqEqual(nearestMidi);
+        cents = (semiFromSa - nearestSemiFromSa) * 100;
+      }
+
+      const westernPc = ((nearestMidi % 12) + 12) % 12;
+      const westernOctave = Math.floor(nearestMidi / 12) - 1;
+      const westernNote = WESTERN_NOTES[westernPc];
+      const swara = INDIAN_SWARAS[swaraIdx];
+
+      return {
+        hz,
+        exactMidi,
+        nearestMidi,
+        targetFreq,
+        cents,
+        swaraIdx,
+        swara,
+        saptakOffset,
+        saptakName: SAPTAK_NAMES[String(Math.max(-2, Math.min(2, saptakOffset)))] || 'Madhya Saptak',
+        westernPc,
+        westernOctave,
+        westernName: westernNote.name,
+        westernFull: `${westernNote.name}${westernOctave}`,
+        harmoniumName: westernNote.harmonium
+      };
+    }
+
+    // Build crisp Bhatkhande Devanagari HTML glyph (no broken Unicode combining marks)
+    function renderSwaraHtml(swaraIdx, saptakOffset = 0, compact = false) {
+      const sw = INDIAN_SWARAS[((swaraIdx % 12) + 12) % 12];
+      const sap = Math.max(-2, Math.min(2, saptakOffset));
+      const topParts = [];
+      if (sw.kind === 'teevra') {
+        topParts.push('<span class="swara-teevra-bar" aria-hidden="true"></span>');
+      }
+      if (sap > 0) {
+        for (let i = 0; i < sap; i++) {
+          topParts.push('<span class="swara-dot" aria-hidden="true"></span>');
+        }
+      }
+      const bottomParts = [];
+      if (sw.kind === 'komal') {
+        bottomParts.push('<span class="swara-komal-bar" aria-hidden="true"></span>');
+      }
+      if (sap < 0) {
+        const dots = Array.from({ length: Math.abs(sap) }, () => '<span class="swara-dot" aria-hidden="true"></span>').join('');
+        bottomParts.push(`<span class="swara-dots-row" aria-hidden="true">${dots}</span>`);
+      }
+      return `
+        <span class="swara-glyph font-deva ${compact ? 'swara-compact' : ''}">
+          <span class="swara-marks-top">${topParts.join('')}</span>
+          <span>${sw.deva}</span>
+          <span class="swara-marks-bottom">${bottomParts.join('')}</span>
+        </span>
+      `;
+    }
+
+    function formatShortNoteText(midi) {
+      const saMidi = getSaMidi();
+      const semiFromSa = midi - saMidi;
+      const swIdx = ((semiFromSa % 12) + 12) % 12;
+      const sap = Math.floor(semiFromSa / 12);
+      const wPc = ((midi % 12) + 12) % 12;
+      const wOct = Math.floor(midi / 12) - 1;
+      const wStr = `${WESTERN_NOTES[wPc].name}${wOct}`;
+      const sw = INDIAN_SWARAS[swIdx];
+      const sapMark = sap > 0 ? "'".repeat(Math.min(2, sap)) : (sap < 0 ? '.'.repeat(Math.min(2, -sap)) : '');
+
+      if (state.notationMode === 'western') return wStr;
+      if (state.notationMode === 'sargam_en') return `${sw.roman}${sapMark}`;
+      const devaKind = sw.kind === 'komal' ? ' (k)' : (sw.kind === 'teevra' ? ' (T)' : '');
+      const devaSap = sap > 0 ? '↑' : (sap < 0 ? '↓' : '');
+      if (state.notationMode === 'both') return `${sw.deva}${devaKind}${devaSap} ${wStr}`;
+      return `${sw.deva}${devaKind}${devaSap} (${wStr})`;
+    }
+
+    // =========================================================================
+    // 4. YIN PITCH DETECTION ENGINE (SUB-CENT PRECISION, OCTAVE-SAFE)
+    // =========================================================================
+    let audioCtx = null;
+    let micStream = null;
+    let micSource = null;
+    let analyser = null;
+    let timeBuffer = null;
+    let rafId = null;
+
+    // Pre-allocated YIN scratch buffer for zero GC pressure at 60fps
+    let yinBuffer = null;
+
+    function detectPitchYIN(buf, sampleRate) {
+      const len = buf.length;
+      // 1. Compute RMS energy for noise gate
+      let rmsSum = 0;
+      for (let i = 0; i < len; i++) {
+        const v = buf[i];
+        rmsSum += v * v;
+      }
+      const rms = Math.sqrt(rmsSum / len);
+      // Map noiseGateLevel 1..15 to RMS threshold 0.003..0.045
+      const rmsThreshold = 0.002 + (state.noiseGateLevel - 1) * 0.003;
+      if (rms < rmsThreshold) {
+        return { hz: -1, rms, clarity: 0 };
+      }
+
+      const halfLen = len >> 1;
+      if (!yinBuffer || yinBuffer.length !== halfLen) {
+        yinBuffer = new Float32Array(halfLen);
+      }
+
+      // Limit tau search to musical pitch range: 55 Hz (A1) to 1600 Hz (G6)
+      const minTau = Math.max(2, Math.floor(sampleRate / 1600));
+      const maxTau = Math.min(halfLen - 1, Math.ceil(sampleRate / 55));
+
+      // Step 2: Squared difference function d(tau)
+      yinBuffer[0] = 1;
+      let runningSum = 0;
+      for (let tau = 1; tau <= maxTau; tau++) {
+        let sum = 0;
+        for (let i = 0; i < halfLen; i++) {
+          const delta = buf[i] - buf[i + tau];
+          sum += delta * delta;
+        }
+        yinBuffer[tau] = sum;
+        runningSum += sum;
+        // Step 3: Cumulative Mean Normalized Difference Function (CMNDF)
+        yinBuffer[tau] = runningSum > 0 ? (yinBuffer[tau] * tau) / runningSum : 1;
+      }
+
+      // Step 4: Absolute threshold search (prevents sub-harmonic octave errors)
+      const threshold = 0.14;
+      let tauEstimate = -1;
+      for (let tau = minTau; tau < maxTau; tau++) {
+        if (yinBuffer[tau] < threshold) {
+          while (tau + 1 < maxTau && yinBuffer[tau + 1] < yinBuffer[tau]) {
+            tau++;
+          }
+          tauEstimate = tau;
+          break;
+        }
+      }
+
+      // Fallback to global minimum if signal is clean enough (< 0.22)
+      if (tauEstimate === -1) {
+        let minVal = 1;
+        let minIdx = -1;
+        for (let tau = minTau; tau < maxTau; tau++) {
+          if (yinBuffer[tau] < minVal) {
+            minVal = yinBuffer[tau];
+            minIdx = tau;
+          }
+        }
+        if (minIdx !== -1 && minVal < 0.22) {
+          tauEstimate = minIdx;
+        } else {
+          return { hz: -1, rms, clarity: 0 };
+        }
+      }
+
+      // Step 5: Parabolic interpolation for sub-sample / sub-cent precision
+      let betterTau = tauEstimate;
+      if (tauEstimate > 1 && tauEstimate < maxTau - 1) {
+        const s0 = yinBuffer[tauEstimate - 1];
+        const s1 = yinBuffer[tauEstimate];
+        const s2 = yinBuffer[tauEstimate + 1];
+        const denom = 2 * s1 - s2 - s0;
+        if (Math.abs(denom) > 1e-9) {
+          const shift = (s2 - s0) / (2 * denom);
+          if (Math.abs(shift) < 1) {
+            betterTau = tauEstimate + shift;
+          }
+        }
+      }
+
+      const hz = sampleRate / betterTau;
+      const clarity = Math.max(0, Math.min(1, 1 - yinBuffer[tauEstimate]));
+      return { hz, rms, clarity };
+    }
+
+    function ensureAudioContext() {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return null;
+      if (!audioCtx) {
+        audioCtx = new AC();
+      }
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume().catch(() => {});
+      }
+      return audioCtx;
+    }
+
+    async function toggleMic() {
+      if (state.isListening) {
+        stopMic();
+      } else {
+        await startMic();
+      }
+    }
+
+    async function startMic() {
+      hideMicError();
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        showMicError('Microphone access is not supported in this browser. Please open in Chrome, Safari, or Edge over HTTPS.');
+        return;
+      }
+
+      try {
+        const ctx = ensureAudioContext();
+        if (!ctx) {
+          showMicError('Web Audio API is unavailable in this browser.');
+          return;
+        }
+
+        // Request raw musical audio (disable browser voice filters so guitar/vocal sustain is never gated)
+        micStream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false
+          }
+        });
+
+        micSource = ctx.createMediaStreamSource(micStream);
+        analyser = ctx.createAnalyser();
+        analyser.fftSize = 4096;
+        analyser.smoothingTimeConstant = 0;
+        micSource.connect(analyser);
+
+        timeBuffer = new Float32Array(analyser.fftSize);
+        state.isListening = true;
+        state.isFrozen = false;
+        state.medianBuf = [];
+        updateMicButtonUI();
+        document.getElementById('graphIdleOverlay').classList.add('hidden');
+        document.getElementById('detectorStateLabel').textContent = 'Listening · Raw Musical Input';
+        document.getElementById('detectorStateLabel').className = 'font-semibold text-emerald-400 whitespace-nowrap';
+
+        if (!rafId) {
+          rafId = requestAnimationFrame(audioLoop);
+        }
+      } catch (err) {
+        console.error('Pitch detector mic error:', err);
+        let msg = 'Could not access microphone. Please allow microphone permission and try again.';
+        if (err && (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError')) {
+          msg = 'Microphone permission was denied. Tap the lock/mic icon in your browser address bar, allow Microphone, and click Start again.';
+        } else if (err && err.name === 'NotFoundError') {
+          msg = 'No microphone was found on this device.';
+        }
+        showMicError(msg);
+      }
+    }
+
+    function stopMic() {
+      state.isListening = false;
+      if (micSource) {
+        try { micSource.disconnect(); } catch (_) {}
+        micSource = null;
+      }
+      if (micStream) {
+        micStream.getTracks().forEach(t => { try { t.stop(); } catch (_) {} });
+        micStream = null;
+      }
+      analyser = null;
+      state.medianBuf = [];
+      updateMicButtonUI();
+      document.getElementById('inputLevelBar').style.width = '0%';
+      document.getElementById('detectorStateLabel').textContent = 'Stopped — Tap Start';
+      document.getElementById('detectorStateLabel').className = 'font-semibold text-slate-400 whitespace-nowrap';
+      highlightActiveSwaraInStrip(-1);
+    }
+
+    function updateMicButtonUI() {
+      const btn = document.getElementById('btnToggleMic');
+      const label = document.getElementById('micBtnLabel');
+      const icon = document.getElementById('micBtnIcon');
+      const freezeBtn = document.getElementById('btnFreezeGraph');
+      if (state.isListening) {
+        btn.className = 'min-h-[40px] px-5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs sm:text-sm font-bold transition whitespace-nowrap inline-flex items-center gap-2 cursor-pointer';
+        label.textContent = 'Stop';
+        icon.innerHTML = '<rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor" stroke="none"/>';
+      } else {
+        btn.className = 'min-h-[40px] px-5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs sm:text-sm font-bold transition whitespace-nowrap inline-flex items-center gap-2 cursor-pointer';
+        label.textContent = 'Start Pitch Detector';
+        icon.innerHTML = '<path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/>';
+      }
+      freezeBtn.textContent = state.isFrozen ? 'Resume Graph' : 'Freeze';
+      freezeBtn.className = state.isFrozen
+        ? 'min-h-[40px] px-3.5 rounded-xl border border-amber-500/70 bg-amber-500/15 text-amber-300 text-xs font-bold transition whitespace-nowrap'
+        : 'min-h-[40px] px-3.5 rounded-xl border border-slate-700 bg-[#111827] hover:bg-slate-800 text-slate-200 text-xs font-semibold transition whitespace-nowrap';
+    }
+
+    // =========================================================================
+    // 5. MAIN 60FPS ANALYSIS & RENDERING LOOP
+    // =========================================================================
+    const HISTORY_WINDOW_MS = 8500;
+
+    function getSmoothingAlpha() {
+      if (state.responseMode === 'fast') return 0.55;
+      if (state.responseMode === 'smooth') return 0.16;
+      return 0.30; // balanced
+    }
+
+    function audioLoop(now) {
+      rafId = requestAnimationFrame(audioLoop);
+
+      if (state.isListening && analyser && timeBuffer && audioCtx) {
+        analyser.getFloatTimeDomainData(timeBuffer);
+        const { hz, rms, clarity } = detectPitchYIN(timeBuffer, audioCtx.sampleRate);
+
+        // Update input level bar
+        const lvlPct = Math.min(100, Math.round(Math.pow(Math.min(1, rms * 5.5), 0.65) * 100));
+        document.getElementById('inputLevelBar').style.width = `${lvlPct}%`;
+
+        if (hz > 0 && clarity > 0.72) {
+          // 3-sample median filter to block single-frame octave glitches
+          state.medianBuf.push(hz);
+          if (state.medianBuf.length > 3) state.medianBuf.shift();
+          const sorted = [...state.medianBuf].sort((a, b) => a - b);
+          const cleanHz = sorted[Math.floor(sorted.length / 2)];
+
+          const alpha = getSmoothingAlpha();
+          // If jump is large (> 1.2 semitones), snap immediately instead of sluggish gliding
+          if (!state.smoothedHz || Math.abs(12 * Math.log2(cleanHz / state.smoothedHz)) > 1.2) {
+            state.smoothedHz = cleanHz;
+          } else {
+            state.smoothedHz = state.smoothedHz + alpha * (cleanHz - state.smoothedHz);
+          }
+
+          const info = freqToNoteInfo(state.smoothedHz);
+          if (info) {
+            state.activeNote = info;
+            state.lastVoiceTime = now;
+            state.smoothedCents = info.cents;
+
+            // Update session range
+            if (state.sessionMinMidi === null || info.nearestMidi < state.sessionMinMidi) {
+              state.sessionMinMidi = info.nearestMidi;
+              updateSessionRangeText();
+            }
+            if (state.sessionMaxMidi === null || info.nearestMidi > state.sessionMaxMidi) {
+              state.sessionMaxMidi = info.nearestMidi;
+              updateSessionRangeText();
+            }
+
+            // Smoothly auto-center graph vertically around voice/instrument
+            if (state.autoFollowGraph) {
+              const diff = info.exactMidi - state.graphCenterMidi;
+              if (Math.abs(diff) > state.graphSpanSemis * 0.34) {
+                state.graphCenterMidi += diff * 0.14;
+              } else {
+                state.graphCenterMidi += diff * 0.025;
+              }
+            }
+
+            if (!state.isFrozen) {
+              state.history.push({
+                t: now,
+                midi: info.exactMidi,
+                cents: info.cents,
+                hz: info.hz
+              });
+            }
+
+            renderLiveReadout(info, true);
+            highlightActiveSwaraInStrip(info.swaraIdx);
+          }
+        } else {
+          // Record gap marker on silence
+          if (!state.isFrozen && state.history.length > 0 && state.history[state.history.length - 1].midi !== null) {
+            state.history.push({ t: now, midi: null, cents: 0, hz: 0 });
+          }
+          // After 450ms silence, dim readout gently while holding last note briefly
+          if (state.activeNote && (now - state.lastVoiceTime) > 450) {
+            renderLiveReadout(state.activeNote, false);
+            highlightActiveSwaraInStrip(-1);
+          }
+        }
+
+        // Prune old history when not frozen
+        if (!state.isFrozen && state.history.length > 0) {
+          const cutoff = now - HISTORY_WINDOW_MS - 500;
+          while (state.history.length > 0 && state.history[0].t < cutoff) {
+            state.history.shift();
+          }
+        }
+      }
+
+      drawPitchGraph(now);
+    }
+
+    // =========================================================================
+    // 6. READOUT & CENT METER RENDERING
+    // =========================================================================
+    function renderLiveReadout(info, isActiveVoice) {
+      const primaryEl = document.getElementById('primaryNoteDisplay');
+      const secondaryEl = document.getElementById('secondaryNoteDisplay');
+      const metaEl = document.getElementById('swaraMetaDisplay');
+      const freqEl = document.getElementById('freqValue');
+      const centsEl = document.getElementById('centsValue');
+      const targetEl = document.getElementById('targetFreqValue');
+      const verdictEl = document.getElementById('tuningVerdictText');
+      const needleEl = document.getElementById('centNeedle');
+      const fillEl = document.getElementById('centFillBar');
+
+      if (!info) {
+        primaryEl.innerHTML = '—';
+        primaryEl.className = 'text-6xl sm:text-7xl font-extrabold tracking-tight text-slate-500 leading-none select-none font-deva';
+        secondaryEl.textContent = 'Sing or play a note';
+        metaEl.textContent = `Sa = ${WESTERN_NOTES[state.saPitchClass].name}${state.saOctave} (${WESTERN_NOTES[state.saPitchClass].harmonium})`;
+        freqEl.textContent = '—';
+        centsEl.textContent = '—';
+        targetEl.textContent = '—';
+        verdictEl.textContent = 'Waiting for pitch';
+        verdictEl.className = 'font-sans font-bold text-slate-400';
+        needleEl.style.left = '50%';
+        needleEl.className = 'absolute top-0.5 bottom-0.5 w-1.5 -ml-[3px] rounded-full bg-slate-500 transition-all duration-75';
+        fillEl.style.opacity = '0';
+        return;
+      }
+
+      const absCents = Math.abs(info.cents);
+      const isInTune = absCents <= 8;
+      const isClose = absCents > 8 && absCents <= 22;
+
+      let colorClass = 'text-slate-400';
+      let needleColor = 'bg-slate-400';
+      let fillColor = 'bg-slate-400/30';
+      let verdictText = 'In Tune ✓';
+      let verdictClass = 'font-sans font-bold text-emerald-400';
+
+      if (isActiveVoice) {
+        if (isInTune) {
+          colorClass = 'text-emerald-400';
+          needleColor = 'bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.75)]';
+          fillColor = 'bg-emerald-500/35';
+          verdictText = 'IN TUNE ✓';
+          verdictClass = 'font-sans font-bold text-emerald-400';
+        } else if (isClose) {
+          colorClass = 'text-amber-300';
+          needleColor = 'bg-amber-400';
+          fillColor = 'bg-amber-500/35';
+          verdictText = info.cents < 0 ? 'SLIGHTLY FLAT ♭' : 'SLIGHTLY SHARP ♯';
+          verdictClass = 'font-sans font-bold text-amber-300';
+        } else {
+          colorClass = 'text-rose-400';
+          needleColor = 'bg-rose-400';
+          fillColor = 'bg-rose-500/35';
+          verdictText = info.cents < 0 ? 'TOO FLAT ♭' : 'TOO SHARP ♯';
+          verdictClass = 'font-sans font-bold text-rose-400';
+        }
+      } else {
+        colorClass = 'text-slate-400';
+        needleColor = 'bg-slate-500';
+        fillColor = 'bg-slate-500/20';
+        verdictText = 'Last detected note';
+        verdictClass = 'font-sans font-semibold text-slate-400';
+      }
+
+      // Render Primary + Secondary according to selected notationMode
+      const sapMarkRoman = info.saptakOffset > 0 ? "'".repeat(Math.min(2, info.saptakOffset)) : (info.saptakOffset < 0 ? '.'.repeat(Math.min(2, -info.saptakOffset)) : '');
+
+      if (state.notationMode === 'indian') {
+        primaryEl.innerHTML = renderSwaraHtml(info.swaraIdx, info.saptakOffset, false);
+        primaryEl.className = `text-6xl sm:text-7xl font-extrabold tracking-tight leading-none select-none font-deva ${colorClass}`;
+        secondaryEl.textContent = `${info.swara.full} · ${info.westernFull}`;
+        metaEl.textContent = `${info.saptakName} · ${info.harmoniumName}`;
+      } else if (state.notationMode === 'both') {
+        primaryEl.innerHTML = `<span class="inline-flex items-center gap-3">${renderSwaraHtml(info.swaraIdx, info.saptakOffset, false)}<span class="text-slate-600 text-4xl font-light">/</span><span class="font-mono-num text-5xl sm:text-6xl">${info.westernName}<sub class="text-2xl font-bold opacity-80">${info.westernOctave}</sub></span></span>`;
+        primaryEl.className = `text-6xl sm:text-7xl font-extrabold tracking-tight leading-none select-none ${colorClass}`;
+        secondaryEl.textContent = `${info.swara.full} · ${info.saptakName}`;
+        metaEl.textContent = `${info.harmoniumName} · Sa = ${WESTERN_NOTES[state.saPitchClass].name}${state.saOctave}`;
+      } else if (state.notationMode === 'sargam_en') {
+        primaryEl.innerHTML = `<span class="font-mono-num">${info.swara.roman}${sapMarkRoman}</span>`;
+        primaryEl.className = `text-6xl sm:text-7xl font-extrabold tracking-tight leading-none select-none ${colorClass}`;
+        secondaryEl.textContent = `${info.swara.full} · ${info.westernFull}`;
+        metaEl.textContent = `${info.saptakName} · ${info.harmoniumName}`;
+      } else {
+        // Western
+        primaryEl.innerHTML = `<span class="font-mono-num">${info.westernName}<span class="text-3xl sm:text-4xl font-bold opacity-75 ml-0.5">${info.westernOctave}</span></span>`;
+        primaryEl.className = `text-6xl sm:text-7xl font-extrabold tracking-tight leading-none select-none ${colorClass}`;
+        secondaryEl.textContent = `${info.swara.full} (${info.swara.deva}) · ${info.harmoniumName}`;
+        metaEl.textContent = `${info.saptakName} · Sa = ${WESTERN_NOTES[state.saPitchClass].name}${state.saOctave}`;
+      }
+
+      freqEl.textContent = info.hz.toFixed(1);
+      const sign = info.cents >= 0 ? '+' : '';
+      centsEl.textContent = `${sign}${info.cents.toFixed(1)}¢`;
+      centsEl.className = `mt-0.5 font-mono-num text-sm sm:text-base font-bold ${isActiveVoice ? colorClass : 'text-slate-400'}`;
+      targetEl.textContent = info.targetFreq.toFixed(1);
+      verdictEl.textContent = verdictText;
+      verdictEl.className = verdictClass;
+
+      // Update Cent Needle (-50..+50 -> 2%..98%)
+      const clamped = Math.max(-50, Math.min(50, info.cents));
+      const pct = 50 + (clamped / 50) * 48;
+      needleEl.style.left = `${pct}%`;
+      needleEl.className = `absolute top-0.5 bottom-0.5 w-1.5 -ml-[3px] rounded-full transition-all duration-75 ${needleColor}`;
+
+      // Deviation fill bar between 50% and needle
+      const widthPct = Math.abs(pct - 50);
+      fillEl.className = `absolute top-1.5 bottom-1.5 rounded-sm ${fillColor}`;
+      fillEl.style.opacity = isActiveVoice ? '1' : '0.35';
+      fillEl.style.left = `${Math.min(50, pct)}%`;
+      fillEl.style.width = `${widthPct}%`;
+    }
+
+    // =========================================================================
+    // 7. HIGH-DPI SCROLLING PITCH GRAPH (WITH BHATKHANDE VECTOR SWARA LABELS)
+    // =========================================================================
+    const canvas = document.getElementById('pitchGraphCanvas');
+    const ctx2d = canvas.getContext('2d');
+    let lastDrawTime = performance.now();
+
+    function resizeCanvasIfNeeded() {
+      const rect = canvas.getBoundingClientRect();
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const targetW = Math.max(100, Math.floor(rect.width * dpr));
+      const targetH = Math.max(100, Math.floor(rect.height * dpr));
+      if (canvas.width !== targetW || canvas.height !== targetH) {
+        canvas.width = targetW;
+        canvas.height = targetH;
+      }
+      return { w: rect.width, h: rect.height, dpr };
+    }
+
+    function isMidiInSelectedScale(midi) {
+      const preset = SCALE_PRESETS[state.scalePreset] || SCALE_PRESETS.chromatic;
+      if (preset.guitarMidi) {
+        return preset.guitarMidi.includes(midi);
+      }
+      const saMidi = getSaMidi();
+      const swIdx = (((midi - saMidi) % 12) + 12) % 12;
+      return preset.swaras.includes(swIdx);
+    }
+
+    function drawBhatkhandeCanvasLabel(c, x, y, swIdx, sap, color, fontSize) {
+      const sw = INDIAN_SWARAS[swIdx];
+      c.save();
+      c.fillStyle = color;
+      c.strokeStyle = color;
+      c.font = `700 ${fontSize}px 'Noto Sans Devanagari', sans-serif`;
+      c.textAlign = 'center';
+      c.textBaseline = 'middle';
+      c.fillText(sw.deva, x, y);
+
+      // Komal underline
+      if (sw.kind === 'komal') {
+        c.lineWidth = 1.6;
+        c.beginPath();
+        c.moveTo(x - 7, y + fontSize * 0.56);
+        c.lineTo(x + 7, y + fontSize * 0.56);
+        c.stroke();
+      }
+      // Teevra vertical bar above
+      if (sw.kind === 'teevra') {
+        c.lineWidth = 1.6;
+        c.beginPath();
+        c.moveTo(x, y - fontSize * 0.62);
+        c.lineTo(x, y - fontSize * 0.98);
+        c.stroke();
+      }
+      // Taar Saptak dots above
+      if (sap > 0) {
+        const count = Math.min(2, sap);
+        const dotY = sw.kind === 'teevra' ? (y - fontSize * 1.12) : (y - fontSize * 0.72);
+        for (let i = 0; i < count; i++) {
+          const dx = count === 1 ? 0 : (i === 0 ? -3 : 3);
+          c.beginPath();
+          c.arc(x + dx, dotY, 1.8, 0, Math.PI * 2);
+          c.fill();
+        }
+      }
+      // Mandra Saptak dots below
+      if (sap < 0) {
+        const count = Math.min(2, -sap);
+        const dotY = sw.kind === 'komal' ? (y + fontSize * 0.85) : (y + fontSize * 0.68);
+        for (let i = 0; i < count; i++) {
+          const dx = count === 1 ? 0 : (i === 0 ? -3 : 3);
+          c.beginPath();
+          c.arc(x + dx, dotY, 1.8, 0, Math.PI * 2);
+          c.fill();
+        }
+      }
+      c.restore();
+    }
+
+    function drawPitchGraph(now) {
+      const { w, h, dpr } = resizeCanvasIfNeeded();
+      if (!state.isFrozen) {
+        lastDrawTime = now;
+      }
+      const refNow = lastDrawTime;
+
+      ctx2d.save();
+      ctx2d.scale(dpr, dpr);
+
+      // Background
+      ctx2d.fillStyle = '#060A14';
+      ctx2d.fillRect(0, 0, w, h);
+
+      const leftAxisW = state.notationMode === 'both' ? 76 : 56;
+      const rightPad = 14;
+      const topPad = 14;
+      const bottomPad = 14;
+      const plotW = Math.max(40, w - leftAxisW - rightPad);
+      const plotH = Math.max(40, h - topPad - bottomPad);
+
+      const halfSpan = state.graphSpanSemis / 2;
+      const minMidi = state.graphCenterMidi - halfSpan;
+      const maxMidi = state.graphCenterMidi + halfSpan;
+      const midiToY = (m) => topPad + ((maxMidi - m) / (maxMidi - minMidi)) * plotH;
+
+      // Vertical time gridlines (every 2 seconds)
+      ctx2d.strokeStyle = 'rgba(148, 163, 184, 0.08)';
+      ctx2d.lineWidth = 1;
+      for (let sec = 2; sec <= 8; sec += 2) {
+        const x = leftAxisW + plotW * (1 - (sec * 1000) / HISTORY_WINDOW_MS);
+        ctx2d.beginPath();
+        ctx2d.moveTo(x, topPad);
+        ctx2d.lineTo(x, topPad + plotH);
+        ctx2d.stroke();
+      }
+
+      // Horizontal pitch guide lines & Y-axis labels
+      const saMidi = getSaMidi();
+      const firstIntMidi = Math.ceil(minMidi);
+      const lastIntMidi = Math.floor(maxMidi);
+      const rowPx = plotH / state.graphSpanSemis;
+
+      for (let m = firstIntMidi; m <= lastIntMidi; m++) {
+        const y = midiToY(m);
+        const semiFromSa = m - saMidi;
+        const swIdx = ((semiFromSa % 12) + 12) % 12;
+        const sap = Math.floor(semiFromSa / 12);
+        const isSa = swIdx === 0;
+        const isPa = swIdx === 7;
+        const inScale = isMidiInSelectedScale(m);
+
+        // Subtle green tolerance band on Sa and scale notes
+        if (isSa) {
+          ctx2d.fillStyle = 'rgba(16, 185, 129, 0.07)';
+          ctx2d.fillRect(leftAxisW, y - rowPx * 0.14, plotW, rowPx * 0.28);
+        }
+
+        // Guide line
+        ctx2d.beginPath();
+        if (isSa) {
+          ctx2d.strokeStyle = 'rgba(52, 211, 153, 0.45)';
+          ctx2d.lineWidth = 1.4;
+        } else if (isPa && inScale) {
+          ctx2d.strokeStyle = 'rgba(56, 189, 248, 0.28)';
+          ctx2d.lineWidth = 1.1;
+        } else if (inScale) {
+          ctx2d.strokeStyle = 'rgba(148, 163, 184, 0.17)';
+          ctx2d.lineWidth = 1;
+        } else {
+          ctx2d.strokeStyle = 'rgba(148, 163, 184, 0.06)';
+          ctx2d.lineWidth = 1;
+        }
+        ctx2d.moveTo(leftAxisW, y);
+        ctx2d.lineTo(leftAxisW + plotW, y);
+        ctx2d.stroke();
+
+        // Decide whether to label this line (avoid overlapping if zoomed far out)
+        const showLabel = rowPx >= 15 || inScale || isSa || isPa;
+        if (!showLabel) continue;
+
+        const wPc = ((m % 12) + 12) % 12;
+        const wOct = Math.floor(m / 12) - 1;
+        const wLabel = `${WESTERN_NOTES[wPc].name}${wOct}`;
+        const labelColor = isSa
+          ? '#34D399'
+          : (isPa && inScale ? '#7DD3FC' : (inScale ? '#CBD5E1' : '#475569'));
+
+        if (state.notationMode === 'indian') {
+          drawBhatkhandeCanvasLabel(ctx2d, leftAxisW * 0.5, y, swIdx, sap, labelColor, Math.min(13, Math.max(10, rowPx * 0.65)));
+        } else if (state.notationMode === 'both') {
+          drawBhatkhandeCanvasLabel(ctx2d, 22, y, swIdx, sap, labelColor, Math.min(12, Math.max(10, rowPx * 0.6)));
+          ctx2d.fillStyle = isSa ? '#34D399' : (inScale ? '#94A3B8' : '#475569');
+          ctx2d.font = `600 10px 'JetBrains Mono', monospace`;
+          ctx2d.textAlign = 'right';
+          ctx2d.textBaseline = 'middle';
+          ctx2d.fillText(wLabel, leftAxisW - 7, y);
+        } else if (state.notationMode === 'sargam_en') {
+          const sapMark = sap > 0 ? "'".repeat(Math.min(2, sap)) : (sap < 0 ? '.'.repeat(Math.min(2, -sap)) : '');
+          ctx2d.fillStyle = labelColor;
+          ctx2d.font = `700 11px 'JetBrains Mono', monospace`;
+          ctx2d.textAlign = 'right';
+          ctx2d.textBaseline = 'middle';
+          ctx2d.fillText(`${INDIAN_SWARAS[swIdx].roman}${sapMark}`, leftAxisW - 10, y);
+        } else {
+          ctx2d.fillStyle = labelColor;
+          ctx2d.font = `700 11px 'JetBrains Mono', monospace`;
+          ctx2d.textAlign = 'right';
+          ctx2d.textBaseline = 'middle';
+          ctx2d.fillText(wLabel, leftAxisW - 10, y);
+        }
+      }
+
+      // Axis separator line
+      ctx2d.strokeStyle = 'rgba(148, 163, 184, 0.22)';
+      ctx2d.lineWidth = 1;
+      ctx2d.beginPath();
+      ctx2d.moveTo(leftAxisW, topPad);
+      ctx2d.lineTo(leftAxisW, topPad + plotH);
+      ctx2d.stroke();
+
+      // Draw scrolling pitch history curve
+      ctx2d.save();
+      ctx2d.beginPath();
+      ctx2d.rect(leftAxisW, topPad, plotW, plotH);
+      ctx2d.clip();
+
+      const pts = state.history;
+      let prevPt = null;
+      for (let i = 0; i < pts.length; i++) {
+        const pt = pts[i];
+        if (pt.midi === null) {
+          prevPt = null;
+          continue;
+        }
+        const ageMs = refNow - pt.t;
+        if (ageMs < -100 || ageMs > HISTORY_WINDOW_MS) {
+          prevPt = null;
+          continue;
+        }
+        const x = leftAxisW + plotW * (1 - ageMs / HISTORY_WINDOW_MS);
+        const y = midiToY(pt.midi);
+
+        const absC = Math.abs(pt.cents);
+        const segColor = absC <= 8 ? '#10B981' : (absC <= 22 ? '#F59E0B' : '#F43F5E');
+
+        if (prevPt && (pt.t - prevPt.t) < 220 && Math.abs(pt.midi - prevPt.midi) < 4) {
+          ctx2d.strokeStyle = segColor;
+          ctx2d.lineWidth = 3;
+          ctx2d.lineCap = 'round';
+          ctx2d.beginPath();
+          ctx2d.moveTo(prevPt.x, prevPt.y);
+          ctx2d.lineTo(x, y);
+          ctx2d.stroke();
+        } else {
+          ctx2d.fillStyle = segColor;
+          ctx2d.beginPath();
+          ctx2d.arc(x, y, 2.2, 0, Math.PI * 2);
+          ctx2d.fill();
+        }
+        prevPt = { x, y, t: pt.t, midi: pt.midi, color: segColor };
+      }
+
+      // Live glowing cursor dot on the right edge if actively voicing
+      if (state.isListening && state.activeNote && (refNow - state.lastVoiceTime) < 250 && !state.isFrozen) {
+        const y = midiToY(state.activeNote.exactMidi);
+        const x = leftAxisW + plotW - 2;
+        const absC = Math.abs(state.activeNote.cents);
+        const dotColor = absC <= 8 ? '#34D399' : (absC <= 22 ? '#FBBF24' : '#FB7185');
+        ctx2d.fillStyle = dotColor;
+        ctx2d.beginPath();
+        ctx2d.arc(x, y, 5.5, 0, Math.PI * 2);
+        ctx2d.fill();
+        ctx2d.strokeStyle = '#FFFFFF';
+        ctx2d.lineWidth = 1.5;
+        ctx2d.stroke();
+      }
+
+      // Crosshair hover probe (precision inspection when hovering or touching frozen graph)
+      if (state.hoverPos && state.hoverPos.x >= leftAxisW && state.hoverPos.x <= leftAxisW + plotW) {
+        const hx = state.hoverPos.x;
+        const hy = state.hoverPos.y;
+        const hoverMidi = maxMidi - ((hy - topPad) / plotH) * (maxMidi - minMidi);
+        const hoverHz = midiToFreqEqual(hoverMidi);
+        const hoverInfo = freqToNoteInfo(hoverHz);
+
+        ctx2d.strokeStyle = 'rgba(226, 232, 240, 0.28)';
+        ctx2d.setLineDash([4, 4]);
+        ctx2d.lineWidth = 1;
+        ctx2d.beginPath();
+        ctx2d.moveTo(leftAxisW, hy);
+        ctx2d.lineTo(leftAxisW + plotW, hy);
+        ctx2d.stroke();
+        ctx2d.setLineDash([]);
+
+        if (hoverInfo) {
+          const label = `${formatShortNoteText(hoverInfo.nearestMidi)} · ${hoverHz.toFixed(1)} Hz`;
+          ctx2d.font = `600 11px 'JetBrains Mono', monospace`;
+          const tw = ctx2d.measureText(label).width + 14;
+          const bx = Math.min(leftAxisW + plotW - tw - 6, Math.max(leftAxisW + 6, hx + 10));
+          const by = Math.max(topPad + 4, hy - 26);
+          ctx2d.fillStyle = 'rgba(15, 23, 42, 0.92)';
+          ctx2d.strokeStyle = 'rgba(148, 163, 184, 0.35)';
+          ctx2d.lineWidth = 1;
+          ctx2d.beginPath();
+          ctx2d.roundRect(bx, by, tw, 22, 6);
+          ctx2d.fill();
+          ctx2d.stroke();
+          ctx2d.fillStyle = '#F8FAFC';
+          ctx2d.textAlign = 'left';
+          ctx2d.textBaseline = 'middle';
+          ctx2d.fillText(label, bx + 7, by + 11);
+        }
+      }
+
+      ctx2d.restore();
+      ctx2d.restore();
+    }
+
+    // Canvas hover / drag-to-scroll-vertically support
+    let isDraggingGraph = false;
+    let dragStartY = 0;
+    let dragStartCenterMidi = 64;
+
+    canvas.addEventListener('pointerdown', (e) => {
+      isDraggingGraph = true;
+      dragStartY = e.clientY;
+      dragStartCenterMidi = state.graphCenterMidi;
+      canvas.setPointerCapture(e.pointerId);
+    });
+    canvas.addEventListener('pointermove', (e) => {
+      const rect = canvas.getBoundingClientRect();
+      state.hoverPos = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+      if (isDraggingGraph) {
+        const dy = e.clientY - dragStartY;
+        if (Math.abs(dy) > 4) {
+          state.autoFollowGraph = false;
+          updateAutoFollowBtnUI();
+          const semisPerPx = state.graphSpanSemis / Math.max(100, rect.height - 28);
+          state.graphCenterMidi = Math.max(36, Math.min(92, dragStartCenterMidi + dy * semisPerPx));
+        }
+      }
+    });
+    canvas.addEventListener('pointerup', () => { isDraggingGraph = false; });
+    canvas.addEventListener('pointerleave', () => { isDraggingGraph = false; state.hoverPos = null; });
+
+    // =========================================================================
+    // 8. TANPURA REFERENCE DRONE & SWARA TONE GENERATOR
+    // =========================================================================
+    let droneNodes = null;
+
+    function startDrone() {
+      const ctx = ensureAudioContext();
+      if (!ctx) return;
+      stopDrone();
+
+      const masterGain = ctx.createGain();
+      masterGain.gain.setValueAtTime(0.0001, ctx.currentTime);
+      masterGain.gain.exponentialRampToValueAtTime(Math.max(0.01, state.droneVolume * 0.22), ctx.currentTime + 0.35);
+
+      // Gentle warm low-pass filter for mellow tanpura timbre
+      const filter = ctx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.value = 1150;
+      filter.Q.value = 1.4;
+
+      filter.connect(masterGain);
+      masterGain.connect(ctx.destination);
+
+      const saHz = getSaFreq();
+      const saLowHz = saHz / 2;
+      const paHz = getSwaraTargetFreq(7, 0); // Pa
+      const maHz = getSwaraTargetFreq(5, 0); // Ma
+
+      const voices = [
+        { freq: saLowHz, type: 'sawtooth', gain: 0.22, detune: 0 },
+        { freq: saHz,    type: 'triangle', gain: 0.42, detune: -2 },
+        { freq: saHz,    type: 'sawtooth', gain: 0.16, detune: 2.5 }
+      ];
+
+      if (state.droneMode === 'sa_pa') {
+        voices.push({ freq: paHz / 2, type: 'triangle', gain: 0.28, detune: 0 });
+        voices.push({ freq: paHz,     type: 'sine',     gain: 0.16, detune: 1.5 });
+      } else if (state.droneMode === 'sa_ma') {
+        voices.push({ freq: maHz / 2, type: 'triangle', gain: 0.28, detune: 0 });
+        voices.push({ freq: maHz,     type: 'sine',     gain: 0.16, detune: 1.5 });
+      }
+
+      const oscs = [];
+      voices.forEach(v => {
+        const osc = ctx.createOscillator();
+        const g = ctx.createGain();
+        osc.type = v.type;
+        osc.frequency.value = v.freq;
+        osc.detune.value = v.detune;
+        g.gain.value = v.gain;
+        osc.connect(g);
+        g.connect(filter);
+        osc.start();
+        oscs.push(osc);
+      });
+
+      // Subtle organic tanpura shimmer LFO on filter cutoff
+      const lfo = ctx.createOscillator();
+      const lfoGain = ctx.createGain();
+      lfo.frequency.value = 0.28;
+      lfoGain.gain.value = 180;
+      lfo.connect(lfoGain);
+      lfoGain.connect(filter.frequency);
+      lfo.start();
+      oscs.push(lfo);
+
+      droneNodes = { oscs, masterGain, filter };
+      state.isDronePlaying = true;
+      updateDroneUI();
+    }
+
+    function stopDrone() {
+      if (droneNodes && audioCtx) {
+        const { oscs, masterGain } = droneNodes;
+        try {
+          masterGain.gain.cancelScheduledValues(audioCtx.currentTime);
+          masterGain.gain.setTargetAtTime(0.0001, audioCtx.currentTime, 0.06);
+          setTimeout(() => {
+            oscs.forEach(o => { try { o.stop(); o.disconnect(); } catch (_) {} });
+            try { masterGain.disconnect(); } catch (_) {}
+          }, 220);
+        } catch (_) {}
+      }
+      droneNodes = null;
+      state.isDronePlaying = false;
+      updateDroneUI();
+    }
+
+    function toggleDrone() {
+      if (state.isDronePlaying) stopDrone();
+      else startDrone();
+    }
+
+    function setDroneMode(mode) {
+      state.droneMode = mode;
+      savePrefs();
+      updateDroneUI();
+      if (state.isDronePlaying) startDrone();
+    }
+
+    function setDroneVolume(val) {
+      const pct = Math.max(5, Math.min(100, Number(val) || 35));
+      state.droneVolume = pct / 100;
+      document.getElementById('droneVolumeValue').textContent = `${pct}%`;
+      if (droneNodes && audioCtx) {
+        droneNodes.masterGain.gain.setTargetAtTime(Math.max(0.01, state.droneVolume * 0.22), audioCtx.currentTime, 0.05);
+      }
+      savePrefs();
+    }
+
+    function playReferenceSwaraTone(swaraIdx) {
+      const ctx = ensureAudioContext();
+      if (!ctx) return;
+      const freq = getSwaraTargetFreq(swaraIdx, 0);
+      const now = ctx.currentTime;
+
+      const osc1 = ctx.createOscillator();
+      const osc2 = ctx.createOscillator();
+      const filter = ctx.createBiquadFilter();
+      const env = ctx.createGain();
+
+      osc1.type = 'triangle';
+      osc1.frequency.value = freq;
+      osc2.type = 'sine';
+      osc2.frequency.value = freq * 2; // subtle harmonic warmth
+
+      const g2 = ctx.createGain();
+      g2.gain.value = 0.18;
+
+      filter.type = 'lowpass';
+      filter.frequency.value = 2400;
+
+      env.gain.setValueAtTime(0.0001, now);
+      env.gain.linearRampToValueAtTime(0.24, now + 0.03);
+      env.gain.exponentialRampToValueAtTime(0.0001, now + 1.15);
+
+      osc1.connect(filter);
+      osc2.connect(g2);
+      g2.connect(filter);
+      filter.connect(env);
+      env.connect(ctx.destination);
+
+      osc1.start(now);
+      osc2.start(now);
+      osc1.stop(now + 1.2);
+      osc2.stop(now + 1.2);
+
+      // Flash card visual feedback
+      const btn = document.querySelector(`[data-swara-card="${swaraIdx}"]`);
+      if (btn) {
+        btn.classList.add('ring-2', 'ring-emerald-500');
+        setTimeout(() => btn.classList.remove('ring-2', 'ring-emerald-500'), 450);
+      }
+    }
+
+    // =========================================================================
+    // 9. UI CONTROLS & DYNAMIC RENDERERS
+    // =========================================================================
+    function renderSaSelectorGrid() {
+      const grid = document.getElementById('saSelectorGrid');
+      grid.innerHTML = WESTERN_NOTES.map(n => {
+        const isActive = n.idx === state.saPitchClass;
+        const baseCls = isActive
+          ? 'bg-[#0F172A] text-white border-[#0F172A]'
+          : (n.isBlack
+              ? 'bg-slate-100 hover:bg-slate-200/80 text-slate-900 border-slate-300'
+              : 'bg-white hover:bg-slate-50 text-[#0F172A] border-slate-200');
+        return `
+          <button type="button" onclick="setSaPitchClass(${n.idx})"
+            class="min-h-[50px] px-1.5 py-1.5 rounded-xl border transition flex flex-col items-center justify-center cursor-pointer ${baseCls}">
+            <span class="font-mono-num text-sm font-extrabold leading-tight">${n.name}</span>
+            <span class="text-[10px] leading-tight mt-0.5 ${isActive ? 'text-emerald-300 font-semibold' : 'text-slate-500'}">${n.harmonium}</span>
+          </button>
+        `;
+      }).join('');
+    }
+
+    function renderSwaraStrip() {
+      const grid = document.getElementById('swaraStripGrid');
+      const preset = SCALE_PRESETS[state.scalePreset] || SCALE_PRESETS.chromatic;
+      const saMidi = getSaMidi();
+
+      grid.innerHTML = INDIAN_SWARAS.map(sw => {
+        const wPc = (state.saPitchClass + sw.idx) % 12;
+        const wNote = WESTERN_NOTES[wPc];
+        const midi = saMidi + sw.idx;
+        const inScale = preset.guitarMidi
+          ? preset.guitarMidi.some(gm => (gm % 12) === wPc)
+          : preset.swaras.includes(sw.idx);
+        const hz = getSwaraTargetFreq(sw.idx, 0);
+
+        const opacityCls = inScale ? 'opacity-100' : 'opacity-40';
+        const borderCls = sw.idx === 0
+          ? 'border-emerald-300 bg-emerald-50/70'
+          : (sw.idx === 7 ? 'border-sky-200 bg-sky-50/50' : 'border-slate-200 bg-slate-50/60');
+
+        const mainGlyph = state.notationMode === 'western'
+          ? `<span class="font-mono-num text-sm font-extrabold text-[#0F172A]">${wNote.name}</span>`
+          : (state.notationMode === 'sargam_en'
+              ? `<span class="font-mono-num text-sm font-extrabold text-[#0F172A]">${sw.roman}</span>`
+              : `<span class="text-base font-extrabold text-[#0F172A]">${renderSwaraHtml(sw.idx, 0, true)}</span>`);
+
+        const subText = state.notationMode === 'western'
+          ? `${sw.deva}`
+          : `${wNote.name}`;
+
+        return `
+          <button type="button" data-swara-card="${sw.idx}" onclick="playReferenceSwaraTone(${sw.idx})"
+            title="Play ${sw.full} (${wNote.name} · ${hz.toFixed(1)} Hz)"
+            class="min-h-[58px] px-1 py-1.5 rounded-xl border ${borderCls} ${opacityCls} hover:border-[#0F172A] hover:bg-white transition flex flex-col items-center justify-center cursor-pointer">
+            ${mainGlyph}
+            <span class="font-mono-num text-[10px] font-bold text-slate-600 mt-0.5">${subText}</span>
+          </button>
+        `;
+      }).join('');
+    }
+
+    let lastHighlightedSwara = -1;
+    function highlightActiveSwaraInStrip(swaraIdx) {
+      if (lastHighlightedSwara === swaraIdx) return;
+      if (lastHighlightedSwara >= 0) {
+        const prev = document.querySelector(`[data-swara-card="${lastHighlightedSwara}"]`);
+        if (prev) prev.classList.remove('!bg-[#0F172A]', '!border-[#0F172A]', '!text-white', '[&_span]:!text-white');
+      }
+      lastHighlightedSwara = swaraIdx;
+      if (swaraIdx >= 0) {
+        const curr = document.querySelector(`[data-swara-card="${swaraIdx}"]`);
+        if (curr) curr.classList.add('!bg-[#0F172A]', '!border-[#0F172A]', '!text-white', '[&_span]:!text-white');
+      }
+    }
+
+    function updateNotationButtonsUI() {
+      document.querySelectorAll('.notation-mode-btn').forEach(btn => {
+        const active = btn.dataset.mode === state.notationMode;
+        btn.className = active
+          ? 'notation-mode-btn min-h-[36px] px-3 rounded-lg text-xs font-bold whitespace-nowrap transition bg-white text-[#0F172A] shadow-sm font-deva'
+          : 'notation-mode-btn min-h-[36px] px-3 rounded-lg text-xs font-semibold whitespace-nowrap transition text-slate-400 hover:text-white font-deva';
+      });
+    }
+
+    function updateSaOctaveButtonsUI() {
+      document.querySelectorAll('.sa-oct-btn').forEach(btn => {
+        const active = Number(btn.dataset.oct) === state.saOctave;
+        btn.className = active
+          ? 'sa-oct-btn min-w-[36px] h-8 px-2 rounded-md text-xs font-extrabold transition bg-[#0F172A] text-white'
+          : 'sa-oct-btn min-w-[36px] h-8 px-2 rounded-md text-xs font-semibold transition text-slate-600 hover:text-[#0F172A]';
+      });
+    }
+
+    function updateDroneUI() {
+      const btn = document.getElementById('btnToggleDrone');
+      if (state.isDronePlaying) {
+        btn.textContent = 'Stop Drone';
+        btn.className = 'min-h-[40px] px-4 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition whitespace-nowrap';
+      } else {
+        btn.textContent = 'Play Drone';
+        btn.className = 'min-h-[40px] px-4 rounded-xl bg-[#0F172A] hover:bg-slate-800 text-white text-xs font-bold transition whitespace-nowrap';
+      }
+      document.querySelectorAll('.drone-mode-btn').forEach(b => {
+        const active = b.dataset.drone === state.droneMode;
+        b.className = active
+          ? 'drone-mode-btn min-h-[38px] px-2 rounded-lg border border-[#0F172A] bg-[#0F172A] text-white text-xs font-bold transition font-deva'
+          : 'drone-mode-btn min-h-[38px] px-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-semibold transition font-deva';
+      });
+    }
+
+    function updateAutoFollowBtnUI() {
+      const btn = document.getElementById('btnLockRange');
+      btn.textContent = state.autoFollowGraph ? 'Auto-Track: ON' : 'Auto-Track: OFF';
+      btn.className = state.autoFollowGraph
+        ? 'h-7 px-2.5 rounded-md border border-emerald-500/50 bg-emerald-500/10 text-[11px] font-semibold text-emerald-300 whitespace-nowrap'
+        : 'h-7 px-2.5 rounded-md border border-slate-700 bg-[#111827] hover:bg-slate-800 text-[11px] font-semibold text-slate-300 whitespace-nowrap';
+    }
+
+    function updateHeaderAndMeta() {
+      const w = WESTERN_NOTES[state.saPitchClass];
+      const saHz = getSaFreq();
+      document.getElementById('headerSummaryMeta').textContent = `Sa = ${w.name}${state.saOctave} · A4 = ${state.a4Hz} Hz`;
+      document.getElementById('activeSaInfo').textContent = `Madhya Sa = ${w.name}${state.saOctave} (${saHz.toFixed(2)} Hz · ${w.harmonium})`;
+      document.getElementById('graphScaleBadge').textContent = (SCALE_PRESETS[state.scalePreset] || SCALE_PRESETS.chromatic).label;
+      updateSessionRangeText();
+    }
+
+    function updateSessionRangeText() {
+      const el = document.getElementById('sessionRangeText');
+      if (state.sessionMinMidi === null || state.sessionMaxMidi === null) {
+        el.textContent = '—';
+        return;
+      }
+      el.textContent = `${formatShortNoteText(state.sessionMinMidi)}  →  ${formatShortNoteText(state.sessionMaxMidi)}`;
+    }
+
+    function setNotationMode(mode) {
+      state.notationMode = mode;
+      savePrefs();
+      updateNotationButtonsUI();
+      renderSwaraStrip();
+      updateSessionRangeText();
+      if (state.activeNote) {
+        renderLiveReadout(freqToNoteInfo(state.activeNote.hz), state.isListening && (performance.now() - state.lastVoiceTime) < 450);
+      } else {
+        renderLiveReadout(null, false);
+      }
+    }
+
+    function setSaPitchClass(pc) {
+      state.saPitchClass = pc;
+      // Smoothly center graph around new Madhya Sa if idle
+      if (!state.isListening) {
+        state.graphCenterMidi = getSaMidi() + 4;
+      }
+      savePrefs();
+      renderSaSelectorGrid();
+      renderSwaraStrip();
+      updateHeaderAndMeta();
+      if (state.activeNote) {
+        state.activeNote = freqToNoteInfo(state.activeNote.hz);
+        renderLiveReadout(state.activeNote, state.isListening && (performance.now() - state.lastVoiceTime) < 450);
+      } else {
+        renderLiveReadout(null, false);
+      }
+      if (state.isDronePlaying) startDrone();
+    }
+
+    function setSaOctave(oct) {
+      state.saOctave = Math.max(2, Math.min(5, Number(oct) || 4));
+      if (!state.isListening) {
+        state.graphCenterMidi = getSaMidi() + 4;
+      }
+      savePrefs();
+      updateSaOctaveButtonsUI();
+      renderSwaraStrip();
+      updateHeaderAndMeta();
+      if (state.activeNote) {
+        state.activeNote = freqToNoteInfo(state.activeNote.hz);
+        renderLiveReadout(state.activeNote, state.isListening && (performance.now() - state.lastVoiceTime) < 450);
+      } else {
+        renderLiveReadout(null, false);
+      }
+      if (state.isDronePlaying) startDrone();
+    }
+
+    function setScalePreset(val) {
+      if (!SCALE_PRESETS[val]) return;
+      state.scalePreset = val;
+      if (val === 'guitar_std' && !state.isListening) {
+        state.graphCenterMidi = 52; // Center around guitar range E2-E4
+        state.graphSpanSemis = 26;
+      }
+      savePrefs();
+      renderSwaraStrip();
+      updateHeaderAndMeta();
+    }
+
+    function setTemperament(val) {
+      state.temperament = val === 'just' ? 'just' : 'equal';
+      savePrefs();
+      renderSwaraStrip();
+      if (state.isDronePlaying) startDrone();
+      if (state.activeNote) {
+        state.activeNote = freqToNoteInfo(state.activeNote.hz);
+        renderLiveReadout(state.activeNote, state.isListening && (performance.now() - state.lastVoiceTime) < 450);
+      }
+    }
+
+    function setA4Hz(val) {
+      const num = Math.max(415, Math.min(465, Number(val) || 440));
+      state.a4Hz = Math.round(num * 10) / 10;
+      document.getElementById('a4Input').value = state.a4Hz;
+      savePrefs();
+      renderSwaraStrip();
+      updateHeaderAndMeta();
+      if (state.isDronePlaying) startDrone();
+    }
+
+    function stepA4Hz(delta) {
+      setA4Hz(state.a4Hz + delta);
+    }
+
+    function setResponseMode(val) {
+      if (['fast', 'balanced', 'smooth'].includes(val)) {
+        state.responseMode = val;
+        savePrefs();
+      }
+    }
+
+    function setNoiseGate(val) {
+      const n = Math.max(1, Math.min(15, Number(val) || 3));
+      state.noiseGateLevel = n;
+      const lbl = n <= 3 ? 'Low (Sensitive)' : (n <= 7 ? 'Medium (Room)' : 'High (Noisy Room)');
+      document.getElementById('noiseGateLabel').textContent = lbl;
+      savePrefs();
+    }
+
+    function toggleFreezeGraph() {
+      state.isFrozen = !state.isFrozen;
+      updateMicButtonUI();
+    }
+
+    function toggleGraphAutoFollow() {
+      state.autoFollowGraph = !state.autoFollowGraph;
+      updateAutoFollowBtnUI();
+    }
+
+    function adjustGraphZoom(delta) {
+      state.graphSpanSemis = Math.max(10, Math.min(32, state.graphSpanSemis + delta));
+    }
+
+    function clearPitchHistory() {
+      state.history = [];
+    }
+
+    function resetSessionRange() {
+      state.sessionMinMidi = null;
+      state.sessionMaxMidi = null;
+      updateSessionRangeText();
+    }
+
+    function resetSettings() {
+      state.a4Hz = 440;
+      state.temperament = 'equal';
+      state.responseMode = 'balanced';
+      state.noiseGateLevel = 3;
+      state.scalePreset = 'chromatic';
+      state.graphSpanSemis = 18;
+      state.autoFollowGraph = true;
+      document.getElementById('a4Input').value = 440;
+      document.getElementById('temperamentSelect').value = 'equal';
+      document.getElementById('responseSelect').value = 'balanced';
+      document.getElementById('noiseGateSlider').value = 3;
+      document.getElementById('scaleFilterSelect').value = 'chromatic';
+      setNoiseGate(3);
+      updateAutoFollowBtnUI();
+      renderSwaraStrip();
+      updateHeaderAndMeta();
+      savePrefs();
+      if (state.isDronePlaying) startDrone();
+    }
+
+    function showMicError(msg) {
+      document.getElementById('micErrorText').textContent = msg;
+      document.getElementById('micErrorBanner').classList.remove('hidden');
+    }
+
+    function hideMicError() {
+      document.getElementById('micErrorBanner').classList.add('hidden');
+    }
+
+    // Spacebar toggles Start/Stop when not typing in an input
+    window.addEventListener('keydown', (e) => {
+      if (e.code === 'Space' && !['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement?.tagName)) {
+        e.preventDefault();
+        toggleMic();
+      }
+    });
+
+    window.addEventListener('beforeunload', () => {
+      stopMic();
+      stopDrone();
+    });
+
+    // =========================================================================
+    // 10. INITIALIZE
+    // =========================================================================
+    function init() {
+      loadPrefs();
+      state.graphCenterMidi = getSaMidi() + 4;
+
+      document.getElementById('a4Input').value = state.a4Hz;
+      document.getElementById('temperamentSelect').value = state.temperament;
+      document.getElementById('responseSelect').value = state.responseMode;
+      document.getElementById('scaleFilterSelect').value = state.scalePreset;
+      document.getElementById('noiseGateSlider').value = state.noiseGateLevel;
+      document.getElementById('droneVolumeSlider').value = Math.round(state.droneVolume * 100);
+      document.getElementById('droneVolumeValue').textContent = `${Math.round(state.droneVolume * 100)}%`;
+      setNoiseGate(state.noiseGateLevel);
+
+      updateNotationButtonsUI();
+      updateSaOctaveButtonsUI();
+      updateDroneUI();
+      updateAutoFollowBtnUI();
+      updateMicButtonUI();
+      renderSaSelectorGrid();
+      renderSwaraStrip();
+      updateHeaderAndMeta();
+      renderLiveReadout(null, false);
+
+      rafId = requestAnimationFrame(audioLoop);
+    }
+
+    init();
+  </script>
+</body>
+</html>

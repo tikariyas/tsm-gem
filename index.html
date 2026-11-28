@@ -2617,6 +2617,7 @@ function renderNavTabs() {
     { id: 'courses', label: 'Courses' },
     { id: 'fees', label: 'Fees' },
     { id: 'audio', label: 'Audio' },
+    { id: 'pitch_detector', label: 'Pitch Detector' },
     { id: 'video_class', label: 'Video Class' },
     { id: 'vault', label: 'Studio' },
     { id: 'messages', label: 'Messages' },
@@ -2627,6 +2628,7 @@ function renderNavTabs() {
     { id: 'student_home', label: 'Profile & ID' },
     { id: 'student_attendance', label: 'Attendance' },
     { id: 'student_audio', label: 'Audio' },
+    { id: 'student_pitch_detector', label: 'Pitch Detector' },
     { id: 'student_video_class', label: 'Video Class' },
     { id: 'student_fees', label: 'Fees' },
     { id: 'student_vault', label: 'Study Material' },
@@ -2651,6 +2653,10 @@ function switchTab(id) {
   stopAudioRecording(true);
   if (id !== 'audio' && id !== 'student_audio' && typeof stopMetronome === 'function') {
     stopMetronome();
+  }
+  if (id === 'pitch_detector' || id === 'student_pitch_detector') {
+    window.location.href = 'pitch-detector.html';
+    return;
   }
   if (id === 'vault' && currentUser && currentUser.role === 'admin') {
     window.location.href = 'studio.html';
