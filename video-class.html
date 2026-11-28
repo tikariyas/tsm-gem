@@ -63,6 +63,9 @@
           </span>
         </div>
 
+        <!-- INLINE ERROR ALERT (VISIBLE ON PERMISSION OR MEDIA ERRORS) -->
+        <div id="vcLobbyError" class="hidden p-3 rounded-xl bg-red-50 border border-red-200 text-red-800 text-xs font-medium space-y-1"></div>
+
         <!-- BATCH / ROOM SELECTION -->
         <div class="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
           <div class="md:col-span-5">
@@ -384,16 +387,38 @@
     const STORAGE_KEY = 'tsm_pwa_state_v8';
     const CONFIG_KEY = 'tsm_firebase_config_v1';
     const TURN_KEY = 'tsm_video_turn_v1';
-    // Reuse the academy's already-authorized flat Firestore collection (zero subcollections or new rules needed)
-    const SIGNAL_COLLECTION = 'tsm_blobs';
+    // Signal through an isolated videoClassRooms map inside the academy's proven tsm_system/master_state doc
+    // (strictly uses dotted update() paths so student/fee/attendance fields are NEVER overwritten)
+    const SIGNAL_COLLECTION = 'tsm_system';
+    const MASTER_DOC_ID = 'master_state';
     const MAX_BATCH_STUDENTS = 6;
 
-    function roomDocRef(slug) {
-      return db.collection(SIGNAL_COLLECTION).doc(`vc_room_${slug}`);
+    function masterDocRef() {
+      return db.collection(SIGNAL_COLLECTION).doc(MASTER_DOC_ID);
     }
 
-    function peerDocRef(slug, peerId) {
-      return db.collection(SIGNAL_COLLECTION).doc(`vc_peer_${slug}_${peerId}`);
+    async function updateMasterField(patchObj) {
+      try {
+        await masterDocRef().update(patchObj);
+      } catch (err) {
+        if (err && (err.code === 'not-found' || /No document to update/i.test(err.message || ''))) {
+          // Only if master_state does not exist yet
+          const nested = {};
+          for (const [dotPath, val] of Object.entries(patchObj)) {
+            if (val && typeof val === 'object' && val.constructor && val.constructor.name === 'DeleteFieldValueImpl') continue;
+            const parts = dotPath.split('.');
+            let cur = nested;
+            for (let i = 0; i < parts.length - 1; i++) {
+              if (!cur[parts[i]] || typeof cur[parts[i]] !== 'object') cur[parts[i]] = {};
+              cur = cur[parts[i]];
+            }
+            cur[parts[parts.length - 1]] = val;
+          }
+          await masterDocRef().set(nested, { merge: true });
+        } else {
+          throw err;
+        }
+      }
     }
 
     const DEFAULT_FIREBASE_CONFIG = {
@@ -478,6 +503,31 @@
       el.classList.remove('hidden');
       if (toastTimer) clearTimeout(toastTimer);
       toastTimer = setTimeout(() => el.classList.add('hidden'), 3600);
+    }
+
+    function showLobbyError(msg, isPermissionErr = false) {
+      const box = document.getElementById('vcLobbyError');
+      if (!box) return;
+      if (!msg) {
+        box.classList.add('hidden');
+        box.innerHTML = '';
+        return;
+      }
+      const permHelp = isPermissionErr ? `
+        <div class="mt-2 pt-2 border-t border-red-200 text-[11px] text-red-900 space-y-1.5">
+          <div><b>How to fix in Firebase Console (1 minute):</b> Open <b>Firebase Console &rarr; tikariya-music---foundation &rarr; Firestore Database &rarr; Rules</b>, paste the rules below, and click <b>Publish</b>:</div>
+          <pre class="p-2 rounded bg-white border border-red-200 text-[10px] font-mono text-slate-800 overflow-x-auto select-all">rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /tsm_system/{docId} { allow read, write: if true; }
+    match /tsm_blobs/{docId} { allow read, write: if true; }
+    match /tsm_vault_files/{docId} { allow read, write: if true; }
+  }
+}</pre>
+        </div>
+      ` : '';
+      box.innerHTML = `<div class="font-bold text-red-900">Video Class Error</div><div>${escapeHtml(msg)}</div>${permHelp}`;
+      box.classList.remove('hidden');
     }
 
     function slugifyRoom(name) {
@@ -846,6 +896,33 @@
       watchLobbyRoomStatus();
     }
 
+    function hydrateRosterFromMasterData(masterData) {
+      if (!masterData || typeof masterData !== 'object') return;
+      let changed = false;
+      if (Array.isArray(masterData.batches) && masterData.batches.length && !localAppState.batches.length) {
+        localAppState.batches = masterData.batches;
+        changed = true;
+      }
+      if (Array.isArray(masterData.students) && masterData.students.length && !localAppState.students.length) {
+        localAppState.students = masterData.students;
+        changed = true;
+      }
+      if (changed) {
+        const batchSel = document.getElementById('roomBatchSelect');
+        const prevVal = batchSel ? batchSel.value : '';
+        if (batchSel) {
+          const batchSet = new Set(['Guitar Trial Batch', ...(localAppState.batches || [])]);
+          batchSel.innerHTML = [...batchSet].map(b => `<option value="${escapeHtml(b)}">${escapeHtml(b)}</option>`).join('');
+          if (prevVal && [...batchSel.options].some(o => o.value === prevVal)) batchSel.value = prevVal;
+        }
+        const stuSel = document.getElementById('studentRosterSelect');
+        if (stuSel && localAppState.students.length) {
+          stuSel.innerHTML = `<option value="">-- Type name manually --</option>` +
+            localAppState.students.map(s => `<option value="${escapeHtml(s.id)}">${escapeHtml(s.name)} (${escapeHtml(s.rollNo || '')} &bull; ${escapeHtml(s.batch || '')})</option>`).join('');
+        }
+      }
+    }
+
     function watchLobbyRoomStatus() {
       if (unsubLobbyRoom) { unsubLobbyRoom(); unsubLobbyRoom = null; }
       const { slug, displayName } = getSelectedRoomInfo();
@@ -861,8 +938,12 @@
         statusText.className = 'font-bold text-slate-500';
       }
 
-      unsubLobbyRoom = roomDocRef(slug).onSnapshot((snap) => {
-        const d = snap.exists ? snap.data() : null;
+      unsubLobbyRoom = masterDocRef().onSnapshot((snap) => {
+        showLobbyError('');
+        const master = snap.exists ? (snap.data() || {}) : {};
+        hydrateRosterFromMasterData(master);
+        const rooms = (master.videoClassRooms && typeof master.videoClassRooms === 'object') ? master.videoClassRooms : {};
+        const d = rooms[slug] || null;
         const freshHeartbeat = d && d.teacherHeartbeat && (Date.now() - Number(d.teacherHeartbeat) < 120000);
         const isLive = Boolean(d && d.status === 'live' && freshHeartbeat);
         lobbyRoomLive = isLive;
@@ -891,6 +972,10 @@
         }
       }, (err) => {
         console.warn('Lobby room watch error:', err);
+        const isPerm = Boolean(err && (err.code === 'permission-denied' || /permission/i.test(err.message || '')));
+        if (isPerm) {
+          showLobbyError(`Firebase Firestore blocked read/write on ${SIGNAL_COLLECTION}/${MASTER_DOC_ID} (${err.message}).`, true);
+        }
       });
     }
 
@@ -898,7 +983,9 @@
     // 5. TEACHER CONSOLE (HUB FOR 4-6 STUDENTS)
     // =========================================================================
     async function startTeacherClass() {
+      showLobbyError('');
       if (!db) {
+        showLobbyError('Firebase cloud signaling is not connected.');
         showToast('Firebase cloud signaling is not connected.');
         return;
       }
@@ -928,26 +1015,26 @@
 
         if (unsubLobbyRoom) { unsubLobbyRoom(); unsubLobbyRoom = null; }
 
-        const roomRef = roomDocRef(slug);
-        await roomRef.set({
-          _vcType: 'room',
-          roomId: slug,
-          batchName: displayName,
-          status: 'live',
-          teacherSessionId,
-          teacherName,
-          defaultAudioMode,
-          maxStudents: MAX_BATCH_STUDENTS,
-          startedAt: Date.now(),
-          teacherHeartbeat: Date.now(),
-          slots: {}
+        await updateMasterField({
+          [`videoClassRooms.${slug}`]: {
+            roomId: slug,
+            batchName: displayName,
+            status: 'live',
+            teacherSessionId,
+            teacherName,
+            defaultAudioMode,
+            maxStudents: MAX_BATCH_STUDENTS,
+            startedAt: Date.now(),
+            teacherHeartbeat: Date.now(),
+            peers: {}
+          }
         });
 
         // Heartbeat every 15s so students always know room is genuinely alive
         teacherHeartbeatTimer = setInterval(() => {
           if (currentRole === 'teacher' && db && activeRoomSlug) {
-            roomDocRef(activeRoomSlug).update({
-              teacherHeartbeat: Date.now()
+            updateMasterField({
+              [`videoClassRooms.${activeRoomSlug}.teacherHeartbeat`]: Date.now()
             }).catch(() => {});
           }
         }, 15000);
@@ -965,30 +1052,41 @@
         startLiveClock();
         renderTeacherStudentsGrid();
 
-        // Watch flat room doc slots map for joining/leaving students (single-doc listener, no subcollections!)
-        unsubTeacherPeers = roomRef.onSnapshot((snap) => {
-          const rd = snap.exists ? (snap.data() || {}) : {};
-          if (rd.teacherSessionId !== teacherSessionId) return;
-          const slots = (rd.slots && typeof rd.slots === 'object') ? rd.slots : {};
+        // Single-doc listener on master_state.videoClassRooms.{slug} for all 4-6 student peers
+        unsubTeacherPeers = masterDocRef().onSnapshot((snap) => {
+          const master = snap.exists ? (snap.data() || {}) : {};
+          const rd = (master.videoClassRooms && master.videoClassRooms[activeRoomSlug]) || null;
+          if (!rd || rd.teacherSessionId !== teacherSessionId) return;
+          const peersMap = (rd.peers && typeof rd.peers === 'object') ? rd.peers : {};
 
-          // Accept any new student registered in slots
-          Object.entries(slots).forEach(([peerId, slotMeta]) => {
-            if (!slotMeta || slotMeta.teacherSessionId !== teacherSessionId) return;
+          Object.entries(peersMap).forEach(([peerId, peerData]) => {
+            if (!peerData || peerData.teacherSessionId !== teacherSessionId) return;
+            if (peerData.left === true) {
+              if (teacherPeers.has(peerId)) cleanupTeacherPeer(peerId);
+              updateMasterField({
+                [`videoClassRooms.${activeRoomSlug}.peers.${peerId}`]: firebase.firestore.FieldValue.delete()
+              }).catch(() => {});
+              return;
+            }
             if (!teacherPeers.has(peerId)) {
               if (teacherPeers.size >= MAX_BATCH_STUDENTS) {
-                peerDocRef(activeRoomSlug, peerId).set({
-                  remoteCmd: { kicked: true, reason: 'Batch room full (max 6 students)', cmdAt: Date.now() }
-                }, { merge: true }).catch(() => {});
-                roomRef.update({ [`slots.${peerId}`]: firebase.firestore.FieldValue.delete() }).catch(() => {});
+                updateMasterField({
+                  [`videoClassRooms.${activeRoomSlug}.peers.${peerId}.remoteCmd`]: {
+                    kicked: true,
+                    reason: 'Batch room full (max 6 students)',
+                    cmdAt: Date.now()
+                  }
+                }).catch(() => {});
                 return;
               }
-              watchAndAcceptStudentPeer(peerId, slotMeta);
+              createTeacherPeerEntry(peerId, peerData);
             }
+            syncTeacherPeerFromSnapshot(peerId, peerData);
           });
 
-          // Clean up any peer removed from slots
+          // Clean up any peer removed from peersMap
           [...teacherPeers.keys()].forEach((pid) => {
-            if (!slots[pid]) cleanupTeacherPeer(pid);
+            if (!peersMap[pid]) cleanupTeacherPeer(pid);
           });
         }, (err) => {
           console.warn('Teacher room watch error:', err);
@@ -997,47 +1095,46 @@
         showToast(`Video Class LIVE for ${displayName}! Share QR/Link to test on student phones.`);
       } catch (err) {
         console.error('Start teacher class error:', err);
-        showToast(err.message || 'Could not start Video Class');
+        const msg = err && err.message ? err.message : 'Could not start Video Class';
+        const isPerm = Boolean(err && (err.code === 'permission-denied' || /permission/i.test(msg)));
+        showLobbyError(msg, isPerm);
+        showToast(msg);
         await teardownTeacherResources();
       } finally {
         if (btn) { btn.disabled = false; btn.textContent = 'Start Video Class'; }
       }
     }
 
-    function watchAndAcceptStudentPeer(peerId, slotMeta) {
-      const peerRef = peerDocRef(activeRoomSlug, peerId);
+    function createTeacherPeerEntry(peerId, peerData) {
       const pc = new RTCPeerConnection(getIceConfiguration());
       const remoteStream = new MediaStream();
       const peerEntry = {
         peerId,
         pc,
-        peerRef,
-        meta: { studentName: slotMeta.studentName || 'Student', audioMode: 'music_raw', videoLive: true, audioLive: true },
+        meta: { studentName: peerData.studentName || 'Student', audioMode: peerData.audioMode || 'music_raw', videoLive: true, audioLive: true },
         remoteStream,
         pendingIce: [],
         seenStudentIce: new Set(),
         iceOutQueue: [],
         iceOutTimer: null,
         answered: false,
-        unsubIce: null,
         localMuted: false,
         connState: 'connecting',
         meter: null,
         lastAvAlert: false,
-        lastAudioMode: 'music_raw'
+        lastAudioMode: peerData.audioMode || 'music_raw'
       };
       teacherPeers.set(peerId, peerEntry);
 
       const flushTeacherIce = () => {
         peerEntry.iceOutTimer = null;
-        if (!peerEntry.iceOutQueue.length) return;
+        if (!peerEntry.iceOutQueue.length || !activeRoomSlug) return;
         const batch = peerEntry.iceOutQueue.splice(0, peerEntry.iceOutQueue.length);
-        peerRef.set({
-          iceTeacher: firebase.firestore.FieldValue.arrayUnion(...batch)
-        }, { merge: true }).catch(() => {});
+        updateMasterField({
+          [`videoClassRooms.${activeRoomSlug}.peers.${peerId}.iceTeacher`]: firebase.firestore.FieldValue.arrayUnion(...batch)
+        }).catch(() => {});
       };
 
-      // Add Teacher's live audio & video tracks
       if (localStream) {
         localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
       }
@@ -1081,68 +1178,56 @@
       };
 
       renderTeacherStudentsGrid();
+    }
 
-      // Single flat-document listener for this student's Offer, ICE array, and Track Health
-      peerEntry.unsubIce = peerRef.onSnapshot(async (snap) => {
-        if (!snap.exists) return;
-        const data = snap.data() || {};
-        if (data.teacherSessionId && data.teacherSessionId !== teacherSessionId) return;
+    async function syncTeacherPeerFromSnapshot(peerId, data) {
+      const peerEntry = teacherPeers.get(peerId);
+      if (!peerEntry) return;
+      const pc = peerEntry.pc;
 
-        if (data.left === true) {
+      peerEntry.meta = { ...peerEntry.meta, ...data };
+      updateStudentTileStatusBadges(peerId);
+
+      // Answer Student SDP Offer once
+      if (data.offer && !peerEntry.answered) {
+        peerEntry.answered = true;
+        try {
+          await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
+          const answer = await pc.createAnswer();
+          answer.sdp = tuneSdpForMusicAudio(answer.sdp, 128000);
+          await pc.setLocalDescription(answer);
+          await applyTrackBitratePriorities(pc, true);
+
+          await updateMasterField({
+            [`videoClassRooms.${activeRoomSlug}.peers.${peerId}.answer`]: { type: answer.type, sdp: answer.sdp }
+          });
+
+          for (const c of peerEntry.pendingIce) {
+            await pc.addIceCandidate(new RTCIceCandidate(c)).catch(() => {});
+          }
+          peerEntry.pendingIce = [];
+        } catch (err) {
+          console.error('Accept student offer error:', err);
           cleanupTeacherPeer(peerId);
-          roomDocRef(activeRoomSlug).update({
-            [`slots.${peerId}`]: firebase.firestore.FieldValue.delete()
-          }).catch(() => {});
-          peerRef.delete().catch(() => {});
           return;
         }
+      }
 
-        peerEntry.meta = { ...peerEntry.meta, ...data };
-        updateStudentTileStatusBadges(peerId);
-
-        // Answer Student SDP Offer once
-        if (data.offer && !peerEntry.answered) {
-          peerEntry.answered = true;
+      // Consume any newly added student ICE candidates
+      if (Array.isArray(data.iceStudent)) {
+        for (const candStr of data.iceStudent) {
+          if (!candStr || peerEntry.seenStudentIce.has(candStr)) continue;
+          peerEntry.seenStudentIce.add(candStr);
           try {
-            await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
-            const answer = await pc.createAnswer();
-            answer.sdp = tuneSdpForMusicAudio(answer.sdp, 128000);
-            await pc.setLocalDescription(answer);
-            await applyTrackBitratePriorities(pc, true);
-
-            await peerRef.set({
-              answer: { type: answer.type, sdp: answer.sdp }
-            }, { merge: true });
-
-            for (const c of peerEntry.pendingIce) {
-              await pc.addIceCandidate(new RTCIceCandidate(c)).catch(() => {});
+            const cand = typeof candStr === 'string' ? JSON.parse(candStr) : candStr;
+            if (pc.remoteDescription) {
+              pc.addIceCandidate(new RTCIceCandidate(cand)).catch(() => {});
+            } else {
+              peerEntry.pendingIce.push(cand);
             }
-            peerEntry.pendingIce = [];
-          } catch (err) {
-            console.error('Accept student offer error:', err);
-            cleanupTeacherPeer(peerId);
-            return;
-          }
+          } catch (e) {}
         }
-
-        // Consume any newly added student ICE candidates
-        if (Array.isArray(data.iceStudent)) {
-          for (const candStr of data.iceStudent) {
-            if (!candStr || peerEntry.seenStudentIce.has(candStr)) continue;
-            peerEntry.seenStudentIce.add(candStr);
-            try {
-              const cand = typeof candStr === 'string' ? JSON.parse(candStr) : candStr;
-              if (pc.remoteDescription) {
-                pc.addIceCandidate(new RTCIceCandidate(cand)).catch(() => {});
-              } else {
-                peerEntry.pendingIce.push(cand);
-              }
-            } catch (e) {}
-          }
-        }
-      }, (err) => {
-        console.warn('Teacher peer doc watch error:', err);
-      });
+      }
     }
 
     function bindPeerVideoElement(peerId) {
@@ -1225,11 +1310,11 @@
 
     async function toggleRemoteStudentEchoCancel(peerId) {
       const p = teacherPeers.get(peerId);
-      if (!p) return;
+      if (!p || !activeRoomSlug) return;
       const nextEc = p.meta.audioMode !== 'music_ec';
       try {
-        await p.peerRef.update({
-          remoteCmd: { forceEchoCancel: nextEc, kicked: false, cmdAt: Date.now() }
+        await updateMasterField({
+          [`videoClassRooms.${activeRoomSlug}.peers.${peerId}.remoteCmd`]: { forceEchoCancel: nextEc, kicked: false, cmdAt: Date.now() }
         });
         showToast(`${p.meta.studentName}: Switching mic to ${nextEc ? 'Music + Echo Cancel' : 'Raw Guitar Mode'}...`);
       } catch (e) {
@@ -1239,16 +1324,11 @@
 
     async function kickStudentFromClass(peerId) {
       const p = teacherPeers.get(peerId);
-      if (!p) return;
+      if (!p || !activeRoomSlug) return;
       try {
-        await p.peerRef.set({
-          remoteCmd: { kicked: true, reason: 'Removed by Teacher', cmdAt: Date.now() }
-        }, { merge: true });
-        if (db && activeRoomSlug) {
-          await roomDocRef(activeRoomSlug).update({
-            [`slots.${peerId}`]: firebase.firestore.FieldValue.delete()
-          }).catch(() => {});
-        }
+        await updateMasterField({
+          [`videoClassRooms.${activeRoomSlug}.peers.${peerId}.remoteCmd`]: { kicked: true, reason: 'Removed by Teacher', cmdAt: Date.now() }
+        });
       } catch (e) {}
       cleanupTeacherPeer(peerId);
       showToast(`Removed ${p.meta.studentName || 'student'} from class`);
@@ -1258,7 +1338,6 @@
       const p = teacherPeers.get(peerId);
       if (!p) return;
       if (p.iceOutTimer) { clearTimeout(p.iceOutTimer); p.iceOutTimer = null; }
-      if (p.unsubIce) { try { p.unsubIce(); } catch (e) {} }
       if (p.meter) { try { p.meter.stop(); } catch (e) {} }
       if (p.pc) { try { p.pc.close(); } catch (e) {} }
       teacherPeers.delete(peerId);
@@ -1426,13 +1505,9 @@
     async function endTeacherClass() {
       try {
         if (db && activeRoomSlug) {
-          const peerIds = [...teacherPeers.keys()];
-          await roomDocRef(activeRoomSlug).update({
-            status: 'ended',
-            endedAt: Date.now(),
-            slots: {}
+          await updateMasterField({
+            [`videoClassRooms.${activeRoomSlug}`]: firebase.firestore.FieldValue.delete()
           }).catch(() => {});
-          await Promise.all(peerIds.map(pid => peerDocRef(activeRoomSlug, pid).delete().catch(() => {})));
         }
       } catch (e) {}
       await teardownTeacherResources();
@@ -1511,33 +1586,23 @@
 
         startLiveClock();
 
-        const roomRef = roomDocRef(slug);
-        const peerRef = peerDocRef(slug, studentPeerId);
-        studentPeerRef = peerRef;
-
-        // Watch Room Status so student auto-exits when Teacher ends class
-        unsubStudentRoom = roomRef.onSnapshot((snap) => {
-          const rd = snap.exists ? snap.data() : null;
-          if (!rd || rd.status !== 'live' || rd.teacherSessionId !== targetTeacherSession) {
-            showToast('Teacher ended the Video Class.');
-            leaveStudentClass(true);
-          }
-        });
-
-        // Create WebRTC Offer to Teacher Hub
-        await connectStudentPeerConnection(roomRef, peerRef, targetTeacherSession, studentName);
+        // Create WebRTC Offer to Teacher Hub & watch master_state.videoClassRooms.{slug}
+        await connectStudentPeerConnection(slug, targetTeacherSession, studentName);
 
         // Start Always-On Camera/Mic Track Watchdog
-        attachStudentTrackWatchdog(peerRef);
+        attachStudentTrackWatchdog(slug);
 
       } catch (err) {
         console.error('Student join error:', err);
-        showToast(err.message || 'Could not join Video Class');
+        const msg = err && err.message ? err.message : 'Could not join Video Class';
+        const isPerm = Boolean(err && (err.code === 'permission-denied' || /permission/i.test(msg)));
+        showLobbyError(msg, isPerm);
+        showToast(msg);
         await leaveStudentClass(true);
       }
     }
 
-    async function connectStudentPeerConnection(roomRef, peerRef, targetTeacherSession, studentName) {
+    async function connectStudentPeerConnection(slug, targetTeacherSession, studentName) {
       if (studentPc) { try { studentPc.close(); } catch (e) {} }
       studentPendingIce = [];
       const seenTeacherIce = new Set();
@@ -1546,11 +1611,11 @@
 
       const flushStudentIce = () => {
         iceOutTimer = null;
-        if (!iceOutQueue.length) return;
+        if (!iceOutQueue.length || !studentPeerId) return;
         const batch = iceOutQueue.splice(0, iceOutQueue.length);
-        peerRef.set({
-          iceStudent: firebase.firestore.FieldValue.arrayUnion(...batch)
-        }, { merge: true }).catch(() => {});
+        updateMasterField({
+          [`videoClassRooms.${slug}.peers.${studentPeerId}.iceStudent`]: firebase.firestore.FieldValue.arrayUnion(...batch)
+        }).catch(() => {});
       };
 
       const pc = new RTCPeerConnection(getIceConfiguration());
@@ -1612,39 +1677,36 @@
       await pc.setLocalDescription(offer);
       await applyTrackBitratePriorities(pc, false);
 
-      // 1. Write flat student peer signaling doc in tsm_blobs
-      await peerRef.set({
-        _vcType: 'peer',
-        roomId: activeRoomSlug,
-        peerId: studentPeerId,
-        studentName,
-        teacherSessionId: targetTeacherSession,
-        joinedAt: Date.now(),
-        lastSeen: Date.now(),
-        videoLive: true,
-        audioLive: true,
-        audioMode: studentCurrentAudioMode,
-        left: false,
-        offer: { type: offer.type, sdp: offer.sdp },
-        iceStudent: [],
-        iceTeacher: []
-      });
-
-      // 2. Register student slot in flat room doc so Teacher discovers & connects immediately
-      await roomRef.update({
-        [`slots.${studentPeerId}`]: {
+      // Atomically register this student's peer entry inside videoClassRooms.{slug}.peers.{studentPeerId}
+      await updateMasterField({
+        [`videoClassRooms.${slug}.peers.${studentPeerId}`]: {
           peerId: studentPeerId,
           studentName,
           teacherSessionId: targetTeacherSession,
-          joinedAt: Date.now()
+          joinedAt: Date.now(),
+          lastSeen: Date.now(),
+          videoLive: true,
+          audioLive: true,
+          audioMode: studentCurrentAudioMode,
+          left: false,
+          offer: { type: offer.type, sdp: offer.sdp },
+          iceStudent: [],
+          iceTeacher: []
         }
       });
 
-      // 3. Single flat-document listener for Teacher Answer, Teacher ICE array, and Remote Commands
+      // Watch master_state.videoClassRooms.{slug} for Room End, Teacher Answer, ICE array, and Remote Commands
       if (unsubStudentPeerDoc) unsubStudentPeerDoc();
-      unsubStudentPeerDoc = peerRef.onSnapshot(async (snap) => {
-        if (!snap.exists) return;
-        const d = snap.data() || {};
+      unsubStudentPeerDoc = masterDocRef().onSnapshot(async (snap) => {
+        const master = snap.exists ? (snap.data() || {}) : {};
+        const rd = (master.videoClassRooms && master.videoClassRooms[slug]) || null;
+        if (!rd || rd.status !== 'live' || rd.teacherSessionId !== targetTeacherSession) {
+          showToast('Teacher ended the Video Class.');
+          leaveStudentClass(true);
+          return;
+        }
+        const d = (rd.peers && rd.peers[studentPeerId]) || null;
+        if (!d) return;
 
         if (d.answer && !pc.currentRemoteDescription) {
           try {
@@ -1686,7 +1748,9 @@
               studentCurrentAudioMode = desiredMode;
               await swapLocalAudioTrack(desiredMode);
               updateStudentAudioModeLabel();
-              peerRef.set({ audioMode: desiredMode }, { merge: true }).catch(() => {});
+              updateMasterField({
+                [`videoClassRooms.${slug}.peers.${studentPeerId}.audioMode`]: desiredMode
+              }).catch(() => {});
               showToast(`Teacher set your mic to ${desiredMode === 'music_ec' ? 'Music + Echo Cancel' : 'Guitar Raw Mode'}`);
             }
           }
@@ -1711,10 +1775,10 @@
         : 'Guitar Raw Audio ON (128kbps)';
     }
 
-    function attachStudentTrackWatchdog(peerRef) {
+    function attachStudentTrackWatchdog(slug) {
       if (studentWatchdogInterval) clearInterval(studentWatchdogInterval);
       const checkHealth = () => {
-        if (currentRole !== 'student' || !localStream) return;
+        if (currentRole !== 'student' || !localStream || !studentPeerId) return;
         const vTrack = localStream.getVideoTracks()[0];
         const aTrack = localStream.getAudioTracks()[0];
         // Enforce enabled=true continuously on student tracks
@@ -1726,7 +1790,11 @@
         const banner = document.getElementById('studentAvWarningBanner');
         if (banner) banner.classList.toggle('hidden', vLive && aLive);
 
-        peerRef.update({ videoLive: vLive, audioLive: aLive, lastSeen: Date.now() }).catch(() => {});
+        updateMasterField({
+          [`videoClassRooms.${slug}.peers.${studentPeerId}.videoLive`]: vLive,
+          [`videoClassRooms.${slug}.peers.${studentPeerId}.audioLive`]: aLive,
+          [`videoClassRooms.${slug}.peers.${studentPeerId}.lastSeen`]: Date.now()
+        }).catch(() => {});
       };
 
       localStream.getTracks().forEach(t => {
@@ -1734,7 +1802,7 @@
         t.onmute = checkHealth;
         t.onunmute = checkHealth;
       });
-      studentWatchdogInterval = setInterval(checkHealth, 3500);
+      studentWatchdogInterval = setInterval(checkHealth, 5000);
     }
 
     async function restoreStudentCameraAndMic() {
@@ -1768,9 +1836,13 @@
         if (localSelfAudioCtx) localSelfAudioCtx.stop();
         localSelfAudioCtx = attachAudioMeter(localStream, 'studentSelfMicBar');
         document.getElementById('studentAvWarningBanner')?.classList.add('hidden');
-        if (studentPeerRef) {
-          studentPeerRef.update({ videoLive: true, audioLive: true, lastSeen: Date.now() }).catch(() => {});
-          attachStudentTrackWatchdog(studentPeerRef);
+        if (activeRoomSlug && studentPeerId) {
+          updateMasterField({
+            [`videoClassRooms.${activeRoomSlug}.peers.${studentPeerId}.videoLive`]: true,
+            [`videoClassRooms.${activeRoomSlug}.peers.${studentPeerId}.audioLive`]: true,
+            [`videoClassRooms.${activeRoomSlug}.peers.${studentPeerId}.lastSeen`]: Date.now()
+          }).catch(() => {});
+          attachStudentTrackWatchdog(activeRoomSlug);
         }
         showToast('Camera & Microphone restored!');
       } catch (e) {
@@ -1786,10 +1858,10 @@
       stopLiveClock();
 
       if (db && activeRoomSlug && studentPeerId) {
-        peerDocRef(activeRoomSlug, studentPeerId)
-          .set({ left: true, lastSeen: Date.now() }, { merge: true }).catch(() => {});
-        roomDocRef(activeRoomSlug)
-          .update({ [`slots.${studentPeerId}`]: firebase.firestore.FieldValue.delete() }).catch(() => {});
+        updateMasterField({
+          [`videoClassRooms.${activeRoomSlug}.peers.${studentPeerId}.left`]: true,
+          [`videoClassRooms.${activeRoomSlug}.peers.${studentPeerId}.lastSeen`]: Date.now()
+        }).catch(() => {});
       }
       if (studentPc) { try { studentPc.close(); } catch (e) {} studentPc = null; }
       if (localSelfAudioCtx) { localSelfAudioCtx.stop(); localSelfAudioCtx = null; }
@@ -1879,8 +1951,8 @@
 
         if (localSelfAudioCtx) localSelfAudioCtx.stop();
         localSelfAudioCtx = attachAudioMeter(localStream, currentRole === 'teacher' ? 'teacherSelfAudioBar' : 'studentSelfMicBar');
-        if (currentRole === 'student' && studentPeerRef) {
-          attachStudentTrackWatchdog(studentPeerRef);
+        if (currentRole === 'student' && activeRoomSlug) {
+          attachStudentTrackWatchdog(activeRoomSlug);
         }
       } catch (e) {
         console.warn('Swap audio track warning:', e);
@@ -1968,10 +2040,12 @@
 
     window.addEventListener('beforeunload', () => {
       if (currentRole === 'teacher' && db && activeRoomSlug) {
-        roomDocRef(activeRoomSlug).update({ status: 'ended', endedAt: Date.now(), slots: {} }).catch(() => {});
+        updateMasterField({ [`videoClassRooms.${activeRoomSlug}`]: firebase.firestore.FieldValue.delete() }).catch(() => {});
       } else if (currentRole === 'student' && db && activeRoomSlug && studentPeerId) {
-        peerDocRef(activeRoomSlug, studentPeerId).set({ left: true, lastSeen: Date.now() }, { merge: true }).catch(() => {});
-        roomDocRef(activeRoomSlug).update({ [`slots.${studentPeerId}`]: firebase.firestore.FieldValue.delete() }).catch(() => {});
+        updateMasterField({
+          [`videoClassRooms.${activeRoomSlug}.peers.${studentPeerId}.left`]: true,
+          [`videoClassRooms.${activeRoomSlug}.peers.${studentPeerId}.lastSeen`]: Date.now()
+        }).catch(() => {});
       }
     });
 

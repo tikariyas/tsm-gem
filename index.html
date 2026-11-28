@@ -1808,8 +1808,10 @@ function loadState() {
 }
 
 function buildSlimState(stateObj) {
+  const copy = { ...stateObj };
+  delete copy.videoClassRooms;
   return {
-    ...stateObj,
+    ...copy,
     customBrochureDataUrl: (stateObj.customBrochureDataUrl && stateObj.customBrochureDataUrl.length < 150000) ? stateObj.customBrochureDataUrl : '',
     vaultItems: (stateObj.vaultItems || []).map(v => ({
       ...v,
@@ -1840,7 +1842,7 @@ function saveState(options = {}) {
   db.collection('tsm_system').doc('master_state').set({
     ...slimState,
     updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-  }).catch(err => console.warn('Cloud sync error:', err));
+  }, { merge: true }).catch(err => console.warn('Cloud sync error:', err));
 }
 
 function dispatchPushAlert(targetRoll, title, body) {
@@ -1930,6 +1932,7 @@ function saveSession(userObj) {
 
 function applyRemoteMasterState(remote) {
   if (!remote || !Array.isArray(remote.students)) return false;
+  delete remote.videoClassRooms;
   if (!remote.adminRollNo) remote.adminRollNo = 'MUSICSNSOUNDS';
   if (!remote.adminPin) remote.adminPin = '1995';
   if (!remote.courses || !remote.courses.length) remote.courses = DEFAULT_COURSES;
@@ -2624,7 +2627,6 @@ function renderNavTabs() {
     { id: 'student_home', label: 'Profile & ID' },
     { id: 'student_attendance', label: 'Attendance' },
     { id: 'student_audio', label: 'Audio' },
-    { id: 'student_video_class', label: 'Video Class' },
     { id: 'student_fees', label: 'Fees' },
     { id: 'student_vault', label: 'Study Material' },
     { id: 'student_messages', label: 'Messages' }
@@ -2655,15 +2657,6 @@ function switchTab(id) {
   }
   if (id === 'video_class' && currentUser && currentUser.role === 'admin') {
     window.location.href = 'video-class.html';
-    return;
-  }
-  if (id === 'student_video_class' && currentUser && currentUser.role === 'student') {
-    const s = (appState.students || []).find(x => x.id === currentUser.studentId);
-    const params = new URLSearchParams();
-    params.set('role', 'student');
-    if (s && s.batch) params.set('batch', s.batch);
-    if (s && s.name) params.set('name', s.name);
-    window.location.href = `video-class.html?${params.toString()}`;
     return;
   }
   activeTab = id;
