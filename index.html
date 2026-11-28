@@ -1377,8 +1377,8 @@ let recordedDurationSec = 0;
 let recordingTimerInterval = null;
 let isRecordingAudio = false;
 let discardAudioOnStop = false;
-let recordAutoStartMetronome = true;
-let recordMixMetronome = true;
+let recordAutoStartMetronome = false;
+let recordMixMetronome = false;
 let recordNoiseRemoval = false;
 let recordedMetronomeMeta = '';
 let metronomeAutoStartedByRec = false;
@@ -1974,6 +1974,7 @@ function applyRemoteMasterState(remote) {
   }
   if (currentUser) {
     if (currentDeviceFcmToken) saveDeviceTokenToState(currentDeviceFcmToken);
+    renderNavTabs();
     const onLiveAudioOrMetronome = (activeTab === 'audio' || activeTab === 'student_audio') &&
       ((typeof metronomeState !== 'undefined' && metronomeState.isPlaying) || isRecordingAudio);
     if (!onLiveAudioOrMetronome) {
@@ -2608,6 +2609,14 @@ function executeLogout() {
   document.getElementById('loginView').classList.remove('hidden');
 }
 
+function canStudentUsePitchDetector(stu) {
+  if (!stu) return false;
+  const list = Array.isArray(stu.courses) && stu.courses.length
+    ? stu.courses
+    : String(stu.course || '').split(/[,/]/).map(x => x.trim()).filter(Boolean);
+  return list.some(c => /violin|vocal|flute/i.test(String(c || '')));
+}
+
 function renderNavTabs() {
   const container = document.getElementById('navTabsContainer');
   const adminTabs = [
@@ -2624,11 +2633,14 @@ function renderNavTabs() {
     { id: 'marketing', label: 'Instagram' },
     { id: 'settings', label: 'Settings' }
   ];
+  const currentStudentObj = currentUser && currentUser.role === 'student'
+    ? (appState.students || []).find(x => x.id === currentUser.studentId)
+    : null;
   const studentTabs = [
     { id: 'student_home', label: 'Profile & ID' },
     { id: 'student_attendance', label: 'Attendance' },
     { id: 'student_audio', label: 'Audio' },
-    { id: 'student_pitch_detector', label: 'Pitch Detector' },
+    ...(canStudentUsePitchDetector(currentStudentObj) ? [{ id: 'student_pitch_detector', label: 'Pitch Detector' }] : []),
     { id: 'student_video_class', label: 'Video Class' },
     { id: 'student_fees', label: 'Fees' },
     { id: 'student_vault', label: 'Study Material' },
@@ -2654,8 +2666,15 @@ function switchTab(id) {
   if (id !== 'audio' && id !== 'student_audio' && typeof stopMetronome === 'function') {
     stopMetronome();
   }
-  if (id === 'pitch_detector' || id === 'student_pitch_detector') {
+  if (id === 'pitch_detector' && currentUser && currentUser.role === 'admin') {
     window.location.href = 'pitch-detector.html';
+    return;
+  }
+  if (id === 'student_pitch_detector' && currentUser && currentUser.role === 'student') {
+    const s = (appState.students || []).find(x => x.id === currentUser.studentId);
+    if (canStudentUsePitchDetector(s)) {
+      window.location.href = 'pitch-detector.html';
+    }
     return;
   }
   if (id === 'vault' && currentUser && currentUser.role === 'admin') {
